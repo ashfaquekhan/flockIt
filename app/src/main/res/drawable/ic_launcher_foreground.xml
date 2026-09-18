@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Golden growth curve in the background of foreground -->
+    <path
+        android:strokeColor="#FFCA28"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:pathData="M 32,74 Q 48,70 60,54 T 76,34" />
+    <path
+        android:fillColor="#FFCA28"
+        android:pathData="M 76,34 L 71,38 L 77,41 Z" />
+
+    <!-- Rooster / Broiler chicken profile silhouette -->
+    <!-- Comb -->
+    <path
+        android:fillColor="#E53935"
+        android:pathData="M 52,33 C 50,30 48,32 47,35 C 45,33 43,35 43,38 C 41,37 39,39 40,42 L 54,42 Z" />
+    <!-- Wattle -->
+    <path
+        android:fillColor="#E53935"
+        android:pathData="M 39,49 C 37,51 37,55 40,55 C 42,55 42,50 41,49 Z" />
+    <!-- Beak -->
+    <path
+        android:fillColor="#FFB300"
+        android:pathData="M 38,44 L 32,46 L 38,48 Z" />
+    <!-- Chicken Body & Head -->
+    <path
+        android:fillColor="#FDFCF9"
+        android:pathData="M 50,40 C 46,40 40,42 40,48 C 40,51 43,55 45,60 C 47,65 47,72 54,75 C 62,78 72,75 75,67 C 77,61 74,54 70,50 C 66,46 62,44 57,41 C 55,40 52,40 50,40 Z" />
+    <!-- Wing Accent -->
+    <path
+        android:fillColor="#E0DDD3"
+        android:pathData="M 54,55 C 51,58 52,65 57,67 C 62,69 68,67 69,61 C 70,57 65,54 60,54 C 57,54 55,54 54,55 Z" />
+    <!-- Eye -->
+    <path
+        android:fillColor="#1B241F"
+        android:pathData="M 44,45 m -1.5,0 a 1.5,1.5 0 1,0 3,0 a 1.5,1.5 0 1,0 -3,0" />
+    <!-- Legs -->
+    <path
+        android:strokeColor="#FFB300"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:pathData="M 54,75 L 52,82 M 52,82 L 48,84 M 52,82 L 53,84 M 61,74 L 62,82 M 62,82 L 58,84 M 62,82 L 64,84" />
+</vector>
+

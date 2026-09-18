@@ -1,0 +1,6 @@
+{
+  "name": "Broiler Flock Manager",
+  "description": "Native grow-out management driving climate, feed, water, and flock targets by physiological weight-age.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
