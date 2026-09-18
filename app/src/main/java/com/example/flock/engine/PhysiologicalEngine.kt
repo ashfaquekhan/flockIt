@@ -188,11 +188,14 @@ object PhysiologicalEngine {
 
     /**
      * Stull (2011) wet-bulb temperature approximation. T in °C, RH in %.
+     * Formula requires arctangent in degrees.
      */
+    private fun atanDeg(x: Double): Double = Math.toDegrees(atan(x))
+
     fun wetBulb(tempC: Double, rh: Double): Double {
-        return tempC * atan(0.151977 * sqrt(rh + 8.313659)) +
-                atan(tempC + rh) - atan(rh - 1.676331) +
-                0.00391838 * rh.pow(1.5) * atan(0.023101 * rh) - 4.686035
+        return tempC * atanDeg(0.151977 * sqrt(rh + 8.313659)) +
+                atanDeg(tempC + rh) - atanDeg(rh - 1.676331) +
+                0.00391838 * rh.pow(1.5) * atanDeg(0.023101 * rh) - 4.686035
     }
 
     /**

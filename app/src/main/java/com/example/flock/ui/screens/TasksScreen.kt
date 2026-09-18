@@ -1,8 +1,6 @@
 package com.example.flock.ui.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,18 +10,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Alarm
-import androidx.compose.material.icons.filled.AlarmOff
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Divider
@@ -32,6 +26,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -40,283 +35,312 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.flock.data.RoutineEntity
+import com.example.flock.data.TaskEntity
 import com.example.ui.theme.BrandEmerald
-import com.example.ui.theme.DomainTask
-import com.example.ui.theme.DomainTaskWash
-import com.example.ui.theme.StatusGood
+
+val FIXED_BLOCKS = listOf(
+    "Morning 05:00–08:30",
+    "Morning 08:30–12:00",
+    "Evening 12:00–16:00",
+    "Evening 16:00–20:00",
+    "Night 20:00–00:00",
+    "Night 00:00–05:00"
+)
+
+fun detectBlockFromTime(time: String): String {
+    val hour = time.split(":").getOrNull(0)?.toIntOrNull() ?: 7
+    val min = time.split(":").getOrNull(1)?.toIntOrNull() ?: 0
+    val totalMin = hour * 60 + min
+
+    return when {
+        totalMin in (5 * 60)..(8 * 60 + 30) -> "Morning 05:00–08:30"
+        totalMin in (8 * 60 + 31)..(12 * 60) -> "Morning 08:30–12:00"
+        totalMin in (12 * 60 + 1)..(16 * 60) -> "Evening 12:00–16:00"
+        totalMin in (16 * 60 + 1)..(20 * 60) -> "Evening 16:00–20:00"
+        totalMin in (20 * 60 + 1)..(23 * 60 + 59) -> "Night 20:00–00:00"
+        else -> "Night 00:00–05:00"
+    }
+}
 
 @Composable
 fun TasksScreen(
-    routines: List<RoutineEntity>,
-    dismissedIds: Set<String>,
-    onToggleAlarm: (routineId: String, currentAlarm: Boolean) -> Unit,
-    onToggleDone: (routineId: String, isDone: Boolean) -> Unit,
-    onAddTask: (title: String, time: String, applyAllDays: Boolean) -> Unit,
-    onDeleteTask: (routineId: String) -> Unit,
+    tasks: List<TaskEntity>,
+    dayNumber: Int,
+    onAddTask: (block: String, label: String, time: String, everyDay: Boolean) -> Unit,
+    onDeleteTask: (taskId: String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var newTitle by remember { mutableStateOf("") }
-    var newTime by remember { mutableStateOf("07:00") }
-    var applyAll by remember { mutableStateOf(true) }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var taskLabel by remember { mutableStateOf("") }
+    var taskTime by remember { mutableStateOf("07:00") }
+    var everyDay by remember { mutableStateOf(true) }
 
-    val taskRoutines = routines.filter { it.type == "task" }
-    val quickChips = listOf("Walk house", "Flush drinkers", "Raise feeders", "Check mortality", "Litter check", "Sample weigh")
-
-    // Grouping by time blocks
-    val morningTasks = taskRoutines.filter { parseHour(it.time) < 12 }
-    val afternoonTasks = taskRoutines.filter { parseHour(it.time) in 12..17 }
-    val nightTasks = taskRoutines.filter { parseHour(it.time) >= 18 }
+    val scrollState = rememberScrollState()
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 14.dp, vertical = 10.dp)
-            .testTag("tasks_screen"),
+            .verticalScroll(scrollState)
+            .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Quick Add Chips
-        Text(
-            text = "QUICK ADD ROUTINE TASK",
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        )
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
+        // Header & Add Button
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            items(quickChips) { chip ->
-                Surface(
-                    color = DomainTaskWash,
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.clickable {
-                        onAddTask(chip, "08:00", true)
-                    }
-                ) {
+            Column {
+                Text(
+                    text = "Day $dayNumber Task Planner",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+                Text(
+                    text = "6 Fixed Daily Operational Blocks",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Button(
+                onClick = { showAddDialog = !showAddDialog },
+                colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.testTag("add_task_button")
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Add Task", modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Add Task")
+            }
+        }
+
+        // Add Task Card
+        if (showAddDialog) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "New Operational Task",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                    )
+
+                    OutlinedTextField(
+                        value = taskLabel,
+                        onValueChange = { taskLabel = it },
+                        label = { Text("Task description") },
+                        placeholder = { Text("e.g. Weigh 5 locations, Flush drinker line...") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("task_label_input")
+                    )
+
                     Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(imageVector = Icons.Default.Add, contentDescription = null, tint = DomainTask, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = chip,
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = DomainTask)
+                        OutlinedTextField(
+                            value = taskTime,
+                            onValueChange = { taskTime = it },
+                            label = { Text("Time (HH:mm)") },
+                            singleLine = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("task_time_input")
                         )
+
+                        val autoBlock = detectBlockFromTime(taskTime)
+                        Surface(
+                            color = MaterialTheme.colorScheme.surface,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1.5f)
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                Text("Auto Block:", style = MaterialTheme.typography.labelSmall)
+                                Text(
+                                    text = autoBlock,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Repeat Every Day",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                            )
+                            Text(
+                                text = if (everyDay) "Appears on all days of flock" else "Only on Day $dayNumber",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = everyDay,
+                            onCheckedChange = { everyDay = it },
+                            modifier = Modifier.testTag("task_everyday_switch")
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Button(
+                            onClick = {
+                                if (taskLabel.isNotBlank()) {
+                                    val block = detectBlockFromTime(taskTime)
+                                    onAddTask(block, taskLabel, taskTime, everyDay)
+                                    taskLabel = ""
+                                    showAddDialog = false
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald),
+                            enabled = taskLabel.isNotBlank()
+                        ) {
+                            Text("Save Task")
+                        }
                     }
                 }
             }
         }
 
-        // Custom Add Row
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 1.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier.padding(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(
-                    value = newTitle,
-                    onValueChange = { newTitle = it },
-                    placeholder = { Text("Task description...", fontSize = 13.sp) },
-                    singleLine = true,
-                    modifier = Modifier.weight(1.5f)
-                )
-                OutlinedTextField(
-                    value = newTime,
-                    onValueChange = { newTime = it },
-                    placeholder = { Text("HH:MM", fontSize = 13.sp) },
-                    singleLine = true,
-                    modifier = Modifier.width(85.dp)
-                )
-                Button(
-                    onClick = {
-                        if (newTitle.isNotBlank()) {
-                            onAddTask(newTitle, newTime.ifBlank { "08:00" }, applyAll)
-                            newTitle = ""
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = DomainTask),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("Add")
-                }
-            }
+        // 6 FIXED BLOCKS
+        for (block in FIXED_BLOCKS) {
+            val blockTasks = tasks.filter {
+                it.block == block || (it.block.isBlank() && detectBlockFromTime(it.time) == block)
+            }.sortedBy { it.time }
+
+            BlockCard(
+                blockTitle = block,
+                tasks = blockTasks,
+                onDeleteTask = onDeleteTask
+            )
         }
-
-        // Morning Tasks Block
-        TaskGroupCard(
-            title = "Morning Block (06:00 – 11:59)",
-            tasks = morningTasks,
-            dismissedIds = dismissedIds,
-            onToggleAlarm = onToggleAlarm,
-            onToggleDone = onToggleDone,
-            onDeleteTask = onDeleteTask
-        )
-
-        // Afternoon Tasks Block
-        TaskGroupCard(
-            title = "Midday & Peak Heat (12:00 – 17:59)",
-            tasks = afternoonTasks,
-            dismissedIds = dismissedIds,
-            onToggleAlarm = onToggleAlarm,
-            onToggleDone = onToggleDone,
-            onDeleteTask = onDeleteTask
-        )
-
-        // Evening & Night Block
-        TaskGroupCard(
-            title = "Evening & Night (18:00 – 23:59)",
-            tasks = nightTasks,
-            dismissedIds = dismissedIds,
-            onToggleAlarm = onToggleAlarm,
-            onToggleDone = onToggleDone,
-            onDeleteTask = onDeleteTask
-        )
 
         Spacer(modifier = Modifier.height(24.dp))
     }
 }
 
 @Composable
-fun TaskGroupCard(
-    title: String,
-    tasks: List<RoutineEntity>,
-    dismissedIds: Set<String>,
-    onToggleAlarm: (routineId: String, currentAlarm: Boolean) -> Unit,
-    onToggleDone: (routineId: String, isDone: Boolean) -> Unit,
-    onDeleteTask: (routineId: String) -> Unit
+fun BlockCard(
+    blockTitle: String,
+    tasks: List<TaskEntity>,
+    onDeleteTask: (String) -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(12.dp),
         tonalElevation = 1.dp,
-        shadowElevation = 2.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = DomainTask)
-            )
-            Spacer(modifier = Modifier.height(8.dp))
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Schedule,
+                        contentDescription = null,
+                        tint = BrandEmerald,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = blockTitle,
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+                Text(
+                    text = "${tasks.size} ${if (tasks.size == 1) "task" else "tasks"}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Divider(modifier = Modifier.padding(vertical = 2.dp))
 
             if (tasks.isEmpty()) {
                 Text(
-                    text = "No tasks scheduled in this block.",
-                    style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    text = "No tasks in this block",
+                    style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
+                    modifier = Modifier.padding(vertical = 4.dp)
                 )
             } else {
-                tasks.forEachIndexed { idx, t ->
-                    val isDone = dismissedIds.contains(t.routineId)
+                for (task in tasks) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 6.dp),
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Checkbox
-                        Surface(
-                            shape = CircleShape,
-                            color = if (isDone) StatusGood else MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier
-                                .size(24.dp)
-                                .clip(CircleShape)
-                                .clickable { onToggleDone(t.routineId, !isDone) }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                if (isDone) {
-                                    Icon(imageVector = Icons.Default.Check, contentDescription = "Done", tint = Color.White, modifier = Modifier.size(14.dp))
+                            Text(
+                                text = task.time,
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = BrandEmerald
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = task.label,
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                                )
+                                if (task.everyDay) {
+                                    Text(
+                                        text = "Every day template",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    )
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.width(10.dp))
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = t.title,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None
-                                )
-                            )
-                            if (t.detail.isNotBlank()) {
-                                Text(
-                                    text = t.detail,
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                )
-                            }
-                        }
-
-                        // Time
-                        Text(
-                            text = t.time,
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        )
-
-                        Spacer(modifier = Modifier.width(4.dp))
-
-                        // Alarm toggle
                         IconButton(
-                            onClick = { onToggleAlarm(t.routineId, t.alarmOn) },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (t.alarmOn) Icons.Default.Alarm else Icons.Default.AlarmOff,
-                                contentDescription = "Toggle alarm",
-                                tint = if (t.alarmOn) BrandEmerald else Color.Gray,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-
-                        // Delete
-                        IconButton(
-                            onClick = { onDeleteTask(t.routineId) },
+                            onClick = { onDeleteTask(task.taskId) },
                             modifier = Modifier.size(28.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Delete,
                                 contentDescription = "Delete task",
-                                tint = Color.Gray.copy(alpha = 0.6f),
+                                tint = Color.Gray,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
-                    }
-
-                    if (idx < tasks.size - 1) {
-                        Divider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
                 }
             }
         }
     }
-}
-
-private fun parseHour(time: String): Int {
-    return time.split(":").firstOrNull()?.toIntOrNull() ?: 8
 }

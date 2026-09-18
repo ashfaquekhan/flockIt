@@ -52,7 +52,7 @@ fun ClimateEnvelope(
     val band = 1.5
     val outTemp = entry?.outTemp
     val outRH = entry?.outRH
-    val windChill = entry?.windChillTemp
+    val windChill = entry?.windChill
 
     val metrics = listOf(
         EnvelopeMetric(

@@ -20,45 +20,78 @@ interface StandardsDao {
 }
 
 @Dao
-interface ConfigDao {
-    @Query("SELECT * FROM config")
-    fun getAllConfig(): Flow<List<ConfigEntity>>
+interface FarmRegistryDao {
+    @Query("SELECT * FROM farm_registry ORDER BY lastOpened DESC")
+    fun getAllFarmsFlow(): Flow<List<FarmRegistryEntity>>
 
-    @Query("SELECT value FROM config WHERE `key` = :key LIMIT 1")
-    suspend fun getValue(key: String): String?
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertConfig(items: List<ConfigEntity>)
+    @Query("SELECT * FROM farm_registry WHERE spreadsheetId = :spreadsheetId LIMIT 1")
+    suspend fun getFarm(spreadsheetId: String): FarmRegistryEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun setConfig(config: ConfigEntity)
+    suspend fun insertOrUpdate(farm: FarmRegistryEntity)
+
+    @Query("UPDATE farm_registry SET syncStatus = :status, lastSyncedAt = :syncedAt WHERE spreadsheetId = :spreadsheetId")
+    suspend fun updateSyncStatus(spreadsheetId: String, status: String, syncedAt: Long = System.currentTimeMillis())
+
+    @Query("DELETE FROM farm_registry WHERE spreadsheetId = :spreadsheetId")
+    suspend fun deleteFarm(spreadsheetId: String)
 }
 
 @Dao
 interface FarmDao {
-    @Query("SELECT * FROM farm WHERE id = 1 LIMIT 1")
-    fun getFarmFlow(): Flow<FarmEntity?>
+    @Query("SELECT * FROM farm WHERE spreadsheetId = :spreadsheetId LIMIT 1")
+    fun getFarmFlow(spreadsheetId: String): Flow<FarmEntity?>
 
-    @Query("SELECT * FROM farm WHERE id = 1 LIMIT 1")
-    suspend fun getFarm(): FarmEntity?
+    @Query("SELECT * FROM farm WHERE spreadsheetId = :spreadsheetId LIMIT 1")
+    suspend fun getFarm(spreadsheetId: String): FarmEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateFarm(farm: FarmEntity)
 }
 
 @Dao
+interface ConfigDao {
+    @Query("SELECT * FROM config WHERE spreadsheetId = :spreadsheetId LIMIT 1")
+    fun getConfigFlow(spreadsheetId: String): Flow<ConfigEntity?>
+
+    @Query("SELECT * FROM config WHERE spreadsheetId = :spreadsheetId LIMIT 1")
+    suspend fun getConfig(spreadsheetId: String): ConfigEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdateConfig(config: ConfigEntity)
+}
+
+@Dao
+interface FeedTypeDao {
+    @Query("SELECT * FROM feed_types WHERE spreadsheetId = :spreadsheetId ORDER BY sortOrder ASC, code ASC")
+    fun getFeedTypesFlow(spreadsheetId: String): Flow<List<FeedTypeEntity>>
+
+    @Query("SELECT * FROM feed_types WHERE spreadsheetId = :spreadsheetId ORDER BY sortOrder ASC, code ASC")
+    suspend fun getFeedTypes(spreadsheetId: String): List<FeedTypeEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFeedType(feedType: FeedTypeEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFeedTypes(feedTypes: List<FeedTypeEntity>)
+
+    @Query("DELETE FROM feed_types WHERE spreadsheetId = :spreadsheetId AND code = :code")
+    suspend fun deleteFeedType(spreadsheetId: String, code: String)
+}
+
+@Dao
 interface FlockDao {
-    @Query("SELECT * FROM flocks ORDER BY createdAt DESC")
-    fun getAllFlocks(): Flow<List<FlockEntity>>
+    @Query("SELECT * FROM flocks WHERE spreadsheetId = :spreadsheetId ORDER BY createdAt DESC")
+    fun getAllFlocks(spreadsheetId: String): Flow<List<FlockEntity>>
 
-    @Query("SELECT * FROM flocks WHERE status = 'active' ORDER BY createdAt DESC")
-    fun getActiveFlocks(): Flow<List<FlockEntity>>
+    @Query("SELECT * FROM flocks WHERE spreadsheetId = :spreadsheetId AND status = 'active' ORDER BY createdAt DESC")
+    fun getActiveFlocks(spreadsheetId: String): Flow<List<FlockEntity>>
 
-    @Query("SELECT * FROM flocks WHERE flockId = :flockId LIMIT 1")
-    fun getFlockByIdFlow(flockId: String): Flow<FlockEntity?>
+    @Query("SELECT * FROM flocks WHERE spreadsheetId = :spreadsheetId AND flockId = :flockId LIMIT 1")
+    fun getFlockByIdFlow(spreadsheetId: String, flockId: String): Flow<FlockEntity?>
 
-    @Query("SELECT * FROM flocks WHERE flockId = :flockId LIMIT 1")
-    suspend fun getFlockById(flockId: String): FlockEntity?
+    @Query("SELECT * FROM flocks WHERE spreadsheetId = :spreadsheetId AND flockId = :flockId LIMIT 1")
+    suspend fun getFlockById(spreadsheetId: String, flockId: String): FlockEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFlock(flock: FlockEntity)
@@ -66,23 +99,23 @@ interface FlockDao {
     @Update
     suspend fun updateFlock(flock: FlockEntity)
 
-    @Query("DELETE FROM flocks WHERE flockId = :flockId")
-    suspend fun deleteFlock(flockId: String)
+    @Query("DELETE FROM flocks WHERE spreadsheetId = :spreadsheetId AND flockId = :flockId")
+    suspend fun deleteFlock(spreadsheetId: String, flockId: String)
 }
 
 @Dao
 interface DailyDataDao {
-    @Query("SELECT * FROM daily_data WHERE flockId = :flockId ORDER BY dayNumber ASC")
-    fun getDailyDataForFlock(flockId: String): Flow<List<DailyDataEntity>>
+    @Query("SELECT * FROM daily_data WHERE spreadsheetId = :spreadsheetId AND flockId = :flockId ORDER BY dayNumber ASC")
+    fun getDailyDataForFlock(spreadsheetId: String, flockId: String): Flow<List<DailyDataEntity>>
 
-    @Query("SELECT * FROM daily_data WHERE flockId = :flockId AND dayNumber = :dayNumber LIMIT 1")
-    fun getDayEntryFlow(flockId: String, dayNumber: Int): Flow<DailyDataEntity?>
+    @Query("SELECT * FROM daily_data WHERE spreadsheetId = :spreadsheetId AND flockId = :flockId AND dayNumber = :dayNumber LIMIT 1")
+    fun getDayEntryFlow(spreadsheetId: String, flockId: String, dayNumber: Int): Flow<DailyDataEntity?>
 
-    @Query("SELECT * FROM daily_data WHERE flockId = :flockId AND dayNumber = :dayNumber LIMIT 1")
-    suspend fun getDayEntry(flockId: String, dayNumber: Int): DailyDataEntity?
+    @Query("SELECT * FROM daily_data WHERE spreadsheetId = :spreadsheetId AND flockId = :flockId AND dayNumber = :dayNumber LIMIT 1")
+    suspend fun getDayEntry(spreadsheetId: String, flockId: String, dayNumber: Int): DailyDataEntity?
 
-    @Query("SELECT * FROM daily_data WHERE flockId = :flockId ORDER BY dayNumber ASC")
-    suspend fun getDailyDataList(flockId: String): List<DailyDataEntity>
+    @Query("SELECT * FROM daily_data WHERE spreadsheetId = :spreadsheetId AND flockId = :flockId ORDER BY dayNumber ASC")
+    suspend fun getDailyDataList(spreadsheetId: String, flockId: String): List<DailyDataEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDailyData(items: List<DailyDataEntity>)
@@ -90,45 +123,30 @@ interface DailyDataDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateDay(data: DailyDataEntity)
 
-    @Query("DELETE FROM daily_data WHERE flockId = :flockId")
-    suspend fun deleteDailyDataForFlock(flockId: String)
+    @Query("DELETE FROM daily_data WHERE spreadsheetId = :spreadsheetId AND flockId = :flockId")
+    suspend fun deleteDailyDataForFlock(spreadsheetId: String, flockId: String)
 }
 
 @Dao
-interface RoutineDao {
-    @Query("SELECT * FROM routines ORDER BY time ASC")
-    fun getAllRoutines(): Flow<List<RoutineEntity>>
+interface TaskDao {
+    @Query("SELECT * FROM tasks WHERE spreadsheetId = :spreadsheetId AND flockId = :flockId ORDER BY time ASC")
+    fun getTasksForFlock(spreadsheetId: String, flockId: String): Flow<List<TaskEntity>>
 
-    @Query("SELECT * FROM routines WHERE (flockId = '' OR flockId = :flockId) AND (dayNumber IS NULL OR dayNumber = :dayNumber) ORDER BY time ASC")
-    fun getRoutinesForDay(flockId: String, dayNumber: Int): Flow<List<RoutineEntity>>
+    @Query("SELECT * FROM tasks WHERE spreadsheetId = :spreadsheetId AND flockId = :flockId AND (everyDay = 1 OR dayNumber = :dayNumber) ORDER BY time ASC")
+    fun getTasksForDay(spreadsheetId: String, flockId: String, dayNumber: Int): Flow<List<TaskEntity>>
 
-    @Query("SELECT * FROM routines WHERE (flockId = '' OR flockId = :flockId) AND (dayNumber IS NULL OR dayNumber = :dayNumber) ORDER BY time ASC")
-    suspend fun getRoutinesForDayList(flockId: String, dayNumber: Int): List<RoutineEntity>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertRoutine(routine: RoutineEntity)
+    @Query("SELECT * FROM tasks WHERE spreadsheetId = :spreadsheetId AND flockId = :flockId ORDER BY time ASC")
+    suspend fun getTasksList(spreadsheetId: String, flockId: String): List<TaskEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertRoutines(routines: List<RoutineEntity>)
-
-    @Query("UPDATE routines SET alarmOn = :alarmOn WHERE routineId = :routineId")
-    suspend fun setAlarm(routineId: String, alarmOn: Boolean)
-
-    @Query("DELETE FROM routines WHERE routineId = :routineId")
-    suspend fun deleteRoutine(routineId: String)
-}
-
-@Dao
-interface DismissalDao {
-    @Query("SELECT * FROM dismissals WHERE flockId = :flockId AND dateISO = :dateIso")
-    fun getDismissals(flockId: String, dateIso: String): Flow<List<DismissalEntity>>
-
-    @Query("SELECT * FROM dismissals WHERE flockId = :flockId AND dateISO = :dateIso")
-    suspend fun getDismissalsList(flockId: String, dateIso: String): List<DismissalEntity>
+    suspend fun insertTask(task: TaskEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertDismissal(dismissal: DismissalEntity)
+    suspend fun insertTasks(tasks: List<TaskEntity>)
 
-    @Query("DELETE FROM dismissals WHERE flockId = :flockId AND dateISO = :dateIso AND itemId = :itemId")
-    suspend fun deleteDismissal(flockId: String, dateIso: String, itemId: String)
+    @Query("DELETE FROM tasks WHERE spreadsheetId = :spreadsheetId AND taskId = :taskId")
+    suspend fun deleteTask(spreadsheetId: String, taskId: String)
+
+    @Query("DELETE FROM tasks WHERE spreadsheetId = :spreadsheetId AND flockId = :flockId")
+    suspend fun deleteTasksForFlock(spreadsheetId: String, flockId: String)
 }

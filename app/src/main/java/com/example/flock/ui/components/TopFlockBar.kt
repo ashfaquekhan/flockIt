@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -18,11 +17,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.WbSunny
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -51,17 +50,20 @@ import com.example.ui.theme.StatusWarnWash
 
 @Composable
 fun TopFlockBar(
+    farmName: String,
     flock: FlockEntity?,
     selectedDay: Int,
-    maxDay: Int,
+    currentFlockDay: Int,
+    dayDate: String,
     lockStatus: LockStatus,
     weather: WeatherResult?,
-    reminderCount: Int,
+    syncStatus: String,
     onPrevDay: () -> Unit,
     onNextDay: () -> Unit,
+    onFarmClick: () -> Unit,
     onFlockClick: () -> Unit,
     onSettingsClick: () -> Unit,
-    onBellClick: () -> Unit
+    onWeatherClick: () -> Unit = {}
 ) {
     Surface(
         modifier = Modifier
@@ -74,16 +76,16 @@ fun TopFlockBar(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 8.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Row 1: Flock selector + Weather + Bell + Settings
+            // Row 1: Farm / Flock Selector + Weather + Sync + Settings
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Flock Selector Chip
+                // Flock & Farm Chip
                 Surface(
                     modifier = Modifier
                         .weight(1f, fill = false)
@@ -106,13 +108,13 @@ fun TopFlockBar(
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
                             Text(
-                                text = flock?.name ?: "No Flock",
+                                text = flock?.name ?: "No Batch Selected",
                                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = "${flock?.breed ?: "—"} · ${flock?.birdsPlaced ?: 0} placed",
+                                text = "$farmName · ${flock?.breed ?: "—"}",
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -123,18 +125,19 @@ fun TopFlockBar(
                         }
                         Icon(
                             imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = "Switch flock",
+                            contentDescription = "Switch batch or farm",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(6.dp))
 
-                // Weather chip
+                // Weather Chip (tap to refresh)
                 Surface(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
+                        .clickable { onWeatherClick() }
                         .testTag("weather_chip"),
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     shape = RoundedCornerShape(10.dp)
@@ -150,7 +153,7 @@ fun TopFlockBar(
                             tint = Color(0xFFE5A93C)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        val tempStr = weather?.let { String.format("%.1f°C", it.tempC) } ?: "—"
+                        val tempStr = weather?.let { String.format("%.1f°C", it.tempC) } ?: "28°C"
                         Text(
                             text = tempStr,
                             style = MaterialTheme.typography.labelMedium.copy(
@@ -161,34 +164,41 @@ fun TopFlockBar(
                     }
                 }
 
-                // Bell Icon for Reminders
-                BadgedBox(
-                    badge = {
-                        if (reminderCount > 0) {
-                            Badge(
-                                containerColor = StatusCrit,
-                                contentColor = Color.White
-                            ) {
-                                Text("$reminderCount")
-                            }
-                        }
-                    }
+                Spacer(modifier = Modifier.width(6.dp))
+
+                // Sync status chip
+                Surface(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onFarmClick() }
+                        .testTag("sync_status_chip"),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(10.dp)
                 ) {
-                    IconButton(
-                        onClick = onBellClick,
-                        modifier = Modifier
-                            .size(38.dp)
-                            .testTag("reminders_bell_button")
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        val icon = when (syncStatus) {
+                            "syncing" -> Icons.Default.Refresh
+                            "offline" -> Icons.Default.CloudOff
+                            else -> Icons.Default.CloudDone
+                        }
+                        val tint = when (syncStatus) {
+                            "syncing" -> StatusWarn
+                            "offline" -> Color.Gray
+                            else -> StatusGood
+                        }
                         Icon(
-                            imageVector = Icons.Default.Notifications,
-                            contentDescription = "Reminders and Alerts",
-                            modifier = Modifier.size(20.dp)
+                            imageVector = icon,
+                            contentDescription = syncStatus,
+                            modifier = Modifier.size(16.dp),
+                            tint = tint
                         )
                     }
                 }
 
-                // Settings Icon
+                // Farm Settings Icon
                 IconButton(
                     onClick = onSettingsClick,
                     modifier = Modifier
@@ -203,7 +213,7 @@ fun TopFlockBar(
                 }
             }
 
-            // Row 2: Day stepper + Lock status countdown chip
+            // Row 2: Day Stepper (cannot exceed current real flock day) + Date + Cutoff / Lock Chip
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -212,100 +222,80 @@ fun TopFlockBar(
                 // Day Stepper
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.testTag("day_stepper_row")
+                    modifier = Modifier.testTag("day_stepper")
                 ) {
                     IconButton(
                         onClick = onPrevDay,
                         enabled = selectedDay > 0,
-                        modifier = Modifier.size(32.dp).testTag("prev_day_button")
+                        modifier = Modifier
+                            .size(34.dp)
+                            .testTag("prev_day_button")
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.ChevronLeft,
-                            contentDescription = "Previous Day"
-                        )
+                        Icon(Icons.Default.ChevronLeft, contentDescription = "Previous Day")
                     }
 
                     Surface(
-                        color = BrandEmerald,
-                        shape = RoundedCornerShape(10.dp),
+                        color = if (selectedDay == currentFlockDay) BrandEmerald else MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.padding(horizontal = 4.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.Bottom
-                        ) {
-                            Text(
-                                text = "$selectedDay",
-                                style = MaterialTheme.typography.titleLarge.copy(
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White,
-                                    lineHeight = 22.sp
-                                )
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "DAY",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White.copy(alpha = 0.85f),
-                                    fontSize = 10.sp
-                                ),
-                                modifier = Modifier.padding(bottom = 2.dp)
-                            )
-                        }
+                        Text(
+                            text = "Day $selectedDay",
+                            color = if (selectedDay == currentFlockDay) Color.White else MaterialTheme.colorScheme.onPrimaryContainer,
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
                     }
 
                     IconButton(
                         onClick = onNextDay,
-                        enabled = selectedDay < maxDay,
-                        modifier = Modifier.size(32.dp).testTag("next_day_button")
+                        // Cannot step past real current day
+                        enabled = selectedDay < currentFlockDay,
+                        modifier = Modifier
+                            .size(34.dp)
+                            .testTag("next_day_button")
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.ChevronRight,
-                            contentDescription = "Next Day"
-                        )
+                        Icon(Icons.Default.ChevronRight, contentDescription = "Next Day")
                     }
                 }
 
-                // Lock countdown or warning badge
-                if (lockStatus.isToday) {
-                    val (bgColor, textColor, textMsg) = if (lockStatus.isHardLocked) {
-                        Triple(StatusCritWash, StatusCrit, "Hard inputs locked (past 11:00 AM)")
-                    } else if (lockStatus.isCutoffApproaching) {
-                        Triple(StatusWarnWash, StatusWarn, "Cutoff near! Closes at 11:00 AM")
-                    } else {
-                        Triple(StatusWarnWash, StatusWarn, "Timed inputs close at 11:00 AM")
-                    }
+                // Date Label
+                Text(
+                    text = dayDate,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Medium
+                    )
+                )
 
-                    Surface(
-                        color = bgColor,
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.testTag("cutoff_badge")
-                    ) {
-                        Text(
-                            text = textMsg,
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = textColor,
-                                fontSize = 11.sp
-                            ),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                } else if (lockStatus.isPastDay) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text(
-                            text = "Past day · Read-only",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 11.sp
-                            ),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
+                // Cutoff / Lock Chip
+                val chipColor = when {
+                    lockStatus.isHardLocked -> StatusCritWash
+                    lockStatus.isCutoffApproaching -> StatusWarnWash
+                    else -> MaterialTheme.colorScheme.surfaceVariant
+                }
+                val textColor = when {
+                    lockStatus.isHardLocked -> StatusCrit
+                    lockStatus.isCutoffApproaching -> StatusWarn
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                val labelText = when {
+                    lockStatus.isPastDay -> "Locked (Past)"
+                    lockStatus.isFuture -> "Locked (Future)"
+                    lockStatus.isHardLocked -> "Locked (11:00 cutoff)"
+                    else -> "Inputs lock at ${lockStatus.cutoffTime}"
+                }
+
+                Surface(
+                    color = chipColor,
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        text = labelText,
+                        color = textColor,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
                 }
             }
         }

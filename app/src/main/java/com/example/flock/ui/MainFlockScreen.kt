@@ -5,31 +5,22 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Air
-import androidx.compose.material.icons.filled.Balance
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.EditNote
-import androidx.compose.material.icons.filled.MedicalServices
-import androidx.compose.material.icons.filled.Opacity
-import androidx.compose.material.icons.filled.Restaurant
-import androidx.compose.material.icons.filled.ShowChart
-import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,32 +32,26 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.example.flock.data.FarmRegistryEntity
 import com.example.flock.ui.components.FarmSettingsDialog
+import com.example.flock.ui.components.FarmsListDialog
 import com.example.flock.ui.components.FlockManagementDialog
-import com.example.flock.ui.components.RemindersBottomSheet
+import com.example.flock.ui.components.NewFarmDialog
+import com.example.flock.ui.components.ShareFarmDialog
 import com.example.flock.ui.components.TopFlockBar
 import com.example.flock.ui.screens.EntriesScreen
-import com.example.flock.ui.screens.FeedScreen
-import com.example.flock.ui.screens.GraphsScreen
-import com.example.flock.ui.screens.InsightsScreen
-import com.example.flock.ui.screens.MedsScreen
-import com.example.flock.ui.screens.TargetsScreen
+import com.example.flock.ui.screens.OutputScreen
 import com.example.flock.ui.screens.TasksScreen
-import com.example.flock.ui.screens.VentClimateScreen
-import com.example.flock.ui.screens.WaterScreen
 import com.example.ui.theme.BrandEmerald
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
-enum class FlockNavSection(val label: String, val icon: ImageVector) {
-    ENTRIES("Entries", Icons.Default.EditNote),
-    VENT_CLIMATE("Vent/Climate", Icons.Default.Air),
-    FEED("Feed", Icons.Default.Restaurant),
-    WATER("Water", Icons.Default.Opacity),
-    TASKS("Tasks", Icons.Default.CheckCircle),
-    MEDS("Meds", Icons.Default.MedicalServices),
-    TARGETS("Targets", Icons.Default.Balance),
-    INSIGHTS("Insights", Icons.Default.TrendingUp),
-    GRAPHS("Graphs", Icons.Default.ShowChart)
+enum class FlockNavTab(val label: String, val icon: ImageVector) {
+    ENTRY("ENTRY", Icons.Default.EditNote),
+    OUTPUT("OUTPUT", Icons.Default.Dashboard),
+    TASKS("TASKS", Icons.Default.CheckCircle)
 }
 
 @Composable
@@ -74,87 +59,126 @@ fun MainFlockScreen(
     viewModel: FlockViewModel,
     modifier: Modifier = Modifier
 ) {
-    var currentSection by remember { mutableStateOf(FlockNavSection.ENTRIES) }
+    var currentTab by remember { mutableStateOf(FlockNavTab.ENTRY) }
+
     var showFlockDialog by remember { mutableStateOf(false) }
-    var showSettingsDialog by remember { mutableStateOf(false) }
-    var showRemindersSheet by remember { mutableStateOf(false) }
+    var showFarmSettingsDialog by remember { mutableStateOf(false) }
+    var showFarmsListDialog by remember { mutableStateOf(false) }
+    var showNewFarmDialog by remember { mutableStateOf(false) }
+    var sharingFarm by remember { mutableStateOf<FarmRegistryEntity?>(null) }
 
     val activeFlock by viewModel.activeFlock.collectAsState()
     val flocks by viewModel.flocks.collectAsState()
     val farm by viewModel.farm.collectAsState()
+    val config by viewModel.config.collectAsState()
+    val feedTypes by viewModel.feedTypes.collectAsState()
+    val farms by viewModel.farms.collectAsState()
+    val selectedSpreadsheetId by viewModel.selectedSpreadsheetId.collectAsState()
+    val authState by viewModel.authState.collectAsState()
+
     val selectedDay by viewModel.selectedDay.collectAsState()
-    val currentEntry by viewModel.currentDayEntry.collectAsState()
+    val currentDayEntry by viewModel.currentDayEntry.collectAsState()
     val dailyRows by viewModel.dailyRows.collectAsState()
+    val feedStockSummary by viewModel.feedStockSummary.collectAsState()
+    val tasks by viewModel.tasks.collectAsState()
     val lockStatus by viewModel.lockStatus.collectAsState()
     val weather by viewModel.weather.collectAsState()
-    val routines by viewModel.routines.collectAsState()
-    val dismissedIds by viewModel.dismissedIds.collectAsState()
-    val reminders by viewModel.reminders.collectAsState()
+    val syncStatus by viewModel.syncStatus.collectAsState()
+    val userMessage by viewModel.userMessage.collectAsState()
 
-    val maxDay = activeFlock?.harvestAge ?: 42
-    val pendingRemindersCount = reminders.count { !it.isDone }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(userMessage) {
+        userMessage?.let { msg ->
+            snackbarHostState.showSnackbar(msg)
+        }
+    }
+
+    // Date calculations for dayDate and yesterdayDate
+    val (dayDateStr, yesterdayDateStr) = remember(activeFlock, selectedDay, farm.timeZone) {
+        try {
+            val start = activeFlock?.startDate?.let { LocalDate.parse(it, DateTimeFormatter.ISO_LOCAL_DATE) }
+                ?: LocalDate.now()
+            val targetDate = start.plusDays(selectedDay.toLong())
+            val yDate = targetDate.minusDays(1)
+            val dtf = DateTimeFormatter.ofPattern("EEE dd MMM", Locale.US)
+            Pair(targetDate.format(dtf), yDate.format(dtf))
+        } catch (e: Exception) {
+            Pair("Day $selectedDay", "Day ${if (selectedDay > 0) selectedDay - 1 else 0}")
+        }
+    }
+
+    val currentFlockDay = remember(activeFlock, farm.timeZone) {
+        try {
+            if (activeFlock == null) 0
+            else {
+                val zone = ZoneId.of(farm.timeZone)
+                val today = LocalDate.now(zone)
+                val start = LocalDate.parse(activeFlock!!.startDate, DateTimeFormatter.ISO_LOCAL_DATE)
+                java.time.temporal.ChronoUnit.DAYS.between(start, today).toInt().coerceAtLeast(0)
+            }
+        } catch (e: Exception) {
+            0
+        }
+    }
 
     Scaffold(
         modifier = modifier
             .fillMaxSize()
             .testTag("main_flock_screen"),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopFlockBar(
+                farmName = farm.farmName,
                 flock = activeFlock,
                 selectedDay = selectedDay,
-                maxDay = maxDay,
+                currentFlockDay = currentFlockDay,
+                dayDate = dayDateStr,
                 lockStatus = lockStatus,
                 weather = weather,
-                reminderCount = pendingRemindersCount,
+                syncStatus = syncStatus,
                 onPrevDay = { if (selectedDay > 0) viewModel.selectDay(selectedDay - 1) },
-                onNextDay = { if (selectedDay < maxDay) viewModel.selectDay(selectedDay + 1) },
+                onNextDay = {
+                    val maxDay = activeFlock?.harvestAge ?: 42
+                    if (selectedDay < maxDay) viewModel.selectDay(selectedDay + 1)
+                },
+                onFarmClick = { showFarmsListDialog = true },
                 onFlockClick = { showFlockDialog = true },
-                onSettingsClick = { showSettingsDialog = true },
-                onBellClick = { showRemindersSheet = true }
+                onSettingsClick = { showFarmSettingsDialog = true },
+                onWeatherClick = { viewModel.refreshWeather() }
             )
         },
         bottomBar = {
-            // Scrollable Tab navigation row for the 9 distinct sections
-            ScrollableTabRow(
-                selectedTabIndex = currentSection.ordinal,
-                edgePadding = 8.dp,
+            NavigationBar(
                 containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = BrandEmerald,
-                indicator = { tabPositions ->
-                    TabRowDefaults.Indicator(
-                        Modifier.tabIndicatorOffset(tabPositions[currentSection.ordinal]),
-                        color = BrandEmerald,
-                        height = 3.dp
-                    )
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("flock_navigation_bar")
+                tonalElevation = 6.dp,
+                modifier = Modifier.testTag("bottom_nav_bar")
             ) {
-                FlockNavSection.values().forEach { section ->
-                    val isSelected = currentSection == section
-                    Tab(
-                        selected = isSelected,
-                        onClick = { currentSection = section },
+                FlockNavTab.values().forEach { tab ->
+                    val selected = currentTab == tab
+                    NavigationBarItem(
+                        selected = selected,
+                        onClick = { currentTab = tab },
                         icon = {
                             Icon(
-                                imageVector = section.icon,
-                                contentDescription = section.label,
-                                tint = if (isSelected) BrandEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp)
+                                imageVector = tab.icon,
+                                contentDescription = tab.label
                             )
                         },
-                        text = {
+                        label = {
                             Text(
-                                text = section.label,
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isSelected) BrandEmerald else MaterialTheme.colorScheme.onSurfaceVariant
+                                text = tab.label,
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
                                 )
                             )
                         },
-                        modifier = Modifier.testTag("nav_tab_${section.name.lowercase()}")
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = BrandEmerald,
+                            selectedTextColor = BrandEmerald,
+                            indicatorColor = BrandEmerald.copy(alpha = 0.12f)
+                        ),
+                        modifier = Modifier.testTag("tab_${tab.name.lowercase()}")
                     )
                 }
             }
@@ -164,122 +188,115 @@ fun MainFlockScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .background(MaterialTheme.colorScheme.background)
         ) {
-            when (currentSection) {
-                FlockNavSection.ENTRIES -> {
+            when (currentTab) {
+                FlockNavTab.ENTRY -> {
                     EntriesScreen(
-                        entry = currentEntry,
+                        entry = currentDayEntry,
+                        dayNumber = selectedDay,
+                        dayDate = dayDateStr,
+                        yesterdayDate = yesterdayDateStr,
+                        feedTypes = feedTypes,
                         lockStatus = lockStatus,
-                        onSave = { w1, n1, w2, n2, w3, n3, w4, n4, w5, n5, mort, feedBags, liftB, liftW, lame, fb1, ft1, fb2, ft2, aFans, aTime, oTemp, oRh, bLen, notes ->
-                            viewModel.saveCurrentDay(
+                        onSave = { w1, n1, w2, n2, w3, n3, w4, n4, w5, n5,
+                                   mortality, feedBagsUsed, feedUsedType,
+                                   birdsLifted, weightLifted, lameSeparated,
+                                   feedRecB1, feedTypeB1, feedRecB2, feedTypeB2, feedRecB3, feedTypeB3,
+                                   broodingLength, actualFans, actualFanTime, outTemp, outRH, notes ->
+                            viewModel.saveDayEntry(
                                 w1, n1, w2, n2, w3, n3, w4, n4, w5, n5,
-                                mort, feedBags, liftB, liftW, lame,
-                                fb1, ft1, fb2, ft2,
-                                aFans, aTime, oTemp, oRh, bLen, notes
+                                mortality, feedBagsUsed, feedUsedType,
+                                birdsLifted, weightLifted, lameSeparated,
+                                feedRecB1, feedTypeB1, feedRecB2, feedTypeB2, feedRecB3, feedTypeB3,
+                                broodingLength, actualFans, actualFanTime, outTemp, outRH, notes
                             )
                         }
                     )
                 }
-                FlockNavSection.VENT_CLIMATE -> {
-                    VentClimateScreen(
-                        entry = currentEntry,
-                        farm = farm
-                    )
-                }
-                FlockNavSection.FEED -> {
-                    FeedScreen(
-                        entry = currentEntry,
-                        farm = farm
-                    )
-                }
-                FlockNavSection.WATER -> {
-                    WaterScreen(
-                        entry = currentEntry,
-                        farm = farm
-                    )
-                }
-                FlockNavSection.TASKS -> {
-                    TasksScreen(
-                        routines = routines,
-                        dismissedIds = dismissedIds,
-                        onToggleAlarm = { rId, cur -> viewModel.toggleAlarm(rId, cur) },
-                        onToggleDone = { rId, done -> viewModel.toggleReminder(rId, done) },
-                        onAddTask = { title, time, allDays -> viewModel.addRoutine(title, time, "task", allDays) },
-                        onDeleteTask = { rId -> viewModel.deleteRoutine(rId) }
-                    )
-                }
-                FlockNavSection.MEDS -> {
-                    MedsScreen(
-                        entry = currentEntry,
-                        routines = routines,
-                        dismissedIds = dismissedIds,
-                        onToggleAlarm = { rId, cur -> viewModel.toggleAlarm(rId, cur) },
-                        onToggleDone = { rId, done -> viewModel.toggleReminder(rId, done) },
-                        onAddMed = { title, time, allDays -> viewModel.addRoutine(title, time, "med", allDays) },
-                        onDeleteMed = { rId -> viewModel.deleteRoutine(rId) }
-                    )
-                }
-                FlockNavSection.TARGETS -> {
-                    TargetsScreen(
-                        entry = currentEntry,
-                        farm = farm,
-                        breed = activeFlock?.breed ?: "Ross308"
-                    )
-                }
-                FlockNavSection.INSIGHTS -> {
-                    InsightsScreen(
-                        entry = currentEntry,
+                FlockNavTab.OUTPUT -> {
+                    OutputScreen(
                         flock = activeFlock,
-                        farm = farm
+                        farm = farm,
+                        entry = currentDayEntry,
+                        dailyRows = dailyRows,
+                        feedStockSummary = feedStockSummary
                     )
                 }
-                FlockNavSection.GRAPHS -> {
-                    GraphsScreen(
-                        dailyRows = dailyRows,
-                        selectedDay = selectedDay,
-                        onSelectDay = { day -> viewModel.selectDay(day) }
+                FlockNavTab.TASKS -> {
+                    TasksScreen(
+                        tasks = tasks,
+                        dayNumber = selectedDay,
+                        onAddTask = { block, label, time, everyDay ->
+                            viewModel.addTask(block, label, time, everyDay)
+                        },
+                        onDeleteTask = { taskId ->
+                            viewModel.deleteTask(taskId)
+                        }
                     )
                 }
             }
         }
     }
 
-    // Dialogs & Bottom Sheet
+    // DIALOGS
+    if (showFarmsListDialog) {
+        FarmsListDialog(
+            farms = farms,
+            selectedSpreadsheetId = selectedSpreadsheetId,
+            authState = authState,
+            onDismiss = { showFarmsListDialog = false },
+            onSelectFarm = { viewModel.selectFarm(it) },
+            onCreateNewFarm = { showNewFarmDialog = true },
+            onOpenSharedFarm = { viewModel.openSharedFarm(it) },
+            onShareFarm = { sharingFarm = it },
+            onSignIn = { viewModel.signInWithGoogle() },
+            onSignOut = { viewModel.signOut() },
+            onToggleDemoMode = { viewModel.toggleDemoMode() }
+        )
+    }
+
+    if (showFarmSettingsDialog) {
+        FarmSettingsDialog(
+            farm = farm,
+            config = config,
+            feedTypes = feedTypes,
+            onDismiss = { showFarmSettingsDialog = false },
+            onSaveFarmSettings = { f, c -> viewModel.updateFarmSettings(f, c) },
+            onSaveFeedType = { ft -> viewModel.saveFeedType(ft) },
+            onDeleteFeedType = { code -> viewModel.deleteFeedType(code) }
+        )
+    }
+
     if (showFlockDialog) {
         FlockManagementDialog(
             flocks = flocks,
             activeFlockId = activeFlock?.flockId,
-            onSelectFlock = { id ->
-                viewModel.selectFlock(id)
-                showFlockDialog = false
+            onSelectFlock = { viewModel.selectFlock(it) },
+            onCreateFlock = { name, breed, startDate, placed, targetWeight, harvestAge, season ->
+                viewModel.createFlock(name, breed, startDate, placed, 0, targetWeight, harvestAge, season)
             },
-            onCreateFlock = { name, breed, start, placed, target, harvest, season ->
-                viewModel.createNewFlock(name, breed, start, placed, target, harvest, season)
-            },
-            onDeleteFlock = { id ->
-                viewModel.deleteFlock(id)
-            },
+            onDeleteFlock = { viewModel.closeFlock(it) },
             onDismiss = { showFlockDialog = false }
         )
     }
 
-    if (showSettingsDialog) {
-        FarmSettingsDialog(
-            farm = farm,
-            onSaveFarm = { updated ->
-                viewModel.updateFarm(updated)
-            },
-            onDismiss = { showSettingsDialog = false }
+    if (showNewFarmDialog) {
+        NewFarmDialog(
+            onDismiss = { showNewFarmDialog = false },
+            onCreateFarm = { farmName ->
+                viewModel.createFarm(farmName) {}
+            }
         )
     }
 
-    if (showRemindersSheet) {
-        RemindersBottomSheet(
-            reminders = reminders,
-            entry = currentEntry,
-            onDismissRequest = { showRemindersSheet = false },
-            onToggleReminder = { id, done ->
-                viewModel.toggleReminder(id, done)
+    sharingFarm?.let { farmToShare ->
+        ShareFarmDialog(
+            farmName = farmToShare.farmName,
+            spreadsheetId = farmToShare.spreadsheetId,
+            onDismiss = { sharingFarm = null },
+            onShare = { email, isEditor ->
+                viewModel.shareFarm(farmToShare.spreadsheetId, email, isEditor) { _, _ -> }
             }
         )
     }

@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Flock Manager"
+rootProject.name = "FlockIt"
 
 include(":app")

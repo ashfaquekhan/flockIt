@@ -1,6 +1,6 @@
 {
-  "name": "Broiler Flock Manager",
-  "description": "Native grow-out management driving climate, feed, water, and flock targets by physiological weight-age.",
+  "name": "FlockIt",
+  "description": "Day-by-day broiler flock management app backed by Google Sheets and physiological weight-age.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

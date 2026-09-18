@@ -62,7 +62,7 @@ private val LightColorScheme = lightColorScheme(
 )
 
 @Composable
-fun MyApplicationTheme(
+fun FlockItTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
@@ -72,4 +72,13 @@ fun MyApplicationTheme(
         typography = Typography,
         content = content
     )
+}
+
+@Deprecated("Use FlockItTheme instead", ReplaceWith("FlockItTheme(darkTheme, content)"))
+@Composable
+fun MyApplicationTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    content: @Composable () -> Unit
+) {
+    FlockItTheme(darkTheme = darkTheme, content = content)
 }

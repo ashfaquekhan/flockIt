@@ -141,7 +141,7 @@ fun FanVisualizer(
                 )
                 MetaRow(
                     label = "House air-speed",
-                    value = "${entry?.airspeedFtMin ?: 0} ft/min target"
+                    value = "${entry?.airspeed?.toInt() ?: 0} ft/min target"
                 )
             }
         }

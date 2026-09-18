@@ -17,17 +17,25 @@ data class StandardsEntity(
     val fcrCobb: Double
 )
 
-@Entity(tableName = "config")
-data class ConfigEntity(
-    @PrimaryKey val key: String,
-    val value: String,
-    val note: String = ""
+@Entity(tableName = "farm_registry")
+data class FarmRegistryEntity(
+    @PrimaryKey val spreadsheetId: String,
+    val farmName: String,
+    val role: String = "Owner", // "Owner", "Editor", "Viewer"
+    val isOwner: Boolean = true,
+    val ownerEmail: String = "",
+    val lastOpened: Long = System.currentTimeMillis(),
+    val syncStatus: String = "synced", // "synced", "syncing", "offline", "error"
+    val lastSyncedAt: Long = System.currentTimeMillis()
 )
 
 @Entity(tableName = "farm")
 data class FarmEntity(
-    @PrimaryKey val id: Int = 1,
-    val houseName: String = "House 3",
+    @PrimaryKey val spreadsheetId: String = "local_default",
+    val farmId: String = "farm_1",
+    val farmName: String = "Maa Tarini Farm",
+    val houseName: String = "House 1",
+    val timeZone: String = "Asia/Kolkata",
     val lengthFt: Double = 320.0,
     val widthFt: Double = 40.0,
     val heightFt: Double = 7.5,
@@ -45,12 +53,9 @@ data class FarmEntity(
     val drinkerLines: Int = 5,
     val drinkTankL: Double = 2000.0,
     val drinkFillMin: Double = 20.0,
-    val drinkerLineHoldL: Double = 250.0,
     val feederLines: Int = 4,
     val feederLineBags: Int = 3,
     val feedBagKg: Double = 60.0,
-    val birdsPerNipple: Int = 12,
-    val birdsPerPan: Int = 60,
     val baseFeedings: Int = 4,
     val feedDistDay: Int = 40,
     val feedDistMid: Int = 15,
@@ -59,12 +64,52 @@ data class FarmEntity(
     val weatherLat: Double = 21.16,
     val weatherLon: Double = 84.08,
     val weatherName: String = "Jujomura, Odisha",
-    val densityCapDefault: Double = 39.0
+    val densityCapDefault: Double = 39.0,
+    val cutoffTime: String = "11:00"
 )
 
-@Entity(tableName = "flocks")
+@Entity(tableName = "config")
+data class ConfigEntity(
+    @PrimaryKey val spreadsheetId: String = "local_default",
+    val tempBand: Double = 1.5,
+    val rhMin: Double = 50.0,
+    val rhMax: Double = 70.0,
+    val nh3Warn: Double = 10.0,
+    val nh3Crit: Double = 20.0,
+    val co2Warn: Double = 3000.0,
+    val co2Crit: Double = 3500.0,
+    val cvWarn: Double = 10.0,
+    val cvCrit: Double = 12.0,
+    val wfRatio: Double = 1.8,
+    val feedHeatK: Double = 0.012,
+    val waterHeatK: Double = 0.06,
+    val cFcrDivisor: Double = 0.25,
+    val cycleSec: Int = 300,
+    val minOnSec: Int = 30,
+    val tunTrigYoung: Double = 4.5,
+    val tunTrigBig: Double = 3.0
+)
+
+@Entity(
+    tableName = "feed_types",
+    primaryKeys = ["spreadsheetId", "code"]
+)
+data class FeedTypeEntity(
+    val spreadsheetId: String = "local_default",
+    val code: String, // "B1", "B2", "B3", "B4", etc.
+    val name: String, // "Pre-starter", "Starter", "Finisher", etc.
+    val bagKg: Double = 50.0,
+    val phase: String = "starter", // "starter", "grower", "finisher", "custom"
+    val sortOrder: Int = 1
+)
+
+@Entity(
+    tableName = "flocks",
+    primaryKeys = ["spreadsheetId", "flockId"]
+)
 data class FlockEntity(
-    @PrimaryKey val flockId: String,
+    val spreadsheetId: String = "local_default",
+    val flockId: String,
     val name: String,
     val breed: String = "Ross308",
     val startDate: String, // ISO 8601 YYYY-MM-DD
@@ -73,16 +118,17 @@ data class FlockEntity(
     val targetWeight: Double = 3200.0,
     val harvestAge: Int = 42,
     val season: String = "Monsoon",
-    val status: String = "active", // active, closed
+    val status: String = "active", // "active", "closed"
     val createdAt: Long = System.currentTimeMillis()
 )
 
 @Entity(
     tableName = "daily_data",
-    primaryKeys = ["flockId", "dayNumber"],
-    indices = [Index(value = ["flockId", "dayNumber"])]
+    primaryKeys = ["spreadsheetId", "flockId", "dayNumber"],
+    indices = [Index(value = ["spreadsheetId", "flockId", "dayNumber"])]
 )
 data class DailyDataEntity(
+    val spreadsheetId: String = "local_default",
     val flockId: String,
     val dayNumber: Int,
     val date: String, // ISO 8601 YYYY-MM-DD
@@ -104,17 +150,18 @@ data class DailyDataEntity(
     // Day inputs
     val mortality: Int = 0,
     val feedBagsUsed: Double = 0.0,
+    val feedUsedType: String = "B1",
     val birdsLifted: Int = 0,
     val weightLifted: Double = 0.0,
     val lameSeparated: Int = 0,
 
-    // Deliveries
+    // Deliveries (up to 3 slots)
     val feedRecB1: Double = 0.0,
-    val feedTypeB1: String = "",
+    val feedTypeB1: String = "B1",
     val feedRecB2: Double = 0.0,
-    val feedTypeB2: String = "",
+    val feedTypeB2: String = "B2",
     val feedRecB3: Double = 0.0,
-    val feedTypeB3: String = "",
+    val feedTypeB3: String = "B3",
 
     // Operational measurements
     val broodingLength: Double? = null,
@@ -150,35 +197,44 @@ data class DailyDataEntity(
     val cFcr: Double? = null,
     val projected: Boolean = false,
 
-    // App display columns
+    // Climate & space display columns
+    val tempMin: Double = 18.5,
+    val tempIdeal: Double = 20.0,
+    val tempMax: Double = 21.5,
+    val rhMin: Double = 50.0,
+    val rhIdeal: Double = 60.0,
+    val rhMax: Double = 70.0,
+    val co2Max: Double = 3000.0,
+    val nh3Max: Double = 10.0,
+    val airspeed: Double = 0.0,
+    val windChill: Double? = null,
+    val lightHours: Double = 20.0,
+    val maxMortPct: Double = 4.4,
     val occupiedFt2: Double = 0.0,
     val barricadeFt: Int = 0,
     val ftPerBird: Double = 0.0,
     val minFtPerBird: Double = 0.0,
-    val airspeedFtMin: Int = 0,
-    val windChillTemp: Double? = null,
-    val alertLevel: String = "ok", // ok, warn, crit
-    val alertText: String = "All good"
+    val stockOnHand: Double = 0.0,
+    val ventText: String = "Minimum Ventilation",
+    val cycleText: String = "Continuous",
+    val alertLevel: String = "ok", // "ok", "warn", "crit"
+    val alertText: String = "All targets nominal",
+    val updatedAt: Long = System.currentTimeMillis(),
+    val updatedBy: String = ""
 )
 
-@Entity(tableName = "routines")
-data class RoutineEntity(
-    @PrimaryKey val routineId: String,
-    val flockId: String = "", // empty means template for all flocks
-    val dayNumber: Int? = null, // null means recurring all days
-    val type: String = "task", // task, med, note
-    val title: String,
-    val detail: String = "",
-    val time: String = "", // HH:mm
-    val alarmOn: Boolean = true,
-    val createdAt: Long = System.currentTimeMillis()
+@Entity(
+    tableName = "tasks",
+    primaryKeys = ["spreadsheetId", "taskId"]
 )
-
-@Entity(tableName = "dismissals")
-data class DismissalEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+data class TaskEntity(
+    val spreadsheetId: String = "local_default",
+    val taskId: String,
     val flockId: String,
-    val dateISO: String,
-    val itemId: String,
-    val dismissedAt: Long = System.currentTimeMillis()
+    val block: String, // "Morning 05:00–08:30", "Morning 08:30–12:00", "Evening 12:00–16:00", "Evening 16:00–20:00", "Night 20:00–00:00", "Night 00:00–05:00"
+    val label: String,
+    val time: String, // HH:mm
+    val everyDay: Boolean = true,
+    val dayNumber: Int? = null, // null means every day
+    val createdAt: Long = System.currentTimeMillis()
 )
