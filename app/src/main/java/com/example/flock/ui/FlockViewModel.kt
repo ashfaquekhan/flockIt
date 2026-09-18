@@ -42,6 +42,9 @@ data class LockStatus(
     val lockReason: String = ""
 )
 
+/** Top-level screen the user is on once signed in. */
+enum class AppScreen { FARMS, FLOCKS, DASHBOARD }
+
 class FlockViewModel(application: Application) : AndroidViewModel(application) {
 
     private val database = FlockDatabase.getDatabase(application, viewModelScope)
@@ -110,21 +113,34 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     private val _userMessage = MutableStateFlow<String?>(null)
     val userMessage: StateFlow<String?> = _userMessage.asStateFlow()
 
+    // Top-level navigation: the user lands on FARMS after sign-in and drills in explicitly.
+    private val _appScreen = MutableStateFlow(AppScreen.FARMS)
+    val appScreen: StateFlow<AppScreen> = _appScreen.asStateFlow()
+
     private var farmDataJob: Job? = null
     private var flockDataJob: Job? = null
 
-    init {
-        // Observe farms list to auto-select the first farm if none selected
-        viewModelScope.launch {
-            farms.collect { farmList ->
-                if (farmList.isNotEmpty() && (_selectedSpreadsheetId.value == "local_default" || farmList.none { it.spreadsheetId == _selectedSpreadsheetId.value })) {
-                    val target = farmList.first()
-                    selectFarm(target.spreadsheetId)
-                } else if (farmList.isEmpty()) {
-                    loadFarmData("local_default")
-                }
-            }
-        }
+    // No auto-selection of a farm/flock: the user opens one explicitly from the lists.
+
+    /** Google Sign-In client for the real OAuth flow (launched from the Activity). */
+    fun googleSignInClient() = authManager.getGoogleSignInClient()
+
+    fun goToFarms() {
+        _appScreen.value = AppScreen.FARMS
+    }
+
+    fun openFarm(spreadsheetId: String) {
+        selectFarm(spreadsheetId)
+        _appScreen.value = AppScreen.FLOCKS
+    }
+
+    fun goToFlocks() {
+        _appScreen.value = AppScreen.FLOCKS
+    }
+
+    fun openFlock(flockId: String) {
+        selectFlock(flockId)
+        _appScreen.value = AppScreen.DASHBOARD
     }
 
     fun selectFarm(spreadsheetId: String) {
@@ -415,7 +431,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
 
             res.onSuccess { newId ->
                 _syncStatus.value = "synced"
-                selectFarm(newId)
+                openFarm(newId)
                 _userMessage.value = "Farm created: $name"
                 onComplete(newId)
             }.onFailure { err ->
@@ -488,7 +504,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
                 harvestAge = harvestAge,
                 season = season
             )
-            selectFlock(id)
+            openFlock(id)
             _userMessage.value = "Batch $name created"
             onComplete(id)
         }
@@ -525,7 +541,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
                 role = "Editor",
                 isOwner = false
             )
-            selectFarm(spreadsheetId)
+            openFarm(spreadsheetId)
 
             if (isSuccess) {
                 _syncStatus.value = "synced"
@@ -552,16 +568,25 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
 
     fun handleSignInResult(account: GoogleSignInAccount) {
         authManager.handleSignInResult(account)
+        _appScreen.value = AppScreen.FARMS
         _userMessage.value = "Signed in as ${account.email}"
+    }
+
+    fun handleSignInError(message: String) {
+        _userMessage.value = message
     }
 
     fun enableDemoMode() {
         authManager.enableDemoMode()
-        _userMessage.value = "Switched to Offline Demo Mode"
+        _appScreen.value = AppScreen.FARMS
+        _userMessage.value = "Using offline mode (local only)"
     }
 
     fun signOut() {
         authManager.signOut {
+            _selectedSpreadsheetId.value = "local_default"
+            _activeFlock.value = null
+            _appScreen.value = AppScreen.FARMS
             _userMessage.value = "Signed out"
         }
     }

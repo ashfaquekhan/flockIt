@@ -90,35 +90,7 @@ fun OutputScreen(
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // ALERT LINE at top if AlertLevel != "ok"
-        if (entry.alertLevel != "ok" && !entry.alertText.isNullOrBlank()) {
-            val isCrit = entry.alertLevel == "crit"
-            Surface(
-                color = if (isCrit) StatusCritWash else StatusWarnWash,
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("output_alert_banner")
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = if (isCrit) Icons.Default.Warning else Icons.Default.Info,
-                        contentDescription = "Alert",
-                        tint = if (isCrit) StatusCrit else StatusWarn,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = entry.alertText,
-                        color = if (isCrit) StatusCrit else StatusWarn,
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                }
-            }
-        }
+        // (Alert banner removed — no alerts/reminders for now.)
 
         // PROJECTED NOTICE TAG
         if (isProjected) {

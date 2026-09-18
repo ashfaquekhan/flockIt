@@ -33,7 +33,9 @@ class GoogleAuthManager(private val context: Context) {
 
     private fun loadInitialState(): AuthUserState {
         val lastAccount = GoogleSignIn.getLastSignedInAccount(context)
-        val isDemo = prefs.getBoolean("is_demo_mode", true) // Default to demo/local mode for immediate usability
+        // Only treat as demo if the user explicitly chose offline mode before (default false),
+        // so first launch shows the sign-in screen instead of auto-entering a farm.
+        val choseDemo = prefs.getBoolean("is_demo_mode", false)
         val savedEmail = prefs.getString("user_email", "") ?: ""
         val savedName = prefs.getString("user_name", "") ?: ""
 
@@ -46,7 +48,7 @@ class GoogleAuthManager(private val context: Context) {
                 photoUrl = lastAccount.photoUrl?.toString(),
                 accessToken = null // Refreshed via GoogleAuthUtil/token task when needed
             )
-        } else if (isDemo || savedEmail.isNotEmpty()) {
+        } else if (choseDemo) {
             AuthUserState(
                 isSignedIn = true,
                 isDemoMode = true,
