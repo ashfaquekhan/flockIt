@@ -538,6 +538,13 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun toggleFlockLock(flockId: String, locked: Boolean) {
+        viewModelScope.launch {
+            repository.setFlockLocked(_selectedSpreadsheetId.value, flockId, locked)
+            _userMessage.value = if (locked) "Flock locked (read-only)" else "Flock unlocked"
+        }
+    }
+
     fun deleteFarm(spreadsheetId: String) {
         viewModelScope.launch {
             repository.deleteFarm(spreadsheetId)

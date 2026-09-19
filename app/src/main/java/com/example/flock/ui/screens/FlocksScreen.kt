@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,10 +20,15 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Egg
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.flock.data.FlockEntity
 import com.example.ui.theme.BrandEmerald
+import com.example.ui.theme.StatusWarn
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -58,6 +65,7 @@ fun FlocksScreen(
     onOpenFlock: (String) -> Unit,
     onCreateFlock: (name: String, breed: String, startDate: String, startTime: String, placed: Int, transitMort: Int, harvestAge: Int) -> Unit,
     onDeleteFlock: (String) -> Unit,
+    onToggleLock: (flockId: String, locked: Boolean) -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -118,7 +126,8 @@ fun FlocksScreen(
                             flock = flock,
                             timeZone = timeZone,
                             onOpen = { onOpenFlock(flock.flockId) },
-                            onDelete = { deletingFlock = flock }
+                            onDelete = { deletingFlock = flock },
+                            onToggleLock = { onToggleLock(flock.flockId, !flock.locked) }
                         )
                     }
                 }
@@ -164,8 +173,10 @@ private fun FlockCard(
     flock: FlockEntity,
     timeZone: String,
     onOpen: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onToggleLock: () -> Unit
 ) {
+    var menuOpen by remember { mutableStateOf(false) }
     val curDay = remember(flock.startDate, timeZone) {
         try {
             val zone = ZoneId.of(timeZone)
@@ -198,13 +209,31 @@ private fun FlockCard(
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     modifier = Modifier.weight(1f)
                 )
+                if (flock.locked) {
+                    Icon(Icons.Default.Lock, contentDescription = "Locked", tint = StatusWarn, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
                 FilterChip(
                     selected = !isClosed,
                     onClick = onOpen,
                     label = { Text(if (isClosed) "closed" else "Day $curDay/${flock.harvestAge}") }
                 )
-                IconButton(onClick = onDelete, modifier = Modifier.size(34.dp)) {
-                    Icon(Icons.Default.DeleteOutline, contentDescription = "Delete flock", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Box {
+                    IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(34.dp)) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "More options", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text(if (flock.locked) "Unlock (allow edits)" else "Lock (read-only)") },
+                            leadingIcon = { Icon(if (flock.locked) Icons.Default.LockOpen else Icons.Default.Lock, contentDescription = null) },
+                            onClick = { menuOpen = false; onToggleLock() }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Delete flock") },
+                            leadingIcon = { Icon(Icons.Default.DeleteOutline, contentDescription = null) },
+                            onClick = { menuOpen = false; onDelete() }
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(4.dp))

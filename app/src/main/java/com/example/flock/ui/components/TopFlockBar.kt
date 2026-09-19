@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,9 +26,11 @@ import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import kotlin.math.roundToInt
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,11 +63,13 @@ fun TopFlockBar(
     syncStatus: String,
     onPrevDay: () -> Unit,
     onNextDay: () -> Unit,
+    onSelectDay: (Int) -> Unit,
     onFarmClick: () -> Unit,
     onFlockClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onWeatherClick: () -> Unit = {}
 ) {
+    val harvestAge = flock?.harvestAge ?: 42
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -76,6 +81,7 @@ fun TopFlockBar(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .statusBarsPadding()
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -249,8 +255,8 @@ fun TopFlockBar(
 
                     IconButton(
                         onClick = onNextDay,
-                        // Cannot step past real current day
-                        enabled = selectedDay < currentFlockDay,
+                        // Can view future days (ideal projections) up to harvest age
+                        enabled = selectedDay < harvestAge,
                         modifier = Modifier
                             .size(34.dp)
                             .testTag("next_day_button")
@@ -298,6 +304,17 @@ fun TopFlockBar(
                     )
                 }
             }
+
+            // Row 3: Day slider — glide across the whole cycle. Days past today show ideal projections.
+            Slider(
+                value = selectedDay.toFloat().coerceIn(0f, harvestAge.toFloat()),
+                onValueChange = { onSelectDay(it.roundToInt().coerceIn(0, harvestAge)) },
+                valueRange = 0f..harvestAge.toFloat(),
+                steps = (harvestAge - 1).coerceAtLeast(0),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("day_slider")
+            )
         }
     }
 }

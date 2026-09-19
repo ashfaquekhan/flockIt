@@ -109,6 +109,7 @@ fun MainFlockScreen(
                     val maxDay = activeFlock?.harvestAge ?: 42
                     if (selectedDay < maxDay) viewModel.selectDay(selectedDay + 1)
                 },
+                onSelectDay = { viewModel.selectDay(it) },
                 onFarmClick = onNavFarms,
                 onFlockClick = onNavFlocks,
                 onSettingsClick = onOpenSettings,

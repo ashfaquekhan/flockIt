@@ -125,6 +125,7 @@ data class FlockEntity(
     val harvestAge: Int = 42,
     val season: String = "Monsoon",
     val status: String = "active", // "active", "closed"
+    val locked: Boolean = false,   // when true, daily entries can't be edited
     val createdAt: Long = System.currentTimeMillis()
 )
 
