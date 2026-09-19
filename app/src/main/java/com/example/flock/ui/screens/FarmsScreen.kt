@@ -18,11 +18,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Agriculture
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.flock.data.FarmRegistryEntity
 import com.example.ui.theme.BrandEmerald
+import com.example.ui.theme.StatusWarn
 
 @Composable
 fun FarmsScreen(
@@ -54,6 +60,7 @@ fun FarmsScreen(
     onOpenSharedFarm: (String) -> Unit,
     onShareFarm: (FarmRegistryEntity) -> Unit,
     onDeleteFarm: (FarmRegistryEntity) -> Unit,
+    onToggleLock: (FarmRegistryEntity) -> Unit,
     onSignOut: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -118,7 +125,8 @@ fun FarmsScreen(
                             farm = farm,
                             onOpen = { onOpenFarm(farm.spreadsheetId) },
                             onShare = { onShareFarm(farm) },
-                            onDelete = { deletingFarm = farm }
+                            onDelete = { deletingFarm = farm },
+                            onToggleLock = { onToggleLock(farm) }
                         )
                     }
                 }
@@ -180,8 +188,10 @@ private fun FarmCard(
     farm: FarmRegistryEntity,
     onOpen: () -> Unit,
     onShare: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onToggleLock: () -> Unit
 ) {
+    var menuOpen by remember { mutableStateOf(false) }
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(12.dp),
@@ -204,13 +214,32 @@ private fun FarmCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            if (farm.isOwner) {
-                IconButton(onClick = onShare) {
-                    Icon(Icons.Default.PersonAdd, contentDescription = "Share farm", tint = BrandEmerald)
-                }
+            if (farm.locked) {
+                Icon(Icons.Default.Lock, contentDescription = "Locked", tint = StatusWarn, modifier = Modifier.size(18.dp))
             }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Default.DeleteOutline, contentDescription = "Delete farm", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Box {
+                IconButton(onClick = { menuOpen = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "More options", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    if (farm.isOwner) {
+                        DropdownMenuItem(
+                            text = { Text("Share by email") },
+                            leadingIcon = { Icon(Icons.Default.PersonAdd, contentDescription = null) },
+                            onClick = { menuOpen = false; onShare() }
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text(if (farm.locked) "Unlock (allow edits)" else "Lock (read-only)") },
+                        leadingIcon = { Icon(if (farm.locked) Icons.Default.LockOpen else Icons.Default.Lock, contentDescription = null) },
+                        onClick = { menuOpen = false; onToggleLock() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete farm") },
+                        leadingIcon = { Icon(Icons.Default.DeleteOutline, contentDescription = null) },
+                        onClick = { menuOpen = false; onDelete() }
+                    )
+                }
             }
         }
     }

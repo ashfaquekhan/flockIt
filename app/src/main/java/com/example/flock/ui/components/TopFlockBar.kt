@@ -27,6 +27,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -305,16 +306,36 @@ fun TopFlockBar(
                 }
             }
 
-            // Row 3: Day slider — glide across the whole cycle. Days past today show ideal projections.
-            Slider(
-                value = selectedDay.toFloat().coerceIn(0f, harvestAge.toFloat()),
-                onValueChange = { onSelectDay(it.roundToInt().coerceIn(0, harvestAge)) },
-                valueRange = 0f..harvestAge.toFloat(),
-                steps = (harvestAge - 1).coerceAtLeast(0),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("day_slider")
-            )
+            // Row 3: clean day scrubber — glide across the whole cycle (future days show projections)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    "0",
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Slider(
+                    value = selectedDay.toFloat().coerceIn(0f, harvestAge.toFloat()),
+                    onValueChange = { onSelectDay(it.roundToInt().coerceIn(0, harvestAge)) },
+                    valueRange = 0f..harvestAge.toFloat(),
+                    colors = SliderDefaults.colors(
+                        thumbColor = BrandEmerald,
+                        activeTrackColor = BrandEmerald,
+                        inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("day_slider")
+                )
+                Text(
+                    "$harvestAge",
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }

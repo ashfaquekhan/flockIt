@@ -26,6 +26,7 @@ data class FarmRegistryEntity(
     val ownerEmail: String = "",
     val lastOpened: Long = System.currentTimeMillis(),
     val syncStatus: String = "synced", // "synced", "syncing", "offline", "error"
+    val locked: Boolean = false,       // when true, all flocks in this farm are read-only
     val lastSyncedAt: Long = System.currentTimeMillis()
 )
 

@@ -115,6 +115,7 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
                     onOpenSharedFarm = { viewModel.openSharedFarm(it) },
                     onShareFarm = { sharingFarm = it },
                     onDeleteFarm = { viewModel.deleteFarm(it.spreadsheetId) },
+                    onToggleLock = { viewModel.toggleFarmLock(it.spreadsheetId, !it.locked) },
                     onSignOut = { viewModel.signOut() },
                     modifier = content
                 )

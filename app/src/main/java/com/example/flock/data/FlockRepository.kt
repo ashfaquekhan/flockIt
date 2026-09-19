@@ -185,6 +185,11 @@ class FlockRepository(
         flockDao.updateFlock(flock.copy(locked = locked))
     }
 
+    suspend fun setFarmLocked(spreadsheetId: String, locked: Boolean) = withContext(Dispatchers.IO) {
+        val reg = farmRegistryDao.getFarm(spreadsheetId) ?: return@withContext
+        farmRegistryDao.insertOrUpdate(reg.copy(locked = locked))
+    }
+
     suspend fun deleteFlock(spreadsheetId: String, flockId: String) = withContext(Dispatchers.IO) {
         dailyDataDao.deleteDailyDataForFlock(spreadsheetId, flockId)
         taskDao.deleteTasksForFlock(spreadsheetId, flockId)
@@ -279,6 +284,9 @@ class FlockRepository(
             ?: return@withContext Result.failure(Exception("Flock not found"))
         if (flock.locked) {
             return@withContext Result.failure(IllegalStateException("This flock is locked. Unlock it to edit."))
+        }
+        if (farmRegistryDao.getFarm(spreadsheetId)?.locked == true) {
+            return@withContext Result.failure(IllegalStateException("This farm is locked. Unlock it to edit."))
         }
         val existing = dailyDataDao.getDayEntry(spreadsheetId, flockId, dayNumber)
             ?: return@withContext Result.failure(Exception("Day entry not found"))

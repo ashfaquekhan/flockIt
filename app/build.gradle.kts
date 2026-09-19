@@ -32,10 +32,12 @@ android {
       keyPassword = System.getenv("KEY_PASSWORD")
     }
     create("debugConfig") {
-      storeFile = file("${rootDir}/debug.keystore")
-      storePassword = "android"
-      keyAlias = "androiddebugkey"
-      keyPassword = "android"
+      // Committed fixed debug keystore so the signing SHA-1 is deterministic on every
+      // machine (needed to register one stable SHA-1 for Google Sign-In).
+      storeFile = file("${rootDir}/flockit-debug.jks")
+      storePassword = "flockit"
+      keyAlias = "flockit"
+      keyPassword = "flockit"
     }
   }
 
@@ -46,9 +48,7 @@ android {
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
     }
-    // Debug uses AGP's default auto-generated debug keystore (~/.android/debug.keystore),
-    // so the project builds on any machine without committing a keystore.
-    debug { }
+    debug { signingConfig = signingConfigs.getByName("debugConfig") }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11

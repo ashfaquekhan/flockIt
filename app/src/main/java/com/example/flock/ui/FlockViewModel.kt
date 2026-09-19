@@ -545,6 +545,13 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun toggleFarmLock(spreadsheetId: String, locked: Boolean) {
+        viewModelScope.launch {
+            repository.setFarmLocked(spreadsheetId, locked)
+            _userMessage.value = if (locked) "Farm locked (read-only)" else "Farm unlocked"
+        }
+    }
+
     fun deleteFarm(spreadsheetId: String) {
         viewModelScope.launch {
             repository.deleteFarm(spreadsheetId)
