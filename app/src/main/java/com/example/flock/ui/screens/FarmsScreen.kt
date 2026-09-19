@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Agriculture
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material3.AlertDialog
@@ -52,11 +53,13 @@ fun FarmsScreen(
     onCreateFarm: (String) -> Unit,
     onOpenSharedFarm: (String) -> Unit,
     onShareFarm: (FarmRegistryEntity) -> Unit,
+    onDeleteFarm: (FarmRegistryEntity) -> Unit,
     onSignOut: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showCreate by remember { mutableStateOf(false) }
     var showOpenShared by remember { mutableStateOf(false) }
+    var deletingFarm by remember { mutableStateOf<FarmRegistryEntity?>(null) }
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -111,7 +114,12 @@ fun FarmsScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(farms, key = { it.spreadsheetId }) { farm ->
-                        FarmCard(farm = farm, onOpen = { onOpenFarm(farm.spreadsheetId) }, onShare = { onShareFarm(farm) })
+                        FarmCard(
+                            farm = farm,
+                            onOpen = { onOpenFarm(farm.spreadsheetId) },
+                            onShare = { onShareFarm(farm) },
+                            onDelete = { deletingFarm = farm }
+                        )
                     }
                 }
             }
@@ -156,13 +164,23 @@ fun FarmsScreen(
             onDismiss = { showOpenShared = false }
         )
     }
+    deletingFarm?.let { f ->
+        AlertDialog(
+            onDismissRequest = { deletingFarm = null },
+            title = { Text("Delete farm?") },
+            text = { Text("Remove \"${f.farmName}\" and all its flocks & data from this device? The Google Sheet (if any) is left intact.") },
+            confirmButton = { TextButton(onClick = { onDeleteFarm(f); deletingFarm = null }) { Text("Delete") } },
+            dismissButton = { TextButton(onClick = { deletingFarm = null }) { Text("Cancel") } }
+        )
+    }
 }
 
 @Composable
 private fun FarmCard(
     farm: FarmRegistryEntity,
     onOpen: () -> Unit,
-    onShare: () -> Unit
+    onShare: () -> Unit,
+    onDelete: () -> Unit
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -190,6 +208,9 @@ private fun FarmCard(
                 IconButton(onClick = onShare) {
                     Icon(Icons.Default.PersonAdd, contentDescription = "Share farm", tint = BrandEmerald)
                 }
+            }
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Default.DeleteOutline, contentDescription = "Delete farm", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

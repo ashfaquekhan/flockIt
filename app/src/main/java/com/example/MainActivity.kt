@@ -3,13 +3,14 @@ package com.example
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -60,6 +61,15 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
     var showSettings by remember { mutableStateOf(false) }
     var sharingFarm by remember { mutableStateOf<FarmRegistryEntity?>(null) }
 
+    // System back: Dashboard → Flocks → Farms (instead of exiting the app)
+    BackHandler(enabled = authState.isSignedIn && appScreen != AppScreen.FARMS) {
+        when (appScreen) {
+            AppScreen.DASHBOARD -> viewModel.goToFlocks()
+            AppScreen.FLOCKS -> viewModel.goToFarms()
+            AppScreen.FARMS -> {}
+        }
+    }
+
     // Non-blocking Toast (a Scaffold Snackbar sat over the bottom buttons and blocked taps).
     val context = LocalContext.current
     LaunchedEffect(userMessage) {
@@ -84,10 +94,10 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
         }
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize()
-    ) { padding ->
-        val content = Modifier.fillMaxSize().padding(padding)
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Screens without their own Scaffold get the system-bar insets here; the dashboard
+        // (which has its own Scaffold + bottom nav) handles insets itself to avoid a double gap.
+        val content = Modifier.fillMaxSize().systemBarsPadding()
         if (!authState.isSignedIn) {
             SignInScreen(
                 onSignInGoogle = { signInLauncher.launch(viewModel.googleSignInClient().signInIntent) },
@@ -104,6 +114,7 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
                     onCreateFarm = { name -> viewModel.createFarm(name) {} },
                     onOpenSharedFarm = { viewModel.openSharedFarm(it) },
                     onShareFarm = { sharingFarm = it },
+                    onDeleteFarm = { viewModel.deleteFarm(it.spreadsheetId) },
                     onSignOut = { viewModel.signOut() },
                     modifier = content
                 )
@@ -116,6 +127,7 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
                     onCreateFlock = { name, breed, startDate, startTime, placed, transitMort, harvestAge ->
                         viewModel.createFlock(name, breed, startDate, placed, transitMort, 3200.0, harvestAge, "Monsoon", startTime)
                     },
+                    onDeleteFlock = { viewModel.deleteFlock(it) },
                     onOpenSettings = { showSettings = true },
                     modifier = content
                 )
@@ -124,7 +136,7 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
                     onNavFarms = { viewModel.goToFarms() },
                     onNavFlocks = { viewModel.goToFlocks() },
                     onOpenSettings = { showSettings = true },
-                    modifier = content
+                    modifier = Modifier.fillMaxSize()
                 )
             }
         }

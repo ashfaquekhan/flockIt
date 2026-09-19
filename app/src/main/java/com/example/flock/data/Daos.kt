@@ -47,6 +47,9 @@ interface FarmDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateFarm(farm: FarmEntity)
+
+    @Query("DELETE FROM farm WHERE spreadsheetId = :spreadsheetId")
+    suspend fun deleteFarm(spreadsheetId: String)
 }
 
 @Dao
@@ -59,6 +62,9 @@ interface ConfigDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateConfig(config: ConfigEntity)
+
+    @Query("DELETE FROM config WHERE spreadsheetId = :spreadsheetId")
+    suspend fun deleteConfig(spreadsheetId: String)
 }
 
 @Dao
@@ -77,6 +83,9 @@ interface FeedTypeDao {
 
     @Query("DELETE FROM feed_types WHERE spreadsheetId = :spreadsheetId AND code = :code")
     suspend fun deleteFeedType(spreadsheetId: String, code: String)
+
+    @Query("DELETE FROM feed_types WHERE spreadsheetId = :spreadsheetId")
+    suspend fun deleteAllFeedTypes(spreadsheetId: String)
 }
 
 @Dao
@@ -101,6 +110,9 @@ interface FlockDao {
 
     @Query("DELETE FROM flocks WHERE spreadsheetId = :spreadsheetId AND flockId = :flockId")
     suspend fun deleteFlock(spreadsheetId: String, flockId: String)
+
+    @Query("DELETE FROM flocks WHERE spreadsheetId = :spreadsheetId")
+    suspend fun deleteAllFlocks(spreadsheetId: String)
 }
 
 @Dao
@@ -125,6 +137,9 @@ interface DailyDataDao {
 
     @Query("DELETE FROM daily_data WHERE spreadsheetId = :spreadsheetId AND flockId = :flockId")
     suspend fun deleteDailyDataForFlock(spreadsheetId: String, flockId: String)
+
+    @Query("DELETE FROM daily_data WHERE spreadsheetId = :spreadsheetId")
+    suspend fun deleteAllDailyData(spreadsheetId: String)
 }
 
 @Dao
@@ -149,4 +164,7 @@ interface TaskDao {
 
     @Query("DELETE FROM tasks WHERE spreadsheetId = :spreadsheetId AND flockId = :flockId")
     suspend fun deleteTasksForFlock(spreadsheetId: String, flockId: String)
+
+    @Query("DELETE FROM tasks WHERE spreadsheetId = :spreadsheetId")
+    suspend fun deleteAllTasks(spreadsheetId: String)
 }

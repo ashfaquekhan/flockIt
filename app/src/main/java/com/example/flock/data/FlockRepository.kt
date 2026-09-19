@@ -186,6 +186,17 @@ class FlockRepository(
         flockDao.deleteFlock(spreadsheetId, flockId)
     }
 
+    /** Removes a farm and all its local data (the Google Sheet itself, if any, is left intact). */
+    suspend fun deleteFarm(spreadsheetId: String) = withContext(Dispatchers.IO) {
+        dailyDataDao.deleteAllDailyData(spreadsheetId)
+        taskDao.deleteAllTasks(spreadsheetId)
+        flockDao.deleteAllFlocks(spreadsheetId)
+        feedTypeDao.deleteAllFeedTypes(spreadsheetId)
+        configDao.deleteConfig(spreadsheetId)
+        farmDao.deleteFarm(spreadsheetId)
+        farmRegistryDao.deleteFarm(spreadsheetId)
+    }
+
     suspend fun addTask(task: TaskEntity) = withContext(Dispatchers.IO) {
         taskDao.insertTask(task)
     }

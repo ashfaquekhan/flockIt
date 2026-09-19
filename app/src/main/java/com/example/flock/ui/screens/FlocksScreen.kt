@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Egg
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -56,10 +57,12 @@ fun FlocksScreen(
     onBack: () -> Unit,
     onOpenFlock: (String) -> Unit,
     onCreateFlock: (name: String, breed: String, startDate: String, startTime: String, placed: Int, transitMort: Int, harvestAge: Int) -> Unit,
+    onDeleteFlock: (String) -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showCreate by remember { mutableStateOf(false) }
+    var deletingFlock by remember { mutableStateOf<FlockEntity?>(null) }
     val ordered = remember(flocks) { flocks.sortedBy { it.createdAt } }
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -114,7 +117,8 @@ fun FlocksScreen(
                             seq = idx + 1,
                             flock = flock,
                             timeZone = timeZone,
-                            onOpen = { onOpenFlock(flock.flockId) }
+                            onOpen = { onOpenFlock(flock.flockId) },
+                            onDelete = { deletingFlock = flock }
                         )
                     }
                 }
@@ -143,6 +147,15 @@ fun FlocksScreen(
             }
         )
     }
+    deletingFlock?.let { f ->
+        AlertDialog(
+            onDismissRequest = { deletingFlock = null },
+            title = { Text("Delete flock?") },
+            text = { Text("Permanently remove \"${f.name}\" and all its daily data and tasks? This cannot be undone.") },
+            confirmButton = { TextButton(onClick = { onDeleteFlock(f.flockId); deletingFlock = null }) { Text("Delete") } },
+            dismissButton = { TextButton(onClick = { deletingFlock = null }) { Text("Cancel") } }
+        )
+    }
 }
 
 @Composable
@@ -150,7 +163,8 @@ private fun FlockCard(
     seq: Int,
     flock: FlockEntity,
     timeZone: String,
-    onOpen: () -> Unit
+    onOpen: () -> Unit,
+    onDelete: () -> Unit
 ) {
     val curDay = remember(flock.startDate, timeZone) {
         try {
@@ -189,6 +203,9 @@ private fun FlockCard(
                     onClick = onOpen,
                     label = { Text(if (isClosed) "closed" else "Day $curDay/${flock.harvestAge}") }
                 )
+                IconButton(onClick = onDelete, modifier = Modifier.size(34.dp)) {
+                    Icon(Icons.Default.DeleteOutline, contentDescription = "Delete flock", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             Spacer(Modifier.height(4.dp))
             Text(

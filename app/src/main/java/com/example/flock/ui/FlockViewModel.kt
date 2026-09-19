@@ -533,7 +533,20 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteFlock(flockId: String) {
         viewModelScope.launch {
             repository.deleteFlock(_selectedSpreadsheetId.value, flockId)
+            if (_activeFlock.value?.flockId == flockId) _activeFlock.value = null
             _userMessage.value = "Flock deleted"
+        }
+    }
+
+    fun deleteFarm(spreadsheetId: String) {
+        viewModelScope.launch {
+            repository.deleteFarm(spreadsheetId)
+            if (_selectedSpreadsheetId.value == spreadsheetId) {
+                _selectedSpreadsheetId.value = "local_default"
+                _activeFlock.value = null
+            }
+            _appScreen.value = AppScreen.FARMS
+            _userMessage.value = "Farm deleted"
         }
     }
 

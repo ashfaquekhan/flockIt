@@ -20,7 +20,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Air
+import androidx.compose.material.icons.filled.Toys
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -171,7 +171,7 @@ private fun FanItem(
             modifier = Modifier.padding(2.dp)
         ) {
             Icon(
-                imageVector = Icons.Default.Air,
+                imageVector = Icons.Default.Toys,
                 contentDescription = "Fan $fanNumber",
                 modifier = Modifier
                     .size(24.dp)

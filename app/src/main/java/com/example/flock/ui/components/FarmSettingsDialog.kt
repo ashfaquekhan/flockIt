@@ -4,8 +4,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -105,7 +108,9 @@ fun FarmSettingsDialog(
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.95f)
+                .fillMaxHeight(0.9f)
                 .padding(vertical = 24.dp)
+                .imePadding()
                 .testTag("farm_settings_dialog"),
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
@@ -113,7 +118,7 @@ fun FarmSettingsDialog(
         ) {
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .fillMaxSize()
                     .padding(16.dp)
             ) {
                 // Header
