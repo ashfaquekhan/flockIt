@@ -21,8 +21,14 @@ interface StandardsDao {
 
 @Dao
 interface FarmRegistryDao {
-    @Query("SELECT * FROM farm_registry ORDER BY lastOpened DESC")
+    @Query("SELECT * FROM farm_registry WHERE deleted = 0 ORDER BY lastOpened DESC")
     fun getAllFarmsFlow(): Flow<List<FarmRegistryEntity>>
+
+    @Query("SELECT * FROM farm_registry WHERE deleted = 1 ORDER BY deletedAt DESC")
+    fun getDeletedFarmsFlow(): Flow<List<FarmRegistryEntity>>
+
+    @Query("UPDATE farm_registry SET deleted = :deleted, deletedAt = :at WHERE spreadsheetId = :spreadsheetId")
+    suspend fun setFarmDeleted(spreadsheetId: String, deleted: Boolean, at: Long)
 
     @Query("SELECT * FROM farm_registry WHERE spreadsheetId = :spreadsheetId LIMIT 1")
     suspend fun getFarm(spreadsheetId: String): FarmRegistryEntity?
@@ -90,11 +96,17 @@ interface FeedTypeDao {
 
 @Dao
 interface FlockDao {
-    @Query("SELECT * FROM flocks WHERE spreadsheetId = :spreadsheetId ORDER BY createdAt DESC")
+    @Query("SELECT * FROM flocks WHERE spreadsheetId = :spreadsheetId AND deleted = 0 ORDER BY createdAt DESC")
     fun getAllFlocks(spreadsheetId: String): Flow<List<FlockEntity>>
 
-    @Query("SELECT * FROM flocks WHERE spreadsheetId = :spreadsheetId AND status = 'active' ORDER BY createdAt DESC")
+    @Query("SELECT * FROM flocks WHERE spreadsheetId = :spreadsheetId AND status = 'active' AND deleted = 0 ORDER BY createdAt DESC")
     fun getActiveFlocks(spreadsheetId: String): Flow<List<FlockEntity>>
+
+    @Query("SELECT * FROM flocks WHERE deleted = 1 ORDER BY deletedAt DESC")
+    fun getDeletedFlocksFlow(): Flow<List<FlockEntity>>
+
+    @Query("UPDATE flocks SET deleted = :deleted, deletedAt = :at WHERE spreadsheetId = :spreadsheetId AND flockId = :flockId")
+    suspend fun setFlockDeleted(spreadsheetId: String, flockId: String, deleted: Boolean, at: Long)
 
     @Query("SELECT * FROM flocks WHERE spreadsheetId = :spreadsheetId AND flockId = :flockId LIMIT 1")
     fun getFlockByIdFlow(spreadsheetId: String, flockId: String): Flow<FlockEntity?>

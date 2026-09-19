@@ -38,6 +38,8 @@ class FlockRepository(
     private val taskDao = database.taskDao()
 
     val allFarms: Flow<List<FarmRegistryEntity>> = farmRegistryDao.getAllFarmsFlow()
+    val deletedFarms: Flow<List<FarmRegistryEntity>> = farmRegistryDao.getDeletedFarmsFlow()
+    val deletedFlocks: Flow<List<FlockEntity>> = flockDao.getDeletedFlocksFlow()
 
     suspend fun registerFarm(
         spreadsheetId: String,
@@ -194,6 +196,20 @@ class FlockRepository(
         dailyDataDao.deleteDailyDataForFlock(spreadsheetId, flockId)
         taskDao.deleteTasksForFlock(spreadsheetId, flockId)
         flockDao.deleteFlock(spreadsheetId, flockId)
+    }
+
+    // ---- Recycle bin (soft delete + restore) ----
+    suspend fun softDeleteFlock(spreadsheetId: String, flockId: String) = withContext(Dispatchers.IO) {
+        flockDao.setFlockDeleted(spreadsheetId, flockId, true, System.currentTimeMillis())
+    }
+    suspend fun restoreFlock(spreadsheetId: String, flockId: String) = withContext(Dispatchers.IO) {
+        flockDao.setFlockDeleted(spreadsheetId, flockId, false, 0L)
+    }
+    suspend fun softDeleteFarm(spreadsheetId: String) = withContext(Dispatchers.IO) {
+        farmRegistryDao.setFarmDeleted(spreadsheetId, true, System.currentTimeMillis())
+    }
+    suspend fun restoreFarm(spreadsheetId: String) = withContext(Dispatchers.IO) {
+        farmRegistryDao.setFarmDeleted(spreadsheetId, false, 0L)
     }
 
     /** Removes a farm and all its local data (the Google Sheet itself, if any, is left intact). */

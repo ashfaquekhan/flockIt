@@ -27,6 +27,8 @@ data class FarmRegistryEntity(
     val lastOpened: Long = System.currentTimeMillis(),
     val syncStatus: String = "synced", // "synced", "syncing", "offline", "error"
     val locked: Boolean = false,       // when true, all flocks in this farm are read-only
+    val deleted: Boolean = false,      // soft delete → recycle bin
+    val deletedAt: Long = 0L,
     val lastSyncedAt: Long = System.currentTimeMillis()
 )
 
@@ -127,6 +129,8 @@ data class FlockEntity(
     val season: String = "Monsoon",
     val status: String = "active", // "active", "closed"
     val locked: Boolean = false,   // when true, daily entries can't be edited
+    val deleted: Boolean = false,  // soft delete → recycle bin
+    val deletedAt: Long = 0L,
     val createdAt: Long = System.currentTimeMillis()
 )
 

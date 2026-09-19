@@ -530,11 +530,45 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // Recycle bin flows
+    val deletedFarms: StateFlow<List<FarmRegistryEntity>> = repository.deletedFarms
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val deletedFlocks: StateFlow<List<FlockEntity>> = repository.deletedFlocks
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     fun deleteFlock(flockId: String) {
         viewModelScope.launch {
-            repository.deleteFlock(_selectedSpreadsheetId.value, flockId)
+            repository.softDeleteFlock(_selectedSpreadsheetId.value, flockId)
             if (_activeFlock.value?.flockId == flockId) _activeFlock.value = null
-            _userMessage.value = "Flock deleted"
+            _userMessage.value = "Flock moved to Recycle Bin"
+        }
+    }
+
+    fun restoreFlock(spreadsheetId: String, flockId: String) {
+        viewModelScope.launch {
+            repository.restoreFlock(spreadsheetId, flockId)
+            _userMessage.value = "Flock restored"
+        }
+    }
+
+    fun purgeFlock(spreadsheetId: String, flockId: String) {
+        viewModelScope.launch {
+            repository.deleteFlock(spreadsheetId, flockId)
+            _userMessage.value = "Flock permanently deleted"
+        }
+    }
+
+    fun restoreFarm(spreadsheetId: String) {
+        viewModelScope.launch {
+            repository.restoreFarm(spreadsheetId)
+            _userMessage.value = "Farm restored"
+        }
+    }
+
+    fun purgeFarm(spreadsheetId: String) {
+        viewModelScope.launch {
+            repository.deleteFarm(spreadsheetId)
+            _userMessage.value = "Farm permanently deleted"
         }
     }
 
@@ -554,13 +588,13 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteFarm(spreadsheetId: String) {
         viewModelScope.launch {
-            repository.deleteFarm(spreadsheetId)
+            repository.softDeleteFarm(spreadsheetId)
             if (_selectedSpreadsheetId.value == spreadsheetId) {
                 _selectedSpreadsheetId.value = "local_default"
                 _activeFlock.value = null
             }
             _appScreen.value = AppScreen.FARMS
-            _userMessage.value = "Farm deleted"
+            _userMessage.value = "Farm moved to Recycle Bin"
         }
     }
 

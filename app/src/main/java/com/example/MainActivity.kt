@@ -25,7 +25,9 @@ import com.example.flock.data.FarmRegistryEntity
 import com.example.flock.ui.AppScreen
 import com.example.flock.ui.FlockViewModel
 import com.example.flock.ui.MainFlockScreen
+import com.example.flock.ui.components.AccountSheet
 import com.example.flock.ui.components.FarmSettingsDialog
+import com.example.flock.ui.components.RecycleBinDialog
 import com.example.flock.ui.components.ShareFarmDialog
 import com.example.flock.ui.screens.FarmsScreen
 import com.example.flock.ui.screens.FlocksScreen
@@ -57,9 +59,13 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
     val config by viewModel.config.collectAsState()
     val feedTypes by viewModel.feedTypes.collectAsState()
     val userMessage by viewModel.userMessage.collectAsState()
+    val deletedFarms by viewModel.deletedFarms.collectAsState()
+    val deletedFlocks by viewModel.deletedFlocks.collectAsState()
 
     var showSettings by remember { mutableStateOf(false) }
     var sharingFarm by remember { mutableStateOf<FarmRegistryEntity?>(null) }
+    var showAccount by remember { mutableStateOf(false) }
+    var showRecycleBin by remember { mutableStateOf(false) }
 
     // System back: Dashboard → Flocks → Farms (instead of exiting the app)
     BackHandler(enabled = authState.isSignedIn && appScreen != AppScreen.FARMS) {
@@ -116,7 +122,7 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
                     onShareFarm = { sharingFarm = it },
                     onDeleteFarm = { viewModel.deleteFarm(it.spreadsheetId) },
                     onToggleLock = { viewModel.toggleFarmLock(it.spreadsheetId, !it.locked) },
-                    onSignOut = { viewModel.signOut() },
+                    onOpenAccount = { showAccount = true },
                     modifier = content
                 )
                 AppScreen.FLOCKS -> FlocksScreen(
@@ -161,6 +167,28 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
             spreadsheetId = f.spreadsheetId,
             onDismiss = { sharingFarm = null },
             onShare = { email, isEditor -> viewModel.shareFarm(f.spreadsheetId, email, isEditor) { _, _ -> } }
+        )
+    }
+    if (showAccount) {
+        AccountSheet(
+            displayName = authState.displayName,
+            email = authState.email,
+            isDemo = authState.isDemoMode,
+            appVersion = BuildConfig.VERSION_NAME,
+            onOpenRecycleBin = { showRecycleBin = true },
+            onSignOut = { viewModel.signOut() },
+            onDismiss = { showAccount = false }
+        )
+    }
+    if (showRecycleBin) {
+        RecycleBinDialog(
+            deletedFarms = deletedFarms,
+            deletedFlocks = deletedFlocks,
+            onRestoreFarm = { viewModel.restoreFarm(it) },
+            onPurgeFarm = { viewModel.purgeFarm(it) },
+            onRestoreFlock = { s, f -> viewModel.restoreFlock(s, f) },
+            onPurgeFlock = { s, f -> viewModel.purgeFlock(s, f) },
+            onDismiss = { showRecycleBin = false }
         )
     }
 }

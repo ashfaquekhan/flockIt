@@ -47,6 +47,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.flock.data.FarmRegistryEntity
+import com.example.flock.ui.components.InitialsAvatar
 import com.example.ui.theme.BrandEmerald
 import com.example.ui.theme.StatusWarn
 
@@ -61,7 +62,7 @@ fun FarmsScreen(
     onShareFarm: (FarmRegistryEntity) -> Unit,
     onDeleteFarm: (FarmRegistryEntity) -> Unit,
     onToggleLock: (FarmRegistryEntity) -> Unit,
-    onSignOut: () -> Unit,
+    onOpenAccount: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showCreate by remember { mutableStateOf(false) }
@@ -87,8 +88,8 @@ fun FarmsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                IconButton(onClick = onSignOut) {
-                    Icon(Icons.Default.Logout, contentDescription = "Sign out", tint = BrandEmerald)
+                IconButton(onClick = onOpenAccount) {
+                    InitialsAvatar(name = userEmail.ifBlank { "Farmer" }, size = 32.dp)
                 }
             }
 
