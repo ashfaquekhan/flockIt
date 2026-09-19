@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.sp
 import com.example.flock.data.DailyDataEntity
 import com.example.flock.data.FeedTypeEntity
 import com.example.flock.engine.PhysiologicalEngine
+import com.example.flock.ui.DailyInputs
 import com.example.flock.ui.LockStatus
 import com.example.ui.theme.BrandEmerald
 import com.example.ui.theme.StatusCrit
@@ -65,28 +66,7 @@ fun EntriesScreen(
     yesterdayDate: String,
     feedTypes: List<FeedTypeEntity>,
     lockStatus: LockStatus,
-    onSave: (
-        w1: Double?, n1: Int?,
-        w2: Double?, n2: Int?,
-        w3: Double?, n3: Int?,
-        w4: Double?, n4: Int?,
-        w5: Double?, n5: Int?,
-        mortality: Int,
-        feedBagsUsed: Double,
-        feedUsedType: String,
-        birdsLifted: Int,
-        weightLifted: Double,
-        lameSeparated: Int,
-        feedRecB1: Double, feedTypeB1: String,
-        feedRecB2: Double, feedTypeB2: String,
-        feedRecB3: Double, feedTypeB3: String,
-        broodingLength: Double?,
-        actualFans: Int?,
-        actualFanTime: Int?,
-        outTemp: Double?,
-        outRH: Double?,
-        notes: String
-    ) -> Unit,
+    onSave: (DailyInputs) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var w1 by remember { mutableStateOf("") }
@@ -122,6 +102,20 @@ fun EntriesScreen(
     var outRH by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
 
+    // Measured readings (optional)
+    var waterTempC by remember { mutableStateOf("") }
+    var waterPh by remember { mutableStateOf("") }
+    var feedMoisturePct by remember { mutableStateOf("") }
+    var measuredCo2 by remember { mutableStateOf("") }
+    var measuredNh3 by remember { mutableStateOf("") }
+    var measuredO2 by remember { mutableStateOf("") }
+    var measuredPressure by remember { mutableStateOf("") }
+    var measuredAirspeed by remember { mutableStateOf("") }
+    var padWetMin by remember { mutableStateOf("") }
+    var padDryMin by remember { mutableStateOf("") }
+    var luxPerFt2 by remember { mutableStateOf("") }
+    var dieselCansUsed by remember { mutableStateOf("") }
+
     LaunchedEffect(entry) {
         w1 = entry?.w1?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: ""
         n1 = entry?.n1?.toString() ?: ""
@@ -155,6 +149,19 @@ fun EntriesScreen(
         outTemp = entry?.outTemp?.toString() ?: ""
         outRH = entry?.outRH?.toString() ?: ""
         notes = entry?.notes ?: ""
+
+        waterTempC = entry?.waterTempC?.toString() ?: ""
+        waterPh = entry?.waterPh?.toString() ?: ""
+        feedMoisturePct = entry?.feedMoisturePct?.toString() ?: ""
+        measuredCo2 = entry?.measuredCo2?.toString() ?: ""
+        measuredNh3 = entry?.measuredNh3?.toString() ?: ""
+        measuredO2 = entry?.measuredO2?.toString() ?: ""
+        measuredPressure = entry?.measuredPressure?.toString() ?: ""
+        measuredAirspeed = entry?.measuredAirspeed?.toString() ?: ""
+        padWetMin = entry?.padWetMin?.toString() ?: ""
+        padDryMin = entry?.padDryMin?.toString() ?: ""
+        luxPerFt2 = entry?.luxPerFt2?.toString() ?: ""
+        dieselCansUsed = entry?.dieselCansUsed?.let { if (it > 0) it.toString() else "" } ?: ""
     }
 
     val isHardLocked = lockStatus.isHardLocked
@@ -589,9 +596,9 @@ fun EntriesScreen(
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
-                    label = { Text("House Notes") },
-                    placeholder = { Text("Litter condition, drinker pressure, bird activity...") },
-                    minLines = 2,
+                    label = { Text("Special notes (miscellaneous)") },
+                    placeholder = { Text("One point per line:\n- litter turned\n- bird activity normal") },
+                    minLines = 3,
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("notes_input")
@@ -599,30 +606,90 @@ fun EntriesScreen(
             }
         }
 
+        // SECTION 6: Measured Readings (optional — Output shows "— no reading" if blank)
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(12.dp),
+            tonalElevation = 1.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "6. Measured Readings (optional)",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+                Text(
+                    text = "Air-quality, water and feed probe readings. Leave blank if not measured.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NumField(measuredCo2, { measuredCo2 = it }, "CO₂ (ppm)", Modifier.weight(1f))
+                    NumField(measuredNh3, { measuredNh3 = it }, "NH₃ (ppm)", Modifier.weight(1f))
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NumField(measuredO2, { measuredO2 = it }, "O₂ (%)", Modifier.weight(1f))
+                    NumField(measuredPressure, { measuredPressure = it }, "Static pressure (Pa)", Modifier.weight(1f))
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NumField(measuredAirspeed, { measuredAirspeed = it }, "Air speed (ft/min)", Modifier.weight(1f))
+                    NumField(luxPerFt2, { luxPerFt2 = it }, "Light (lux)", Modifier.weight(1f))
+                }
+                Divider(modifier = Modifier.padding(vertical = 2.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NumField(waterTempC, { waterTempC = it }, "Water temp (°C)", Modifier.weight(1f))
+                    NumField(waterPh, { waterPh = it }, "Water pH", Modifier.weight(1f))
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NumField(feedMoisturePct, { feedMoisturePct = it }, "Feed moisture (%)", Modifier.weight(1f))
+                    NumField(dieselCansUsed, { dieselCansUsed = it }, "Diesel cans used", Modifier.weight(1f))
+                }
+                Divider(modifier = Modifier.padding(vertical = 2.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NumField(padWetMin, { padWetMin = it }, "Pad wet time (min)", Modifier.weight(1f))
+                    NumField(padDryMin, { padDryMin = it }, "Pad dry time (min)", Modifier.weight(1f))
+                }
+            }
+        }
+
         // SAVE BUTTON
         Button(
             onClick = {
                 onSave(
-                    w1.toDoubleOrNull(), n1.toIntOrNull(),
-                    w2.toDoubleOrNull(), n2.toIntOrNull(),
-                    w3.toDoubleOrNull(), n3.toIntOrNull(),
-                    w4.toDoubleOrNull(), n4.toIntOrNull(),
-                    w5.toDoubleOrNull(), n5.toIntOrNull(),
-                    mortality.toIntOrNull() ?: 0,
-                    feedBagsUsed.toDoubleOrNull() ?: 0.0,
-                    feedUsedType,
-                    birdsLifted.toIntOrNull() ?: 0,
-                    weightLifted.toDoubleOrNull() ?: 0.0,
-                    lameSeparated.toIntOrNull() ?: 0,
-                    feedRecB1.toDoubleOrNull() ?: 0.0, feedTypeB1,
-                    feedRecB2.toDoubleOrNull() ?: 0.0, feedTypeB2,
-                    feedRecB3.toDoubleOrNull() ?: 0.0, feedTypeB3,
-                    broodingLength.toDoubleOrNull(),
-                    actualFans.toIntOrNull(),
-                    actualFanTime.toIntOrNull(),
-                    outTemp.toDoubleOrNull(),
-                    outRH.toDoubleOrNull(),
-                    notes
+                    DailyInputs(
+                        w1 = w1.toDoubleOrNull(), n1 = n1.toIntOrNull(),
+                        w2 = w2.toDoubleOrNull(), n2 = n2.toIntOrNull(),
+                        w3 = w3.toDoubleOrNull(), n3 = n3.toIntOrNull(),
+                        w4 = w4.toDoubleOrNull(), n4 = n4.toIntOrNull(),
+                        w5 = w5.toDoubleOrNull(), n5 = n5.toIntOrNull(),
+                        mortality = mortality.toIntOrNull() ?: 0,
+                        feedBagsUsed = feedBagsUsed.toDoubleOrNull() ?: 0.0,
+                        feedUsedType = feedUsedType,
+                        birdsLifted = birdsLifted.toIntOrNull() ?: 0,
+                        weightLifted = weightLifted.toDoubleOrNull() ?: 0.0,
+                        lameSeparated = lameSeparated.toIntOrNull() ?: 0,
+                        feedRecB1 = feedRecB1.toDoubleOrNull() ?: 0.0, feedTypeB1 = feedTypeB1,
+                        feedRecB2 = feedRecB2.toDoubleOrNull() ?: 0.0, feedTypeB2 = feedTypeB2,
+                        feedRecB3 = feedRecB3.toDoubleOrNull() ?: 0.0, feedTypeB3 = feedTypeB3,
+                        broodingLength = broodingLength.toDoubleOrNull(),
+                        actualFans = actualFans.toIntOrNull(),
+                        actualFanTime = actualFanTime.toIntOrNull(),
+                        outTemp = outTemp.toDoubleOrNull(),
+                        outRH = outRH.toDoubleOrNull(),
+                        notes = notes,
+                        waterTempC = waterTempC.toDoubleOrNull(),
+                        waterPh = waterPh.toDoubleOrNull(),
+                        feedMoisturePct = feedMoisturePct.toDoubleOrNull(),
+                        measuredCo2 = measuredCo2.toDoubleOrNull(),
+                        measuredNh3 = measuredNh3.toDoubleOrNull(),
+                        measuredO2 = measuredO2.toDoubleOrNull(),
+                        measuredPressure = measuredPressure.toDoubleOrNull(),
+                        measuredAirspeed = measuredAirspeed.toDoubleOrNull(),
+                        padWetMin = padWetMin.toDoubleOrNull(),
+                        padDryMin = padDryMin.toDoubleOrNull(),
+                        luxPerFt2 = luxPerFt2.toDoubleOrNull(),
+                        dieselCansUsed = dieselCansUsed.toDoubleOrNull() ?: 0.0
+                    )
                 )
             },
             colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald),
@@ -642,6 +709,23 @@ fun EntriesScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
     }
+}
+
+@Composable
+private fun NumField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        modifier = modifier
+    )
 }
 
 @Composable

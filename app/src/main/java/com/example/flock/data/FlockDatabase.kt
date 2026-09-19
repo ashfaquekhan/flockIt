@@ -21,7 +21,7 @@ import kotlinx.coroutines.launch
         DailyDataEntity::class,
         TaskEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class FlockDatabase : RoomDatabase() {

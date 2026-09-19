@@ -226,7 +226,28 @@ data class DailyDataEntity(
     val alertLevel: String = "ok", // "ok", "warn", "crit"
     val alertText: String = "All targets nominal",
     val updatedAt: Long = System.currentTimeMillis(),
-    val updatedBy: String = ""
+    val updatedBy: String = "",
+
+    // Measured readings the app cannot compute (farmer enters; null = no reading)
+    val waterTempC: Double? = null,
+    val waterPh: Double? = null,
+    val feedMoisturePct: Double? = null,
+    val measuredCo2: Double? = null,
+    val measuredNh3: Double? = null,
+    val measuredO2: Double? = null,
+    val measuredPressure: Double? = null,   // static pressure, Pa
+    val measuredAirspeed: Double? = null,   // ft/min
+    val padWetMin: Double? = null,          // honeycomb pad wet time, minutes
+    val padDryMin: Double? = null,          // honeycomb pad dry time, minutes
+    val luxPerFt2: Double? = null,          // measured light, lux
+    val dieselCansUsed: Double = 0.0,
+
+    // Additional computed display values (engine-written)
+    val gainPerBird: Double = 0.0,          // approx daily gain, g/bird
+    val drinkerPressureIn: Double = 0.0,    // drinker line pressure, inches
+    val drinkerFlowLHrLine: Double = 0.0,   // water per drinker line, L/hr
+    val waterLowL: Double = 0.0,            // total water at cooler day (−3°C)
+    val waterHighL: Double = 0.0            // total water at hotter day (+3°C)
 )
 
 @Entity(

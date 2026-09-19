@@ -160,19 +160,7 @@ fun MainFlockScreen(
                     yesterdayDate = yesterdayDateStr,
                     feedTypes = feedTypes,
                     lockStatus = lockStatus,
-                    onSave = { w1, n1, w2, n2, w3, n3, w4, n4, w5, n5,
-                               mortality, feedBagsUsed, feedUsedType,
-                               birdsLifted, weightLifted, lameSeparated,
-                               feedRecB1, feedTypeB1, feedRecB2, feedTypeB2, feedRecB3, feedTypeB3,
-                               broodingLength, actualFans, actualFanTime, outTemp, outRH, notes ->
-                        viewModel.saveDayEntry(
-                            w1, n1, w2, n2, w3, n3, w4, n4, w5, n5,
-                            mortality, feedBagsUsed, feedUsedType,
-                            birdsLifted, weightLifted, lameSeparated,
-                            feedRecB1, feedTypeB1, feedRecB2, feedTypeB2, feedRecB3, feedTypeB3,
-                            broodingLength, actualFans, actualFanTime, outTemp, outRH, notes
-                        )
-                    }
+                    onSave = { inputs -> viewModel.saveDayEntry(inputs) }
                 )
                 FlockNavTab.OUTPUT -> OutputScreen(
                     flock = activeFlock,

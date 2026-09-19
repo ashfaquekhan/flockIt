@@ -402,6 +402,18 @@ class FlockRepository(
             val totalWaterL = (waterPerBird * live) / 1000.0
             val tankRefills = if (farm.drinkTankL > 0) ceil(totalWaterL / farm.drinkTankL).toInt() else 1
 
+            // Approx daily gain (g/bird) from the growth curve at the current weight-age
+            val gainPerBird = PhysiologicalEngine.bwFromDay(weightAge, flock.breed) -
+                    PhysiologicalEngine.bwFromDay(max(0.0, weightAge - 1.0), flock.breed)
+            // Drinker line pressure (inches) by age, and water throughput per line (L/hr over 16 active hrs)
+            val drinkerPressureIn = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_WATERLINE_BY_AGE, day.toDouble())
+            val drinkerFlowLHrLine = if (farm.drinkerLines > 0) totalWaterL / farm.drinkerLines / 16.0 else totalWaterL / 16.0
+            // Total-water sensitivity to a ±3°C day
+            val waterLowL = (feedPerBird * config.wfRatio *
+                    PhysiologicalEngine.computeWaterUplift(meanTemp - 3.0, config.waterHeatK) * live) / 1000.0
+            val waterHighL = (feedPerBird * config.wfRatio *
+                    PhysiologicalEngine.computeWaterUplift(meanTemp + 3.0, config.waterHeatK) * live) / 1000.0
+
             val setTemp = PhysiologicalEngine.interpolate(
                 PhysiologicalEngine.CURVE_TEMP_BY_BW,
                 if (sampleRes.hasSample) sampleRes.flockAvgG else projWeight
@@ -557,7 +569,12 @@ class FlockRepository(
                     ventText = ventText,
                     cycleText = cycleText,
                     alertLevel = alertLevel,
-                    alertText = alertText
+                    alertText = alertText,
+                    gainPerBird = gainPerBird,
+                    drinkerPressureIn = drinkerPressureIn,
+                    drinkerFlowLHrLine = drinkerFlowLHrLine,
+                    waterLowL = waterLowL,
+                    waterHighL = waterHighL
                 )
             )
         }

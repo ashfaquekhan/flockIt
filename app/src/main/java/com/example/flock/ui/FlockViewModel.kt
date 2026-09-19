@@ -45,6 +45,24 @@ data class LockStatus(
 /** Top-level screen the user is on once signed in. */
 enum class AppScreen { FARMS, FLOCKS, DASHBOARD }
 
+/** All editable daily inputs, passed as one object from the Entry screen. */
+data class DailyInputs(
+    val w1: Double?, val n1: Int?, val w2: Double?, val n2: Int?, val w3: Double?, val n3: Int?,
+    val w4: Double?, val n4: Int?, val w5: Double?, val n5: Int?,
+    val mortality: Int, val feedBagsUsed: Double, val feedUsedType: String,
+    val birdsLifted: Int, val weightLifted: Double, val lameSeparated: Int,
+    val feedRecB1: Double, val feedTypeB1: String,
+    val feedRecB2: Double, val feedTypeB2: String,
+    val feedRecB3: Double, val feedTypeB3: String,
+    val broodingLength: Double?, val actualFans: Int?, val actualFanTime: Int?,
+    val outTemp: Double?, val outRH: Double?, val notes: String,
+    val waterTempC: Double? = null, val waterPh: Double? = null, val feedMoisturePct: Double? = null,
+    val measuredCo2: Double? = null, val measuredNh3: Double? = null, val measuredO2: Double? = null,
+    val measuredPressure: Double? = null, val measuredAirspeed: Double? = null,
+    val padWetMin: Double? = null, val padDryMin: Double? = null, val luxPerFt2: Double? = null,
+    val dieselCansUsed: Double = 0.0
+)
+
 class FlockViewModel(application: Application) : AndroidViewModel(application) {
 
     private val database = FlockDatabase.getDatabase(application, viewModelScope)
@@ -313,26 +331,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun saveDayEntry(
-        w1: Double?, n1: Int?,
-        w2: Double?, n2: Int?,
-        w3: Double?, n3: Int?,
-        w4: Double?, n4: Int?,
-        w5: Double?, n5: Int?,
-        mortality: Int,
-        feedBagsUsed: Double,
-        feedUsedType: String,
-        birdsLifted: Int,
-        weightLifted: Double,
-        lameSeparated: Int,
-        feedRecB1: Double, feedTypeB1: String,
-        feedRecB2: Double, feedTypeB2: String,
-        feedRecB3: Double, feedTypeB3: String,
-        broodingLength: Double?,
-        actualFans: Int?,
-        actualFanTime: Int?,
-        outTemp: Double?,
-        outRH: Double?,
-        notes: String,
+        inputs: DailyInputs,
         onSuccess: () -> Unit = {},
         onError: (String) -> Unit = {}
     ) {
@@ -348,29 +347,41 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
                 userEmail = userEmail
             ) { existing ->
                 existing.copy(
-                    w1 = w1, n1 = n1,
-                    w2 = w2, n2 = n2,
-                    w3 = w3, n3 = n3,
-                    w4 = w4, n4 = n4,
-                    w5 = w5, n5 = n5,
-                    mortality = mortality,
-                    feedBagsUsed = if (day == 0) 0.0 else feedBagsUsed,
-                    feedUsedType = feedUsedType,
-                    birdsLifted = birdsLifted,
-                    weightLifted = weightLifted,
-                    lameSeparated = lameSeparated,
-                    feedRecB1 = feedRecB1,
-                    feedTypeB1 = feedTypeB1,
-                    feedRecB2 = feedRecB2,
-                    feedTypeB2 = feedTypeB2,
-                    feedRecB3 = feedRecB3,
-                    feedTypeB3 = feedTypeB3,
-                    broodingLength = broodingLength,
-                    actualFans = actualFans,
-                    actualFanTime = actualFanTime,
-                    outTemp = outTemp,
-                    outRH = outRH,
-                    notes = notes
+                    w1 = inputs.w1, n1 = inputs.n1,
+                    w2 = inputs.w2, n2 = inputs.n2,
+                    w3 = inputs.w3, n3 = inputs.n3,
+                    w4 = inputs.w4, n4 = inputs.n4,
+                    w5 = inputs.w5, n5 = inputs.n5,
+                    mortality = inputs.mortality,
+                    feedBagsUsed = if (day == 0) 0.0 else inputs.feedBagsUsed,
+                    feedUsedType = inputs.feedUsedType,
+                    birdsLifted = inputs.birdsLifted,
+                    weightLifted = inputs.weightLifted,
+                    lameSeparated = inputs.lameSeparated,
+                    feedRecB1 = inputs.feedRecB1,
+                    feedTypeB1 = inputs.feedTypeB1,
+                    feedRecB2 = inputs.feedRecB2,
+                    feedTypeB2 = inputs.feedTypeB2,
+                    feedRecB3 = inputs.feedRecB3,
+                    feedTypeB3 = inputs.feedTypeB3,
+                    broodingLength = inputs.broodingLength,
+                    actualFans = inputs.actualFans,
+                    actualFanTime = inputs.actualFanTime,
+                    outTemp = inputs.outTemp,
+                    outRH = inputs.outRH,
+                    notes = inputs.notes,
+                    waterTempC = inputs.waterTempC,
+                    waterPh = inputs.waterPh,
+                    feedMoisturePct = inputs.feedMoisturePct,
+                    measuredCo2 = inputs.measuredCo2,
+                    measuredNh3 = inputs.measuredNh3,
+                    measuredO2 = inputs.measuredO2,
+                    measuredPressure = inputs.measuredPressure,
+                    measuredAirspeed = inputs.measuredAirspeed,
+                    padWetMin = inputs.padWetMin,
+                    padDryMin = inputs.padDryMin,
+                    luxPerFt2 = inputs.luxPerFt2,
+                    dieselCansUsed = inputs.dieselCansUsed
                 )
             }
 

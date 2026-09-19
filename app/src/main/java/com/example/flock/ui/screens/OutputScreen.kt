@@ -181,6 +181,13 @@ fun OutputScreen(
                     )
                 }
             }
+            BigMetric(
+                label = "Approx. Daily Gain / bird",
+                value = String.format("%.0f", entry.gainPerBird),
+                unit = "g/day",
+                toleranceText = "Expected growth at weight-age ${String.format("%.1f", weightAge)} d",
+                statusTag = "curve"
+            )
         }
 
         // 2. FEED & STOCK ON HAND
@@ -271,8 +278,35 @@ fun OutputScreen(
                 }
             }
 
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    BigMetric(
+                        label = "Drinker Line Pressure",
+                        value = String.format("%.0f", entry.drinkerPressureIn),
+                        unit = "in",
+                        toleranceText = "Nipple column height for the day",
+                        statusTag = "age"
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    BigMetric(
+                        label = "Line Flow",
+                        value = String.format("%.0f", entry.drinkerFlowLHrLine),
+                        unit = "L/hr·line",
+                        toleranceText = "Across ${farm.drinkerLines} drinker lines",
+                        statusTag = "flow"
+                    )
+                }
+            }
+            BigMetric(
+                label = "Water range on a ±3°C day",
+                value = "${String.format("%.0f", entry.waterLowL)}–${String.format("%.0f", entry.waterHighL)}",
+                unit = "L",
+                toleranceText = "Cooler day → less; hotter day → more (plan tank fills for the high end)",
+                statusTag = "range"
+            )
             Text(
-                text = "Drinker Line Check: Ensure 12 birds/nipple, flush lines before midday heat.",
+                text = "Drinker Line Check: ~12 birds/nipple, flush lines before midday heat.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -364,6 +398,24 @@ fun OutputScreen(
                     )
                 }
             }
+        }
+
+        // 4b. AIR QUALITY & MEASURED READINGS (always shown; "— no reading" when blank)
+        OutputCard(title = "Air Quality & Measured Readings") {
+            MeasuredMetric("CO₂", entry.measuredCo2, "ppm", 0, "Ideal < 3000 · Max ${entry.co2Max.toInt()} ppm")
+            MeasuredMetric("NH₃ ammonia", entry.measuredNh3, "ppm", 0, "Ideal < 10 · Max ${entry.nh3Max.toInt()} ppm")
+            MeasuredMetric("O₂ oxygen", entry.measuredO2, "%", 1, "Ideal 20.9 · Min 19.5 %")
+            MeasuredMetric("Static pressure", entry.measuredPressure, "Pa", 0, "Ideal 25 · Band 15–35 Pa")
+            MeasuredMetric("Air speed (measured)", entry.measuredAirspeed, "ft/min", 0, "Target ${entry.airspeed.toInt()} ft/min for the day")
+            MeasuredMetric("Light intensity", entry.luxPerFt2, "lux", 0, "Brooding 30–40 · Grow-out 5–10 lux")
+            Divider(modifier = Modifier.padding(vertical = 4.dp))
+            MeasuredMetric("Water temperature", entry.waterTempC, "°C", 1, "Ideal < 25 °C (cool water lifts intake)")
+            MeasuredMetric("Water pH", entry.waterPh, "", 1, "Ideal 6.0 – 6.8")
+            MeasuredMetric("Feed moisture", entry.feedMoisturePct, "%", 1, "Safe < 13 % (mould risk above)")
+            MeasuredMetric("Diesel cans used", entry.dieselCansUsed.takeIf { it > 0 }, "cans", 1, "≈ ${farm.dieselCanL.toInt()} L per can")
+            Divider(modifier = Modifier.padding(vertical = 4.dp))
+            MeasuredMetric("Pad wet time", entry.padWetMin, "min", 0, "Evaporative cooling on-cycle")
+            MeasuredMetric("Pad dry time", entry.padDryMin, "min", 0, "Off-cycle so litter stays dry")
         }
 
         // 5. SPACE & DENSITY
@@ -476,6 +528,34 @@ fun OutputCard(
             )
             content()
         }
+    }
+}
+
+@Composable
+fun MeasuredMetric(
+    label: String,
+    measured: Double?,
+    unit: String,
+    decimals: Int,
+    idealText: String
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = measured?.let { String.format("%.${decimals}f", it) + if (unit.isNotBlank()) " $unit" else "" } ?: "— no reading",
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace),
+                color = if (measured == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+            )
+        }
+        Text(
+            text = idealText,
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        )
     }
 }
 
