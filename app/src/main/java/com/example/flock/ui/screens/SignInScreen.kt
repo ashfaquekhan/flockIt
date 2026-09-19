@@ -109,8 +109,10 @@ fun SignInScreen(
             Spacer(Modifier.height(24.dp))
 
             Text(
-                text = "Sign in with Google to keep each farm in your own Google Sheet and share it " +
-                        "with your team by email. Offline mode keeps everything on this phone only.",
+                text = "Tap “Use offline” to start now — everything works on this phone and you can " +
+                        "switch on Google sync later.\n\nGoogle sign-in needs a one-time Google Cloud " +
+                        "setup for this app (OAuth client for package com.ashfaque.flockit). Until that " +
+                        "is registered, Google sign-in returns error 10 — use offline mode.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center

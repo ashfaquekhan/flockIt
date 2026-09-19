@@ -44,7 +44,14 @@ import com.example.flock.data.FarmEntity
 import com.example.flock.data.FeedStockSummary
 import com.example.flock.data.FlockEntity
 import com.example.flock.engine.PhysiologicalEngine
+import com.example.flock.ui.components.FanVisualizer
+import com.example.flock.ui.components.HouseFloorPlan
 import com.example.ui.theme.BrandEmerald
+import com.example.ui.theme.DomainFeed
+import com.example.ui.theme.DomainInsight
+import com.example.ui.theme.DomainMed
+import com.example.ui.theme.DomainVent
+import com.example.ui.theme.DomainWater
 import com.example.ui.theme.StatusCrit
 import com.example.ui.theme.StatusCritWash
 import com.example.ui.theme.StatusProjected
@@ -125,6 +132,38 @@ fun OutputScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+
+        // 0b. IDEAL TARGETS — pure reference from the breed/industry curves, shown for
+        // every parameter whether or not you have measured/computed data for it today.
+        OutputCard(title = "Ideal targets today (Day $day)") {
+            val idBw = PhysiologicalEngine.bwFromDay(day.toDouble(), breed)
+            val idFeed = PhysiologicalEngine.dailyFeedFromDay(max(1.0, day.toDouble()), breed)
+            val idSetTemp = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_TEMP_BY_BW, idBw)
+            val idRh = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_RH_BY_AGE, day.toDouble())
+            val idAir = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_AIRSPEED_BY_AGE, day.toDouble())
+            val idCfm = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MINVENT_BY_AGE, day.toDouble())
+            val idLight = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_LIGHT_BY_AGE, day.toDouble())
+            val idMaxMort = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MAXMORT_BY_AGE, day.toDouble())
+            val idDrinkPress = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_WATERLINE_BY_AGE, day.toDouble())
+            val idDrinkHt = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_DRINKERHT_BY_AGE, day.toDouble())
+            val idFcr = PhysiologicalEngine.stdFcrFromDay(day.toDouble(), breed)
+            IdealRow("Ideal body weight", "${String.format("%.0f", idBw)} g")
+            IdealRow("Feed / bird", "${String.format("%.0f", idFeed)} g/day")
+            IdealRow("Water : feed", "1.8 : 1 (+6%/°C >20°C)")
+            IdealRow("Std FCR", String.format("%.2f", idFcr))
+            IdealRow("cFCR", "(2 − avg kg) × 0.25 + FCR")
+            IdealRow("Uniformity CV%", "< 10 %")
+            IdealRow("Set-point temp", "${String.format("%.1f", idSetTemp)} °C")
+            IdealRow("Humidity", "${String.format("%.0f", idRh)} % (50–70)")
+            IdealRow("Air speed (bird)", "${idAir.toInt()} ft/min")
+            IdealRow("Min-vent air", "${String.format("%.2f", idCfm)} cfm/bird")
+            IdealRow("Static pressure", "25 Pa (15–35)")
+            IdealRow("CO₂ / NH₃ / O₂", "≤3000 / ≤10 ppm / 20.9 %")
+            IdealRow("Light", "${idLight.toInt()} h/day")
+            IdealRow("Drinker pressure / height", "${idDrinkPress.toInt()} / ${idDrinkHt.toInt()} in")
+            IdealRow("Water pH / temp", "6.0–6.8 / < 25 °C")
+            IdealRow("Max mortality (cum)", "≤ ${String.format("%.1f", idMaxMort)} %")
         }
 
         // PROJECTED NOTICE TAG
@@ -358,6 +397,9 @@ fun OutputScreen(
             )
         }
 
+        // Animated fan bank (spins only the running fans)
+        FanVisualizer(entry = entry, farm = farm)
+
         // 4. VENTILATION & CYCLING
         OutputCard(title = "Ventilation & Climate Targets") {
             BigMetric(
@@ -463,6 +505,9 @@ fun OutputScreen(
             MeasuredMetric("Pad wet time", entry.padWetMin, "min", 0, "Evaporative cooling on-cycle")
             MeasuredMetric("Pad dry time", entry.padDryMin, "min", 0, "Off-cycle so litter stays dry")
         }
+
+        // Brooding barricade / floor-plan diagram
+        HouseFloorPlan(entry = entry, farm = farm)
 
         // 5. SPACE & DENSITY
         OutputCard(title = "Space & Density") {
@@ -602,10 +647,44 @@ fun GistTile(item: GistItem, modifier: Modifier = Modifier) {
 }
 
 @Composable
+fun IdealRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
+        )
+    }
+}
+
+fun accentForTitle(title: String): Color = when {
+    title.contains("glance", true) -> BrandEmerald
+    title.contains("Growth", true) -> BrandEmerald
+    title.contains("Feed", true) || title.contains("Stock", true) -> DomainFeed
+    title.contains("Water", true) -> DomainWater
+    title.contains("Vent", true) || title.contains("Climate", true) || title.contains("Air", true) -> DomainVent
+    title.contains("Space", true) || title.contains("Density", true) -> DomainInsight
+    title.contains("Health", true) || title.contains("Mortality", true) -> DomainMed
+    title.contains("Ideal", true) -> DomainInsight
+    title.contains("Performance", true) || title.contains("Curve", true) -> DomainVent
+    else -> BrandEmerald
+}
+
+@Composable
 fun OutputCard(
     title: String,
     content: @Composable () -> Unit
 ) {
+    val accent = accentForTitle(title)
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(12.dp),
@@ -616,10 +695,18 @@ fun OutputCard(
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 4.dp, height = 18.dp)
+                        .background(accent, RoundedCornerShape(2.dp))
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = accent)
+                )
+            }
             content()
         }
     }

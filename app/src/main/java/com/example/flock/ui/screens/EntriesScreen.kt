@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -181,6 +183,7 @@ fun EntriesScreen(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(scrollState)
+            .imePadding()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -707,7 +710,8 @@ fun EntriesScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        // Extra bottom room so the Save button clears the keyboard / bottom nav bar
+        Spacer(modifier = Modifier.height(96.dp).navigationBarsPadding())
     }
 }
 
