@@ -49,6 +49,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.flock.data.FlockEntity
+import com.example.flock.ui.components.DatePickerField
+import com.example.flock.ui.components.TimePickerField
 import com.example.ui.theme.BrandEmerald
 import com.example.ui.theme.StatusWarn
 import java.time.LocalDate
@@ -276,8 +278,8 @@ private fun CreateFlockDialog(
                     FilterChip(selected = breed == "Cobb500", onClick = { breed = "Cobb500" }, label = { Text("Cobb 500") })
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(startDate, { startDate = it }, label = { Text("Placement date") }, singleLine = true, modifier = Modifier.weight(1.4f))
-                    OutlinedTextField(startTime, { startTime = it }, label = { Text("Time (HH:mm)") }, singleLine = true, modifier = Modifier.weight(1f))
+                    DatePickerField(label = "Placement date", valueIso = startDate, onPick = { startDate = it }, modifier = Modifier.weight(1.4f))
+                    TimePickerField(label = "Time", valueHHmm = startTime, onPick = { startTime = it }, modifier = Modifier.weight(1f))
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(placed, { placed = it.filter { c -> c.isDigit() } }, label = { Text("Birds placed") }, singleLine = true, modifier = Modifier.weight(1f))

@@ -203,8 +203,27 @@ class SheetsSyncManager(
 
             Result.success(spreadsheetId)
         } catch (e: Exception) {
-            Log.e(TAG, "Error creating spreadsheet", e)
-            Result.failure(e)
+            // Cloud create failed — never lose the farm: persist it locally so it survives
+            // re-login and shows in the Farms list. It syncs to Drive later (P6).
+            Log.e(TAG, "Cloud create failed; saving farm locally", e)
+            val localId = "farm_" + System.currentTimeMillis()
+            db.farmRegistryDao().insertOrUpdate(
+                FarmRegistryEntity(
+                    spreadsheetId = localId,
+                    farmName = farmName,
+                    role = "Owner",
+                    isOwner = true,
+                    ownerEmail = authManager.authState.value.email,
+                    lastOpened = System.currentTimeMillis(),
+                    syncStatus = "offline",
+                    lastSyncedAt = System.currentTimeMillis()
+                )
+            )
+            db.farmDao().insertOrUpdateFarm(farm.copy(spreadsheetId = localId, farmName = farmName))
+            db.configDao().insertOrUpdateConfig(config.copy(spreadsheetId = localId))
+            db.feedTypeDao().insertFeedTypes(feedTypes.map { it.copy(spreadsheetId = localId) })
+            if (initialFlock != null) db.flockDao().insertFlock(initialFlock.copy(spreadsheetId = localId))
+            Result.success(localId)
         }
     }
 

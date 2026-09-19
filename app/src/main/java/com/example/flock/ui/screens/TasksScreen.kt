@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.background
 import com.example.flock.data.TaskEntity
+import com.example.flock.ui.components.TimePickerField
 import com.example.ui.theme.BrandEmerald
 import com.example.ui.theme.DomainFeed
 import com.example.ui.theme.DomainTask
@@ -161,11 +162,10 @@ fun TasksScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        OutlinedTextField(
-                            value = taskTime,
-                            onValueChange = { taskTime = it },
-                            label = { Text("Time (HH:mm)") },
-                            singleLine = true,
+                        TimePickerField(
+                            label = "Time",
+                            valueHHmm = taskTime,
+                            onPick = { taskTime = it },
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("task_time_input")
