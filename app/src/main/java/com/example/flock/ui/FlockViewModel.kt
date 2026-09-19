@@ -417,9 +417,9 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
             val newFarm = FarmEntity(farmName = name)
             val newConfig = ConfigEntity()
             val newFeedTypes = listOf(
-                FeedTypeEntity(code = "B1", name = "Pre-starter", bagKg = 50.0, phase = "starter", sortOrder = 1),
-                FeedTypeEntity(code = "B2", name = "Starter", bagKg = 50.0, phase = "grower", sortOrder = 2),
-                FeedTypeEntity(code = "B3", name = "Finisher", bagKg = 50.0, phase = "finisher", sortOrder = 3)
+                FeedTypeEntity(code = "B1", name = "Pre-starter", bagKg = 60.0, phase = "starter", sortOrder = 1),
+                FeedTypeEntity(code = "B2", name = "Starter", bagKg = 60.0, phase = "grower", sortOrder = 2),
+                FeedTypeEntity(code = "B3", name = "Finisher", bagKg = 60.0, phase = "finisher", sortOrder = 3)
             )
 
             val res = syncManager.createFarmSpreadsheet(
@@ -490,6 +490,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         targetWeight: Double = 3200.0,
         harvestAge: Int = 42,
         season: String = "Monsoon",
+        startTime: String = "08:00",
         onComplete: (String) -> Unit = {}
     ) {
         viewModelScope.launch {
@@ -502,7 +503,8 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
                 receptionMort = receptionMort,
                 targetWeight = targetWeight,
                 harvestAge = harvestAge,
-                season = season
+                season = season,
+                startTime = startTime
             )
             openFlock(id)
             _userMessage.value = "Batch $name created"

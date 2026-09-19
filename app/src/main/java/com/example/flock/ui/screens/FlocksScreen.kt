@@ -55,7 +55,7 @@ fun FlocksScreen(
     flocks: List<FlockEntity>,
     onBack: () -> Unit,
     onOpenFlock: (String) -> Unit,
-    onCreateFlock: (String, String, String, Int, Double, Int, String) -> Unit,
+    onCreateFlock: (name: String, breed: String, startDate: String, startTime: String, placed: Int, transitMort: Int, harvestAge: Int) -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -137,8 +137,8 @@ fun FlocksScreen(
         CreateFlockDialog(
             defaultName = "Batch #${ordered.size + 1}",
             onDismiss = { showCreate = false },
-            onCreate = { name, breed, startDate, placed, harvestAge ->
-                onCreateFlock(name, breed, startDate, placed, 3200.0, harvestAge, "Monsoon")
+            onCreate = { name, breed, startDate, startTime, placed, transitMort, harvestAge ->
+                onCreateFlock(name, breed, startDate, startTime, placed, transitMort, harvestAge)
                 showCreate = false
             }
         )
@@ -209,12 +209,14 @@ private fun FlockCard(
 private fun CreateFlockDialog(
     defaultName: String,
     onDismiss: () -> Unit,
-    onCreate: (name: String, breed: String, startDate: String, placed: Int, harvestAge: Int) -> Unit
+    onCreate: (name: String, breed: String, startDate: String, startTime: String, placed: Int, transitMort: Int, harvestAge: Int) -> Unit
 ) {
     var name by remember { mutableStateOf(defaultName) }
     var breed by remember { mutableStateOf("Ross308") }
     var startDate by remember { mutableStateOf(LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)) }
+    var startTime by remember { mutableStateOf("08:00") }
     var placed by remember { mutableStateOf("") }
+    var transitMort by remember { mutableStateOf("0") }
     var harvest by remember { mutableStateOf("42") }
 
     AlertDialog(
@@ -227,16 +229,23 @@ private fun CreateFlockDialog(
                     FilterChip(selected = breed == "Ross308", onClick = { breed = "Ross308" }, label = { Text("Ross 308") })
                     FilterChip(selected = breed == "Cobb500", onClick = { breed = "Cobb500" }, label = { Text("Cobb 500") })
                 }
-                OutlinedTextField(startDate, { startDate = it }, label = { Text("Start date (YYYY-MM-DD)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(placed, { placed = it.filter { c -> c.isDigit() } }, label = { Text("Birds placed") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(startDate, { startDate = it }, label = { Text("Placement date") }, singleLine = true, modifier = Modifier.weight(1.4f))
+                    OutlinedTextField(startTime, { startTime = it }, label = { Text("Time (HH:mm)") }, singleLine = true, modifier = Modifier.weight(1f))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(placed, { placed = it.filter { c -> c.isDigit() } }, label = { Text("Birds placed") }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(transitMort, { transitMort = it.filter { c -> c.isDigit() } }, label = { Text("Transit mortality") }, singleLine = true, modifier = Modifier.weight(1f))
+                }
                 OutlinedTextField(harvest, { harvest = it.filter { c -> c.isDigit() } }, label = { Text("Harvest age (days)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
             TextButton(onClick = {
                 val p = placed.toIntOrNull() ?: 0
+                val tm = transitMort.toIntOrNull() ?: 0
                 val h = harvest.toIntOrNull() ?: 42
-                if (name.isNotBlank() && p > 0) onCreate(name.trim(), breed, startDate.trim(), p, h)
+                if (name.isNotBlank() && p > 0) onCreate(name.trim(), breed, startDate.trim(), startTime.trim(), p, tm, h)
             }) { Text("Create") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }

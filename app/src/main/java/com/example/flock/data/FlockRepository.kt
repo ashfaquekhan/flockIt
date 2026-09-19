@@ -123,7 +123,8 @@ class FlockRepository(
         receptionMort: Int = 0,
         targetWeight: Double = 3200.0,
         harvestAge: Int = 42,
-        season: String = "Monsoon"
+        season: String = "Monsoon",
+        startTime: String = "08:00"
     ): String = withContext(Dispatchers.IO) {
         val farm = getFarm(spreadsheetId)
         val tz = TimeZone.getTimeZone(farm.timeZone)
@@ -137,6 +138,7 @@ class FlockRepository(
             name = name.ifBlank { "Batch #1" },
             breed = breed.ifBlank { "Ross308" },
             startDate = startDate.ifBlank { sdfDate.format(Date()) },
+            startTime = startTime.ifBlank { "08:00" },
             birdsPlaced = birdsPlaced,
             receptionMort = receptionMort,
             targetWeight = targetWeight,

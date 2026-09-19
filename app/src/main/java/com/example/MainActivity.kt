@@ -1,6 +1,7 @@
 package com.example
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -9,8 +10,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -19,6 +18,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.flock.data.FarmRegistryEntity
 import com.example.flock.ui.AppScreen
@@ -60,10 +60,11 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
     var showSettings by remember { mutableStateOf(false) }
     var sharingFarm by remember { mutableStateOf<FarmRegistryEntity?>(null) }
 
-    val snackbarHostState = remember { SnackbarHostState() }
+    // Non-blocking Toast (a Scaffold Snackbar sat over the bottom buttons and blocked taps).
+    val context = LocalContext.current
     LaunchedEffect(userMessage) {
         userMessage?.let {
-            snackbarHostState.showSnackbar(it)
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
             viewModel.clearUserMessage()
         }
     }
@@ -84,8 +85,7 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
     }
 
     Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        modifier = Modifier.fillMaxSize()
     ) { padding ->
         val content = Modifier.fillMaxSize().padding(padding)
         if (!authState.isSignedIn) {
@@ -113,8 +113,8 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
                     flocks = flocks,
                     onBack = { viewModel.goToFarms() },
                     onOpenFlock = { viewModel.openFlock(it) },
-                    onCreateFlock = { name, breed, startDate, placed, targetWeight, harvestAge, season ->
-                        viewModel.createFlock(name, breed, startDate, placed, 0, targetWeight, harvestAge, season)
+                    onCreateFlock = { name, breed, startDate, startTime, placed, transitMort, harvestAge ->
+                        viewModel.createFlock(name, breed, startDate, placed, transitMort, 3200.0, harvestAge, "Monsoon", startTime)
                     },
                     onOpenSettings = { showSettings = true },
                     modifier = content

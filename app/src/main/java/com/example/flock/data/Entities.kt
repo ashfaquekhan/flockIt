@@ -54,7 +54,12 @@ data class FarmEntity(
     val drinkTankL: Double = 2000.0,
     val drinkFillMin: Double = 20.0,
     val feederLines: Int = 4,
-    val feederLineBags: Int = 3,
+    val feederLineBags: Int = 3,       // bags one feeder line holds before it moves
+    val feederMoveMin: Double = 15.0,  // minutes a feeder line takes to run/move one pass
+    val pansPerFeederLine: Int = 60,   // number of pans per feeder line
+    val nippleLineHoldL: Double = 20.0,// litres one nipple/drinker line holds when filled
+    val padCount: Int = 2,             // number of evaporative cooling pads
+    val dieselCanL: Double = 20.0,     // approx litres one diesel can holds
     val feedBagKg: Double = 60.0,
     val baseFeedings: Int = 4,
     val feedDistDay: Int = 40,
@@ -98,7 +103,7 @@ data class FeedTypeEntity(
     val spreadsheetId: String = "local_default",
     val code: String, // "B1", "B2", "B3", "B4", etc.
     val name: String, // "Pre-starter", "Starter", "Finisher", etc.
-    val bagKg: Double = 50.0,
+    val bagKg: Double = 60.0,
     val phase: String = "starter", // "starter", "grower", "finisher", "custom"
     val sortOrder: Int = 1
 )
@@ -113,8 +118,9 @@ data class FlockEntity(
     val name: String,
     val breed: String = "Ross308",
     val startDate: String, // ISO 8601 YYYY-MM-DD
+    val startTime: String = "08:00", // HH:mm the chicks were placed
     val birdsPlaced: Int,
-    val receptionMort: Int = 0,
+    val receptionMort: Int = 0, // transit / reception mortality at placement
     val targetWeight: Double = 3200.0,
     val harvestAge: Int = 42,
     val season: String = "Monsoon",
