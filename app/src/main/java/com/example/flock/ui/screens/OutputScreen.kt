@@ -115,6 +115,11 @@ fun OutputScreen(
                 GistItem("Density", entry.densityKgM2?.let { String.format("%.1f", it) } ?: "—", "≤ ${farm.densityCapDefault}"),
                 GistItem("Set °C", String.format("%.1f", entry.tempIdeal), "${String.format("%.1f", entry.tempMin)}–${String.format("%.1f", entry.tempMax)}")
             )
+            GistRow(
+                GistItem("Live birds", "${entry.liveBirds}", "of ${flock?.birdsPlaced ?: 0}"),
+                GistItem("Feed/bird", "${String.format("%.0f", entry.feedPerBird)}g", "per day"),
+                GistItem("Livability", entry.livability?.let { String.format("%.1f", it) + "%" } ?: "—", "alive")
+            )
             Text(
                 "Detailed, topic-wise breakdown below ↓",
                 style = MaterialTheme.typography.bodySmall,
@@ -227,9 +232,20 @@ fun OutputScreen(
                 label = "Feed Bags to Give Today",
                 value = "${entry.feedBags}",
                 unit = "bags (${farm.feedBagKg.toInt()}kg ea)",
-                toleranceText = "Total: ${String.format("%.1f", entry.totalFeedKg)} kg · Per bird: ${String.format("%.1f", entry.feedPerBird)} g/day",
+                toleranceText = "Total: ${String.format("%.1f", entry.totalFeedKg)} kg on ${entry.liveBirds} live birds" +
+                        (if (day == 0) " · Day 0 = pre-load the Day-1 starter ration" else ""),
                 statusTag = "daily target",
                 isHero = true
+            )
+
+            val idealFeedPerBird = PhysiologicalEngine.dailyFeedFromDay(max(1.0, weightAge), breed)
+            BigMetric(
+                label = "Feed / bird",
+                value = String.format("%.0f", entry.feedPerBird),
+                unit = "g/day",
+                toleranceText = "Ideal (breed curve): ${String.format("%.0f", idealFeedPerBird)} g/day" +
+                        (if (entry.feedPerBird < idealFeedPerBird * 0.98) " · trimmed for heat" else ""),
+                statusTag = if (entry.feedPerBird < idealFeedPerBird * 0.9) "heat-reduced" else "on curve"
             )
 
             Divider(modifier = Modifier.padding(vertical = 4.dp))
@@ -485,6 +501,14 @@ fun OutputScreen(
 
         // 6. FLOCK HEALTH & MORTALITY
         OutputCard(title = "Flock Health & Mortality") {
+            BigMetric(
+                label = "Balance Birds (alive in shed)",
+                value = "${entry.liveBirds}",
+                unit = "birds",
+                toleranceText = "Placed ${flock?.birdsPlaced ?: 0} − reception − mortality (${entry.cumMort}) − lifted − culls",
+                statusTag = "live",
+                isHero = true
+            )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(modifier = Modifier.weight(1f)) {
                     val cMort = entry.cumMortPct
