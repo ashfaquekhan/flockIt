@@ -265,16 +265,33 @@ fun OutputScreen(
         }
 
         // 2. FEED & STOCK ON HAND
-        OutputCard(title = "Feed & Stock on Hand") {
-            // Big number: Feed bags to give today
+        OutputCard(title = "Feed plan & stock") {
+            val reqToDateBags = dailyRows.filter { it.dayNumber <= day }.sumOf { it.feedBags }
+            val fullCycleBags = dailyRows.sumOf { it.feedBags }
+            val consumedBags = feedStockSummary.totalUsedBags
+            val onHandBags = feedStockSummary.totalOnHandBags
+
+            // REQUIRED (the plan) — what to give today
             BigMetric(
-                label = "Feed Bags to Give Today",
+                label = "Feed bags required today",
                 value = "${entry.feedBags}",
                 unit = "bags (${farm.feedBagKg.toInt()}kg ea)",
-                toleranceText = "Total: ${String.format("%.1f", entry.totalFeedKg)} kg on ${entry.liveBirds} live birds" +
+                toleranceText = "Ideal plan · ${String.format("%.1f", entry.totalFeedKg)} kg on ${entry.liveBirds} live birds" +
                         (if (day == 0) " · Day 0 = pre-load the Day-1 starter ration" else ""),
-                statusTag = "daily target",
+                statusTag = "required",
                 isHero = true
+            )
+
+            // Plan (required) vs actual (consumed) vs stock (on-hand)
+            GistRow(
+                GistItem("Req. to date", "$reqToDateBags", "Day 0→$day, ideal"),
+                GistItem("Consumed", "${consumedBags.toInt()}", "you logged"),
+                GistItem("On-hand", "${onHandBags.toInt()}", "in store")
+            )
+            Text(
+                "Whole-cycle plan ≈ $fullCycleBags bags (${String.format("%,.0f", fullCycleBags * farm.feedBagKg)} kg). " +
+                        "“Required” is the ideal plan from the curve; “consumed” is what you logged as used.",
+                style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
             )
 
             val idealFeedPerBird = PhysiologicalEngine.dailyFeedFromDay(max(1.0, weightAge), breed)
