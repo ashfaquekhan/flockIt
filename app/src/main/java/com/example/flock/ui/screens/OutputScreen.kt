@@ -90,7 +90,37 @@ fun OutputScreen(
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // (Alert banner removed — no alerts/reminders for now.)
+        // 0. GIST — quick glance summary, then detailed topic cards below
+        OutputCard(title = "Today at a glance · Day $day") {
+            val gAvg = entry.avgWeight ?: PhysiologicalEngine.bwFromDay(weightAge, breed)
+            val gIdeal = PhysiologicalEngine.bwFromDay(day.toDouble(), breed)
+            val gStdFcr = PhysiologicalEngine.stdFcrFromDay(day.toDouble(), breed)
+            GistRow(
+                GistItem("Avg wt", "${String.format("%.0f", gAvg)}g", "ideal ${String.format("%.0f", gIdeal)}"),
+                GistItem("Wt-age", "${String.format("%.1f", weightAge)}d", "cal. day $day"),
+                GistItem("CV%", entry.cv?.let { String.format("%.1f", it) } ?: "—", "<10 ideal")
+            )
+            GistRow(
+                GistItem("FCR", entry.fcr?.let { String.format("%.2f", it) } ?: "—", "std ${String.format("%.2f", gStdFcr)}"),
+                GistItem("cFCR", entry.cFcr?.let { String.format("%.2f", it) } ?: "—", "→ 2kg"),
+                GistItem("Cum mort", entry.cumMortPct?.let { String.format("%.1f", it) + "%" } ?: "—", "≤ ${String.format("%.1f", entry.maxMortPct)}%")
+            )
+            GistRow(
+                GistItem("Feed", "${entry.feedBags} bags", "${String.format("%.0f", entry.totalFeedKg)} kg"),
+                GistItem("Water", "${String.format("%.0f", entry.totalWaterL)}L", "${entry.tankRefills} fills"),
+                GistItem("Stock", String.format("%.0f", feedStockSummary.totalOnHandBags), "bags left")
+            )
+            GistRow(
+                GistItem("Fans", "${entry.fansToRun}/${farm.fanCount}", entry.cycleText),
+                GistItem("Density", entry.densityKgM2?.let { String.format("%.1f", it) } ?: "—", "≤ ${farm.densityCapDefault}"),
+                GistItem("Set °C", String.format("%.1f", entry.tempIdeal), "${String.format("%.1f", entry.tempMin)}–${String.format("%.1f", entry.tempMax)}")
+            )
+            Text(
+                "Detailed, topic-wise breakdown below ↓",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
 
         // PROJECTED NOTICE TAG
         if (isProjected) {
@@ -504,6 +534,46 @@ fun OutputScreen(
         }
 
         Spacer(modifier = Modifier.height(32.dp))
+    }
+}
+
+data class GistItem(val label: String, val value: String, val sub: String)
+
+@Composable
+fun GistRow(a: GistItem, b: GistItem, c: GistItem) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        GistTile(a, Modifier.weight(1f))
+        GistTile(b, Modifier.weight(1f))
+        GistTile(c, Modifier.weight(1f))
+    }
+}
+
+@Composable
+fun GistTile(item: GistItem, modifier: Modifier = Modifier) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(10.dp),
+        modifier = modifier
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp)) {
+            Text(
+                item.label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+            Text(
+                item.value,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace),
+                maxLines = 1
+            )
+            Text(
+                item.sub,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+        }
     }
 }
 
