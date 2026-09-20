@@ -131,3 +131,18 @@ data class ActivityLogItem(
     val action: String,
     val details: String
 )
+
+// ---- appDataFolder index (per-user, cross-device control plane) ----
+@JsonClass(generateAdapter = true)
+data class FlockItIndex(
+    val version: Int = 1,
+    val farms: List<IndexFarm> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class IndexFarm(
+    val spreadsheetId: String,
+    val name: String,
+    val role: String = "owner",   // "owner" | "editor" | "viewer"
+    val deleted: Boolean = false
+)

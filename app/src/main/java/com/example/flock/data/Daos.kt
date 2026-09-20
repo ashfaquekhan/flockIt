@@ -33,6 +33,9 @@ interface FarmRegistryDao {
     @Query("SELECT * FROM farm_registry WHERE spreadsheetId = :spreadsheetId LIMIT 1")
     suspend fun getFarm(spreadsheetId: String): FarmRegistryEntity?
 
+    @Query("SELECT * FROM farm_registry WHERE deleted = 0")
+    suspend fun getAllFarmsOnce(): List<FarmRegistryEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdate(farm: FarmRegistryEntity)
 

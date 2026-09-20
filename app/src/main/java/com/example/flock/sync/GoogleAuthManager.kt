@@ -34,7 +34,10 @@ class GoogleAuthManager(private val context: Context) {
 
     private val driveFileScope = Scope("https://www.googleapis.com/auth/drive.file")
     private val sheetsScope = Scope("https://www.googleapis.com/auth/spreadsheets")
-    private val oauthScopeString = "oauth2:https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file"
+    // Hidden per-user, per-app folder that syncs across devices — holds the FlockIt index (control plane).
+    private val appDataScope = Scope("https://www.googleapis.com/auth/drive.appdata")
+    private val oauthScopeString =
+        "oauth2:https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata"
 
     private fun loadInitialState(): AuthUserState {
         val lastAccount = GoogleSignIn.getLastSignedInAccount(context)
@@ -73,7 +76,7 @@ class GoogleAuthManager(private val context: Context) {
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
             .requestProfile()
-            .requestScopes(driveFileScope, sheetsScope)
+            .requestScopes(driveFileScope, sheetsScope, appDataScope)
             .build()
         return GoogleSignIn.getClient(context, gso)
     }

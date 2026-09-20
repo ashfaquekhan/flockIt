@@ -140,15 +140,33 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         // Returning signed-in users: refresh the Drive/Sheets token and pull their farms
-        // (owned + shared) from Google Drive so they reappear after logout / on a new device.
+        // (owned + accepted-shared) from the appDataFolder index so they reappear after
+        // logout / on a new device.
         if (authState.value.isSignedIn && !authState.value.isDemoMode) {
             viewModelScope.launch {
                 authManager.refreshAccessToken()
                 _syncStatus.value = "syncing"
-                val res = syncManager.syncUserFarmsFromDrive()
-                _syncStatus.value = if (res.isSuccess) "synced" else "offline"
+                val ok = runCatching { runFullSync() }.isSuccess
+                _syncStatus.value = if (ok) "synced" else "offline"
             }
         }
+    }
+
+    /**
+     * Full cloud sync used on login / return / new-device:
+     *   1) index (control plane, appDataFolder) — fast, cross-device, includes accepted shared farms
+     *   2) legacy Drive discovery — catches owned sheets not yet in the index (migration)
+     *   3) backfill the index from whatever is now known locally
+     * Returns the count of farms newly imported into the local registry.
+     */
+    private suspend fun runFullSync(): Int {
+        var imported = 0
+        val fromIndex = syncManager.syncFromIndex()
+        if (fromIndex.isSuccess) imported += fromIndex.getOrNull() ?: 0
+        val legacy = syncManager.syncUserFarmsFromDrive()
+        if (legacy.isSuccess) imported += legacy.getOrNull() ?: 0
+        syncManager.backfillIndexFromRegistry()
+        return imported
     }
 
     // No auto-selection of a farm/flock: the user opens one explicitly from the lists.
@@ -574,6 +592,9 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     fun restoreFarm(spreadsheetId: String) {
         viewModelScope.launch {
             repository.restoreFarm(spreadsheetId)
+            if (!authState.value.isDemoMode) {
+                runCatching { syncManager.setFarmDeletedInIndex(spreadsheetId, false) }
+            }
             _userMessage.value = "Farm restored"
         }
     }
@@ -581,6 +602,9 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     fun purgeFarm(spreadsheetId: String) {
         viewModelScope.launch {
             repository.deleteFarm(spreadsheetId)
+            if (!authState.value.isDemoMode) {
+                runCatching { syncManager.removeFarmFromIndex(spreadsheetId) }
+            }
             _userMessage.value = "Farm permanently deleted"
         }
     }
@@ -602,6 +626,9 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteFarm(spreadsheetId: String) {
         viewModelScope.launch {
             repository.softDeleteFarm(spreadsheetId)
+            if (!authState.value.isDemoMode) {
+                runCatching { syncManager.setFarmDeletedInIndex(spreadsheetId, true) }
+            }
             if (_selectedSpreadsheetId.value == spreadsheetId) {
                 _selectedSpreadsheetId.value = "local_default"
                 _activeFlock.value = null
@@ -636,6 +663,9 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
                 syncManager.pullFarmData(spreadsheetId)
                 _syncStatus.value = "synced"
                 val finalName = repository.getFarmFlow(spreadsheetId).firstOrNull()?.farmName ?: farmName
+                // Record the accepted shared farm in this user's index so it loads
+                // automatically on all their devices from now on.
+                syncManager.addFarmToIndex(spreadsheetId, finalName, role = "editor")
                 _userMessage.value = "Opened shared farm: $finalName"
             } else {
                 _syncStatus.value = "offline"
@@ -670,10 +700,10 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             authManager.refreshAccessToken()
             _syncStatus.value = "syncing"
-            val syncResult = syncManager.syncUserFarmsFromDrive()
-            _syncStatus.value = if (syncResult.isSuccess) "synced" else "offline"
-            if (syncResult.isSuccess && (syncResult.getOrNull() ?: 0) > 0) {
-                _userMessage.value = "Loaded ${syncResult.getOrNull()} farm(s) from your Google Drive"
+            val imported = runCatching { runFullSync() }.getOrDefault(0)
+            _syncStatus.value = "synced"
+            if (imported > 0) {
+                _userMessage.value = "Loaded $imported farm(s) from your FlockIt account"
             }
         }
     }

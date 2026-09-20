@@ -9,8 +9,11 @@ import com.example.flock.data.FeedTypeEntity
 import com.example.flock.data.FlockDatabase
 import com.example.flock.data.FlockEntity
 import com.example.flock.data.TaskEntity
+import com.squareup.moshi.Moshi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -21,6 +24,175 @@ class SheetsSyncManager(
 ) {
     private val TAG = "SheetsSyncManager"
     private val FLOCKIT_FOLDER_NAME = "FlockIt Farms"
+    private val INDEX_FILE_NAME = "flockit-index.json"
+
+    private val moshi = Moshi.Builder().build()
+    private val indexAdapter = moshi.adapter(FlockItIndex::class.java)
+
+    // ---------------------------------------------------------------------
+    // Control plane: per-user index in the hidden appDataFolder (syncs across
+    // the user's devices). This is the source of truth for "which farms this
+    // user has" — it does NOT depend on Drive files.list/drive.file, so a
+    // fresh device login loads owned AND accepted-shared farms correctly.
+    // ---------------------------------------------------------------------
+
+    /** Finds the appDataFolder index file id, or null if it doesn't exist yet. */
+    private suspend fun findIndexFileId(authHeader: String): String? {
+        return try {
+            val res = GoogleApiClientProvider.driveApi.listFiles(
+                authHeader = authHeader,
+                query = "name='$INDEX_FILE_NAME' and trashed=false",
+                fields = "files(id, name)",
+                spaces = "appDataFolder"
+            )
+            if (res.isSuccessful) res.body()?.files?.firstOrNull()?.id else null
+        } catch (e: Exception) {
+            Log.w(TAG, "findIndexFileId failed: ${e.message}")
+            null
+        }
+    }
+
+    /** Reads the FlockIt index from appDataFolder. Returns an empty index if none exists, null on error. */
+    suspend fun loadIndex(): FlockItIndex? = withContext(Dispatchers.IO) {
+        val authHeader = authManager.getAuthHeader() ?: return@withContext null
+        try {
+            val fileId = findIndexFileId(authHeader) ?: return@withContext FlockItIndex()
+            val res = GoogleApiClientProvider.driveApi.downloadFileContent(authHeader, fileId)
+            if (res.isSuccessful) {
+                val json = res.body()?.string().orEmpty()
+                if (json.isBlank()) FlockItIndex() else (indexAdapter.fromJson(json) ?: FlockItIndex())
+            } else {
+                Log.w(TAG, "loadIndex download failed: ${res.code()}")
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "loadIndex failed", e)
+            null
+        }
+    }
+
+    /** Writes the FlockIt index to appDataFolder, creating the file if needed. */
+    suspend fun saveIndex(index: FlockItIndex): Boolean = withContext(Dispatchers.IO) {
+        val authHeader = authManager.getAuthHeader() ?: return@withContext false
+        try {
+            val json = indexAdapter.toJson(index)
+            val body = json.toRequestBody("application/json".toMediaType())
+            var fileId = findIndexFileId(authHeader)
+            if (fileId == null) {
+                val createRes = GoogleApiClientProvider.driveApi.createFile(
+                    authHeader = authHeader,
+                    request = CreateDriveFileRequest(
+                        name = INDEX_FILE_NAME,
+                        mimeType = "application/json",
+                        parents = listOf("appDataFolder")
+                    )
+                )
+                if (!createRes.isSuccessful || createRes.body() == null) {
+                    Log.w(TAG, "saveIndex create failed: ${createRes.code()}")
+                    return@withContext false
+                }
+                fileId = createRes.body()!!.id
+            }
+            val up = GoogleApiClientProvider.driveApi.uploadFileContent(authHeader, fileId, body = body)
+            up.isSuccessful
+        } catch (e: Exception) {
+            Log.e(TAG, "saveIndex failed", e)
+            false
+        }
+    }
+
+    /** Adds/updates a farm in the index (deduped by spreadsheetId). */
+    suspend fun addFarmToIndex(spreadsheetId: String, name: String, role: String = "owner"): Boolean {
+        val current = loadIndex() ?: FlockItIndex()
+        val others = current.farms.filterNot { it.spreadsheetId == spreadsheetId }
+        val updated = current.copy(farms = others + IndexFarm(spreadsheetId, name, role, deleted = false))
+        return saveIndex(updated)
+    }
+
+    /** Soft-deletes (deleted=true) or restores a farm in the index. */
+    suspend fun setFarmDeletedInIndex(spreadsheetId: String, deleted: Boolean): Boolean {
+        val current = loadIndex() ?: return false
+        val updated = current.copy(farms = current.farms.map {
+            if (it.spreadsheetId == spreadsheetId) it.copy(deleted = deleted) else it
+        })
+        return saveIndex(updated)
+    }
+
+    /** Permanently removes a farm from the index (does NOT delete the owner's spreadsheet). */
+    suspend fun removeFarmFromIndex(spreadsheetId: String): Boolean {
+        val current = loadIndex() ?: return false
+        val updated = current.copy(farms = current.farms.filterNot { it.spreadsheetId == spreadsheetId })
+        return saveIndex(updated)
+    }
+
+    /**
+     * Migration helper: ensures every farm already known locally (from a legacy
+     * files.list discovery or a pre-index build) is present in the appDataFolder
+     * index, in a single read+write. Safe to call repeatedly.
+     */
+    suspend fun backfillIndexFromRegistry(): Boolean = withContext(Dispatchers.IO) {
+        authManager.getAuthHeader() ?: return@withContext false
+        try {
+            val local = db.farmRegistryDao().getAllFarmsOnce()
+            if (local.isEmpty()) return@withContext true
+            val current = loadIndex() ?: FlockItIndex()
+            val known = current.farms.associateBy { it.spreadsheetId }.toMutableMap()
+            var changed = false
+            for (reg in local) {
+                if (!known.containsKey(reg.spreadsheetId)) {
+                    known[reg.spreadsheetId] = IndexFarm(
+                        spreadsheetId = reg.spreadsheetId,
+                        name = reg.farmName,
+                        role = if (reg.isOwner) "owner" else "editor",
+                        deleted = false
+                    )
+                    changed = true
+                }
+            }
+            if (changed) saveIndex(current.copy(farms = known.values.toList())) else true
+        } catch (e: Exception) {
+            Log.w(TAG, "backfillIndexFromRegistry failed: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Cross-device discovery: read the index from appDataFolder and materialise each
+     * non-deleted farm into the local Room registry, pulling its data via the
+     * spreadsheets scope. Fast and correct on a fresh device because appDataFolder
+     * syncs per-user (unlike files.list under drive.file).
+     */
+    suspend fun syncFromIndex(): Result<Int> = withContext(Dispatchers.IO) {
+        authManager.getAuthHeader() ?: return@withContext Result.failure(Exception("Not authenticated"))
+        val index = loadIndex() ?: return@withContext Result.failure(Exception("Could not read FlockIt index"))
+        var imported = 0
+        val userEmail = authManager.authState.value.email
+        for (f in index.farms) {
+            if (f.deleted) continue
+            try {
+                val existing = db.farmRegistryDao().getFarm(f.spreadsheetId)
+                if (existing == null) {
+                    db.farmRegistryDao().insertOrUpdate(
+                        FarmRegistryEntity(
+                            spreadsheetId = f.spreadsheetId,
+                            farmName = f.name,
+                            role = if (f.role == "owner") "Owner" else "Editor",
+                            isOwner = f.role == "owner",
+                            ownerEmail = userEmail,
+                            lastOpened = System.currentTimeMillis(),
+                            syncStatus = "synced",
+                            lastSyncedAt = System.currentTimeMillis()
+                        )
+                    )
+                    imported++
+                }
+                pullFarmData(f.spreadsheetId)
+            } catch (e: Exception) {
+                Log.w(TAG, "syncFromIndex: failed for ${f.spreadsheetId}: ${e.message}")
+            }
+        }
+        Result.success(imported)
+    }
 
     /**
      * Finds or creates a dedicated "FlockIt Farms" folder in Google Drive.
@@ -259,6 +431,10 @@ class SheetsSyncManager(
             if (initialFlock != null) {
                 db.flockDao().insertFlock(initialFlock.copy(spreadsheetId = spreadsheetId))
             }
+
+            // Control plane: record this farm in the appDataFolder index so it loads
+            // on every device this user signs into.
+            addFarmToIndex(spreadsheetId, farmName, role = "owner")
 
             Result.success(spreadsheetId)
         } catch (e: Exception) {
