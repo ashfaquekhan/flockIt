@@ -42,6 +42,27 @@ data class LockStatus(
     val lockReason: String = ""
 )
 
+/** Top-level screen the user is on once signed in. */
+enum class AppScreen { FARMS, FLOCKS, DASHBOARD }
+
+/** All editable daily inputs, passed as one object from the Entry screen. */
+data class DailyInputs(
+    val w1: Double?, val n1: Int?, val w2: Double?, val n2: Int?, val w3: Double?, val n3: Int?,
+    val w4: Double?, val n4: Int?, val w5: Double?, val n5: Int?,
+    val mortality: Int, val feedBagsUsed: Double, val feedUsedType: String,
+    val birdsLifted: Int, val weightLifted: Double, val lameSeparated: Int,
+    val feedRecB1: Double, val feedTypeB1: String,
+    val feedRecB2: Double, val feedTypeB2: String,
+    val feedRecB3: Double, val feedTypeB3: String,
+    val broodingLength: Double?, val actualFans: Int?, val actualFanTime: Int?,
+    val outTemp: Double?, val outRH: Double?, val notes: String,
+    val waterTempC: Double? = null, val waterPh: Double? = null, val feedMoisturePct: Double? = null,
+    val measuredCo2: Double? = null, val measuredNh3: Double? = null, val measuredO2: Double? = null,
+    val measuredPressure: Double? = null, val measuredAirspeed: Double? = null,
+    val padWetMin: Double? = null, val padDryMin: Double? = null, val luxPerFt2: Double? = null,
+    val dieselCansUsed: Double = 0.0
+)
+
 class FlockViewModel(application: Application) : AndroidViewModel(application) {
 
     private val database = FlockDatabase.getDatabase(application, viewModelScope)
@@ -110,26 +131,85 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     private val _userMessage = MutableStateFlow<String?>(null)
     val userMessage: StateFlow<String?> = _userMessage.asStateFlow()
 
+    // Top-level navigation: the user lands on FARMS after sign-in and drills in explicitly.
+    private val _appScreen = MutableStateFlow(AppScreen.FARMS)
+    val appScreen: StateFlow<AppScreen> = _appScreen.asStateFlow()
+
     private var farmDataJob: Job? = null
     private var flockDataJob: Job? = null
 
     init {
-        // Observe farms list to auto-select the first farm if none selected
+        // The repository is the workspace gateway; give it the cloud layer so every
+        // mutation persists to Google Sheets and surfaces a verified sync note.
+        repository.sync = syncManager
         viewModelScope.launch {
-            farms.collect { farmList ->
-                if (farmList.isNotEmpty() && (_selectedSpreadsheetId.value == "local_default" || farmList.none { it.spreadsheetId == _selectedSpreadsheetId.value })) {
-                    val target = farmList.first()
-                    selectFarm(target.spreadsheetId)
-                } else if (farmList.isEmpty()) {
-                    loadFarmData("local_default")
-                }
+            repository.syncNote.collect { note -> if (note != null) _userMessage.value = note }
+        }
+
+        // Returning signed-in users: refresh the Drive/Sheets token and pull their farms
+        // (owned + accepted-shared) from the appDataFolder index so they reappear after
+        // logout / on a new device.
+        if (authState.value.isSignedIn && !authState.value.isDemoMode) {
+            viewModelScope.launch {
+                authManager.refreshAccessToken()
+                _syncStatus.value = "syncing"
+                val ok = runCatching { runFullSync() }.isSuccess
+                _syncStatus.value = if (ok) "synced" else "offline"
             }
         }
+    }
+
+    /**
+     * Full cloud sync used on login / return / new-device:
+     *   1) index (control plane, appDataFolder) — fast, cross-device, includes accepted shared farms
+     *   2) legacy Drive discovery — catches owned sheets not yet in the index (migration)
+     *   3) backfill the index from whatever is now known locally
+     * Returns the count of farms newly imported into the local registry.
+     */
+    private suspend fun runFullSync(): Int {
+        var imported = 0
+        val fromIndex = syncManager.syncFromIndex()
+        if (fromIndex.isSuccess) imported += fromIndex.getOrNull() ?: 0
+        val legacy = syncManager.syncUserFarmsFromDrive()
+        if (legacy.isSuccess) imported += legacy.getOrNull() ?: 0
+        syncManager.backfillIndexFromRegistry()
+        return imported
+    }
+
+    // No auto-selection of a farm/flock: the user opens one explicitly from the lists.
+
+    /** Google Sign-In client for the real OAuth flow (launched from the Activity). */
+    fun googleSignInClient() = authManager.getGoogleSignInClient()
+
+    fun goToFarms() {
+        _appScreen.value = AppScreen.FARMS
+    }
+
+    fun openFarm(spreadsheetId: String) {
+        selectFarm(spreadsheetId)
+        _appScreen.value = AppScreen.FLOCKS
+    }
+
+    fun goToFlocks() {
+        _appScreen.value = AppScreen.FLOCKS
+    }
+
+    fun openFlock(flockId: String) {
+        selectFlock(flockId)
+        _appScreen.value = AppScreen.DASHBOARD
     }
 
     fun selectFarm(spreadsheetId: String) {
         _selectedSpreadsheetId.value = spreadsheetId
         loadFarmData(spreadsheetId)
+        // Pull the latest workspace from the sheet (collaborators' changes, cross-device).
+        if (authState.value.isSignedIn && !authState.value.isDemoMode && spreadsheetId != "local_default") {
+            viewModelScope.launch {
+                _syncStatus.value = "syncing"
+                repository.refreshFromCloud(spreadsheetId)
+                _syncStatus.value = "synced"
+            }
+        }
     }
 
     private fun loadFarmData(spreadsheetId: String) {
@@ -297,26 +377,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun saveDayEntry(
-        w1: Double?, n1: Int?,
-        w2: Double?, n2: Int?,
-        w3: Double?, n3: Int?,
-        w4: Double?, n4: Int?,
-        w5: Double?, n5: Int?,
-        mortality: Int,
-        feedBagsUsed: Double,
-        feedUsedType: String,
-        birdsLifted: Int,
-        weightLifted: Double,
-        lameSeparated: Int,
-        feedRecB1: Double, feedTypeB1: String,
-        feedRecB2: Double, feedTypeB2: String,
-        feedRecB3: Double, feedTypeB3: String,
-        broodingLength: Double?,
-        actualFans: Int?,
-        actualFanTime: Int?,
-        outTemp: Double?,
-        outRH: Double?,
-        notes: String,
+        inputs: DailyInputs,
         onSuccess: () -> Unit = {},
         onError: (String) -> Unit = {}
     ) {
@@ -332,29 +393,41 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
                 userEmail = userEmail
             ) { existing ->
                 existing.copy(
-                    w1 = w1, n1 = n1,
-                    w2 = w2, n2 = n2,
-                    w3 = w3, n3 = n3,
-                    w4 = w4, n4 = n4,
-                    w5 = w5, n5 = n5,
-                    mortality = mortality,
-                    feedBagsUsed = if (day == 0) 0.0 else feedBagsUsed,
-                    feedUsedType = feedUsedType,
-                    birdsLifted = birdsLifted,
-                    weightLifted = weightLifted,
-                    lameSeparated = lameSeparated,
-                    feedRecB1 = feedRecB1,
-                    feedTypeB1 = feedTypeB1,
-                    feedRecB2 = feedRecB2,
-                    feedTypeB2 = feedTypeB2,
-                    feedRecB3 = feedRecB3,
-                    feedTypeB3 = feedTypeB3,
-                    broodingLength = broodingLength,
-                    actualFans = actualFans,
-                    actualFanTime = actualFanTime,
-                    outTemp = outTemp,
-                    outRH = outRH,
-                    notes = notes
+                    w1 = inputs.w1, n1 = inputs.n1,
+                    w2 = inputs.w2, n2 = inputs.n2,
+                    w3 = inputs.w3, n3 = inputs.n3,
+                    w4 = inputs.w4, n4 = inputs.n4,
+                    w5 = inputs.w5, n5 = inputs.n5,
+                    mortality = inputs.mortality,
+                    feedBagsUsed = if (day == 0) 0.0 else inputs.feedBagsUsed,
+                    feedUsedType = inputs.feedUsedType,
+                    birdsLifted = inputs.birdsLifted,
+                    weightLifted = inputs.weightLifted,
+                    lameSeparated = inputs.lameSeparated,
+                    feedRecB1 = inputs.feedRecB1,
+                    feedTypeB1 = inputs.feedTypeB1,
+                    feedRecB2 = inputs.feedRecB2,
+                    feedTypeB2 = inputs.feedTypeB2,
+                    feedRecB3 = inputs.feedRecB3,
+                    feedTypeB3 = inputs.feedTypeB3,
+                    broodingLength = inputs.broodingLength,
+                    actualFans = inputs.actualFans,
+                    actualFanTime = inputs.actualFanTime,
+                    outTemp = inputs.outTemp,
+                    outRH = inputs.outRH,
+                    notes = inputs.notes,
+                    waterTempC = inputs.waterTempC,
+                    waterPh = inputs.waterPh,
+                    feedMoisturePct = inputs.feedMoisturePct,
+                    measuredCo2 = inputs.measuredCo2,
+                    measuredNh3 = inputs.measuredNh3,
+                    measuredO2 = inputs.measuredO2,
+                    measuredPressure = inputs.measuredPressure,
+                    measuredAirspeed = inputs.measuredAirspeed,
+                    padWetMin = inputs.padWetMin,
+                    padDryMin = inputs.padDryMin,
+                    luxPerFt2 = inputs.luxPerFt2,
+                    dieselCansUsed = inputs.dieselCansUsed
                 )
             }
 
@@ -401,9 +474,9 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
             val newFarm = FarmEntity(farmName = name)
             val newConfig = ConfigEntity()
             val newFeedTypes = listOf(
-                FeedTypeEntity(code = "B1", name = "Pre-starter", bagKg = 50.0, phase = "starter", sortOrder = 1),
-                FeedTypeEntity(code = "B2", name = "Starter", bagKg = 50.0, phase = "grower", sortOrder = 2),
-                FeedTypeEntity(code = "B3", name = "Finisher", bagKg = 50.0, phase = "finisher", sortOrder = 3)
+                FeedTypeEntity(code = "B1", name = "Pre-starter", bagKg = 60.0, phase = "starter", sortOrder = 1),
+                FeedTypeEntity(code = "B2", name = "Starter", bagKg = 60.0, phase = "grower", sortOrder = 2),
+                FeedTypeEntity(code = "B3", name = "Finisher", bagKg = 60.0, phase = "finisher", sortOrder = 3)
             )
 
             val res = syncManager.createFarmSpreadsheet(
@@ -415,7 +488,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
 
             res.onSuccess { newId ->
                 _syncStatus.value = "synced"
-                selectFarm(newId)
+                openFarm(newId)
                 _userMessage.value = "Farm created: $name"
                 onComplete(newId)
             }.onFailure { err ->
@@ -474,6 +547,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         targetWeight: Double = 3200.0,
         harvestAge: Int = 42,
         season: String = "Monsoon",
+        startTime: String = "08:00",
         onComplete: (String) -> Unit = {}
     ) {
         viewModelScope.launch {
@@ -486,9 +560,10 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
                 receptionMort = receptionMort,
                 targetWeight = targetWeight,
                 harvestAge = harvestAge,
-                season = season
+                season = season,
+                startTime = startTime
             )
-            selectFlock(id)
+            openFlock(id)
             _userMessage.value = "Batch $name created"
             onComplete(id)
         }
@@ -501,10 +576,80 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // Recycle bin flows
+    val deletedFarms: StateFlow<List<FarmRegistryEntity>> = repository.deletedFarms
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val deletedFlocks: StateFlow<List<FlockEntity>> = repository.deletedFlocks
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     fun deleteFlock(flockId: String) {
         viewModelScope.launch {
-            repository.deleteFlock(_selectedSpreadsheetId.value, flockId)
-            _userMessage.value = "Flock deleted"
+            repository.softDeleteFlock(_selectedSpreadsheetId.value, flockId)
+            if (_activeFlock.value?.flockId == flockId) _activeFlock.value = null
+            _userMessage.value = "Flock moved to Recycle Bin"
+        }
+    }
+
+    fun restoreFlock(spreadsheetId: String, flockId: String) {
+        viewModelScope.launch {
+            repository.restoreFlock(spreadsheetId, flockId)
+            _userMessage.value = "Flock restored"
+        }
+    }
+
+    fun purgeFlock(spreadsheetId: String, flockId: String) {
+        viewModelScope.launch {
+            repository.deleteFlock(spreadsheetId, flockId)
+            _userMessage.value = "Flock permanently deleted"
+        }
+    }
+
+    fun restoreFarm(spreadsheetId: String) {
+        viewModelScope.launch {
+            repository.restoreFarm(spreadsheetId)
+            if (!authState.value.isDemoMode) {
+                runCatching { syncManager.setFarmDeletedInIndex(spreadsheetId, false) }
+            }
+            _userMessage.value = "Farm restored"
+        }
+    }
+
+    fun purgeFarm(spreadsheetId: String) {
+        viewModelScope.launch {
+            repository.deleteFarm(spreadsheetId)
+            if (!authState.value.isDemoMode) {
+                runCatching { syncManager.removeFarmFromIndex(spreadsheetId) }
+            }
+            _userMessage.value = "Farm permanently deleted"
+        }
+    }
+
+    fun toggleFlockLock(flockId: String, locked: Boolean) {
+        viewModelScope.launch {
+            repository.setFlockLocked(_selectedSpreadsheetId.value, flockId, locked)
+            _userMessage.value = if (locked) "Flock locked (read-only)" else "Flock unlocked"
+        }
+    }
+
+    fun toggleFarmLock(spreadsheetId: String, locked: Boolean) {
+        viewModelScope.launch {
+            repository.setFarmLocked(spreadsheetId, locked)
+            _userMessage.value = if (locked) "Farm locked (read-only)" else "Farm unlocked"
+        }
+    }
+
+    fun deleteFarm(spreadsheetId: String) {
+        viewModelScope.launch {
+            repository.softDeleteFarm(spreadsheetId)
+            if (!authState.value.isDemoMode) {
+                runCatching { syncManager.setFarmDeletedInIndex(spreadsheetId, true) }
+            }
+            if (_selectedSpreadsheetId.value == spreadsheetId) {
+                _selectedSpreadsheetId.value = "local_default"
+                _activeFlock.value = null
+            }
+            _appScreen.value = AppScreen.FARMS
+            _userMessage.value = "Farm moved to Recycle Bin"
         }
     }
 
@@ -512,30 +657,42 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         _userMessage.value = null
     }
 
-    fun openSharedFarm(spreadsheetId: String) {
+    fun openSharedFarm(input: String) {
+        val spreadsheetId = extractSpreadsheetId(input)
+        if (spreadsheetId.isBlank()) return
         viewModelScope.launch {
             _syncStatus.value = "syncing"
             val validation = syncManager.validateCompatibility(spreadsheetId)
-            val isSuccess = validation.isSuccess && (validation.getOrNull() == true)
-            val farmName = "Farm " + spreadsheetId.take(8)
+            if (validation.isFailure || validation.getOrNull() != true) {
+                _syncStatus.value = "offline"
+                _userMessage.value =
+                    "Couldn't open shared farm: ${validation.exceptionOrNull()?.message ?: "not a FlockIt farm, or no access"}"
+                return@launch
+            }
 
+            // Register a placeholder, then pull the real name + flocks + daily data.
             repository.registerFarm(
                 spreadsheetId = spreadsheetId,
-                farmName = farmName,
+                farmName = "Farm " + spreadsheetId.take(6),
                 role = "Editor",
                 isOwner = false
             )
-            selectFarm(spreadsheetId)
+            repository.refreshFromCloud(spreadsheetId)
+            val finalName = repository.getFarmFlow(spreadsheetId).firstOrNull()?.farmName ?: ("Farm " + spreadsheetId.take(6))
 
-            if (isSuccess) {
-                _syncStatus.value = "synced"
-                _userMessage.value = "Opened shared farm: $farmName"
-            } else {
-                _syncStatus.value = "offline"
-                val errorMsg = validation.exceptionOrNull()?.message ?: "Local cache only"
-                _userMessage.value = "Opened farm ($errorMsg)"
-            }
+            // Record the accepted shared farm in this user's index so it loads
+            // automatically on all their devices from now on.
+            syncManager.addFarmToIndex(spreadsheetId, finalName, role = "editor")
+            _syncStatus.value = "synced"
+            _userMessage.value = "Opened shared farm: $finalName"
+            openFarm(spreadsheetId)
         }
+    }
+
+    /** Accepts a raw spreadsheet ID or a full Google Sheets URL and returns the ID. */
+    private fun extractSpreadsheetId(input: String): String {
+        val t = input.trim()
+        return Regex("/d/([a-zA-Z0-9-_]+)").find(t)?.groupValues?.get(1) ?: t
     }
 
     fun signInWithGoogle() {
@@ -552,16 +709,34 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
 
     fun handleSignInResult(account: GoogleSignInAccount) {
         authManager.handleSignInResult(account)
+        _appScreen.value = AppScreen.FARMS
         _userMessage.value = "Signed in as ${account.email}"
+        viewModelScope.launch {
+            authManager.refreshAccessToken()
+            _syncStatus.value = "syncing"
+            val imported = runCatching { runFullSync() }.getOrDefault(0)
+            _syncStatus.value = "synced"
+            if (imported > 0) {
+                _userMessage.value = "Loaded $imported farm(s) from your FlockIt account"
+            }
+        }
+    }
+
+    fun handleSignInError(message: String) {
+        _userMessage.value = message
     }
 
     fun enableDemoMode() {
         authManager.enableDemoMode()
-        _userMessage.value = "Switched to Offline Demo Mode"
+        _appScreen.value = AppScreen.FARMS
+        _userMessage.value = "Using offline mode (local only)"
     }
 
     fun signOut() {
         authManager.signOut {
+            _selectedSpreadsheetId.value = "local_default"
+            _activeFlock.value = null
+            _appScreen.value = AppScreen.FARMS
             _userMessage.value = "Signed out"
         }
     }

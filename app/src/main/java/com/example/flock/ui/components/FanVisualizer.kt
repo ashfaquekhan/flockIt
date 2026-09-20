@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,7 +21,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Air
+import androidx.compose.material.icons.filled.Toys
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -30,8 +31,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -41,6 +44,7 @@ import com.example.flock.data.DailyDataEntity
 import com.example.flock.data.FarmEntity
 import com.example.ui.theme.DomainVent
 import com.example.ui.theme.DomainVentWash
+import kotlin.math.min
 
 @Composable
 fun FanVisualizer(
@@ -170,13 +174,10 @@ private fun FanItem(
             contentAlignment = Alignment.Center,
             modifier = Modifier.padding(2.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.Air,
-                contentDescription = "Fan $fanNumber",
-                modifier = Modifier
-                    .size(24.dp)
-                    .rotate(rotation),
-                tint = if (isRunning) DomainVent else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            FanBlades(
+                rotation = rotation,
+                color = if (isRunning) DomainVent else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.size(26.dp)
             )
             Text(
                 text = "$fanNumber",
@@ -188,6 +189,27 @@ private fun FanItem(
                 ),
                 modifier = Modifier.align(Alignment.BottomEnd)
             )
+        }
+    }
+}
+
+@Composable
+private fun FanBlades(rotation: Float, color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val r = min(cx, cy)
+        drawCircle(color = color, radius = r * 0.16f, center = Offset(cx, cy))
+        for (i in 0..2) {
+            rotate(degrees = rotation + i * 120f, pivot = Offset(cx, cy)) {
+                val p = Path().apply {
+                    moveTo(cx, cy)
+                    quadraticBezierTo(cx + r * 0.55f, cy - r * 0.35f, cx + r * 0.12f, cy - r * 0.95f)
+                    quadraticBezierTo(cx - r * 0.20f, cy - r * 0.50f, cx, cy)
+                    close()
+                }
+                drawPath(p, color)
+            }
         }
     }
 }

@@ -102,3 +102,47 @@ data class PermissionResponse(
     val type: String? = null,
     val emailAddress: String? = null
 )
+
+@JsonClass(generateAdapter = true)
+data class AppendValuesResponse(
+    val spreadsheetId: String? = null,
+    val tableRange: String? = null,
+    val updates: UpdateValuesSummary? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class UpdateValuesSummary(
+    val updatedRange: String? = null,
+    val updatedRows: Int? = null,
+    val updatedColumns: Int? = null,
+    val updatedCells: Int? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class CreateDriveFileRequest(
+    val name: String,
+    val mimeType: String,
+    val parents: List<String>? = null
+)
+
+data class ActivityLogItem(
+    val timestamp: String,
+    val userEmail: String,
+    val action: String,
+    val details: String
+)
+
+// ---- appDataFolder index (per-user, cross-device control plane) ----
+@JsonClass(generateAdapter = true)
+data class FlockItIndex(
+    val version: Int = 1,
+    val farms: List<IndexFarm> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class IndexFarm(
+    val spreadsheetId: String,
+    val name: String,
+    val role: String = "owner",   // "owner" | "editor" | "viewer"
+    val deleted: Boolean = false
+)

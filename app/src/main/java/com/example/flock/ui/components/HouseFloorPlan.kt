@@ -89,128 +89,59 @@ fun HouseFloorPlan(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Visual House Blueprint
-            val fractionOccupied = if (fullHouse || usableLength <= 0) 1.0f else (barricadeFt / usableLength).toFloat().coerceIn(0.1f, 1.0f)
-            val broodFraction = (0.28f).coerceAtMost(fractionOccupied)
+            // Simple layout: the barricaded part (where the chicks are kept) vs the rest of the house.
+            val fractionOccupied = if (fullHouse || usableLength <= 0) 1.0f
+                else (barricadeFt / usableLength).toFloat().coerceIn(0.08f, 1.0f)
 
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(84.dp)
+                    .height(96.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .border(1.5.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp))
+                    .border(2.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Canvas(modifier = Modifier.matchParentSize()) {
                     val w = size.width
                     val h = size.height
-
-                    // Grid lines across house
-                    val gridCols = 10
-                    for (i in 1..gridCols) {
-                        val x = w * (i.toFloat() / gridCols)
-                        drawLine(
-                            color = Color(0x18000000),
-                            start = Offset(x, 0f),
-                            end = Offset(x, h),
-                            strokeWidth = 1f
-                        )
-                    }
-
-                    // 1. Occupied Zone (Emerald wash)
-                    val occupiedWidth = w * fractionOccupied
+                    // Chick zone (barricaded) — emerald wash
                     drawRect(
                         color = Color(0x331B7A63),
                         topLeft = Offset(0f, 0f),
-                        size = Size(occupiedWidth, h)
+                        size = Size(w * fractionOccupied, h)
                     )
-
-                    // 2. Brood Area (Day 0 zone, subtle Amber)
-                    val broodWidth = w * broodFraction
-                    drawRect(
-                        color = Color(0x25B26A1E),
-                        topLeft = Offset(0f, 0f),
-                        size = Size(broodWidth, h)
-                    )
-
-                    // Brood divider line (dashed)
-                    drawLine(
-                        color = DomainFeed,
-                        start = Offset(broodWidth, 0f),
-                        end = Offset(broodWidth, h),
-                        strokeWidth = 2.5f,
-                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f))
-                    )
-
-                    // Barricade boundary line
+                    // Barricade line = where to stop the chicks
                     if (!fullHouse) {
                         drawLine(
                             color = BrandEmerald,
-                            start = Offset(occupiedWidth, 0f),
-                            end = Offset(occupiedWidth, h),
-                            strokeWidth = 4.5f
+                            start = Offset(w * fractionOccupied, 0f),
+                            end = Offset(w * fractionOccupied, h),
+                            strokeWidth = 7f
                         )
                     }
                 }
-
-                // Labels overlaid on top of canvas
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
+                Text(
+                    text = "🐣 Chicks kept here",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = BrandEmerald),
+                    modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp)
+                )
+                if (!fullHouse) {
                     Text(
-                        text = "Brood (D0)",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = DomainFeed
-                        )
-                    )
-                    Text(
-                        text = if (fullHouse) "Full House" else "$barricadeFt ft Barricade",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = BrandEmerald
-                        )
+                        text = "expand as they grow →",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant),
+                        modifier = Modifier.align(Alignment.CenterEnd).padding(end = 10.dp)
                     )
                 }
             }
 
-            // Ticks along bottom
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "0 ft",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                )
-                Text(
-                    text = "${(usableLength / 2).toInt()} ft",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                )
-                Text(
-                    text = "${usableLength.toInt()} ft (gross)",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                )
-            }
+            Text(
+                text = if (fullHouse)
+                    "Full house open — ${usableLength.toInt()} × ${farm.usableWidthFt.toInt()} ft"
+                else
+                    "Barricade at $barricadeFt ft of ${usableLength.toInt()} ft (house ${farm.usableWidthFt.toInt()} ft wide). Move it back as the birds grow.",
+                style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
+                modifier = Modifier.padding(top = 6.dp)
+            )
 
             Spacer(modifier = Modifier.height(12.dp))
             Divider(color = MaterialTheme.colorScheme.outlineVariant)

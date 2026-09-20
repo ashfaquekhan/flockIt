@@ -63,12 +63,12 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun FlockItTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    // Minimalist dark theme is the app's identity — force dark regardless of system setting.
+    darkTheme: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = DarkColorScheme,
         typography = Typography,
         content = content
     )

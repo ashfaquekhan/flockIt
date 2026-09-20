@@ -44,7 +44,14 @@ import com.example.flock.data.FarmEntity
 import com.example.flock.data.FeedStockSummary
 import com.example.flock.data.FlockEntity
 import com.example.flock.engine.PhysiologicalEngine
+import com.example.flock.ui.components.FanVisualizer
+import com.example.flock.ui.components.HouseFloorPlan
 import com.example.ui.theme.BrandEmerald
+import com.example.ui.theme.DomainFeed
+import com.example.ui.theme.DomainInsight
+import com.example.ui.theme.DomainMed
+import com.example.ui.theme.DomainVent
+import com.example.ui.theme.DomainWater
 import com.example.ui.theme.StatusCrit
 import com.example.ui.theme.StatusCritWash
 import com.example.ui.theme.StatusProjected
@@ -90,34 +97,73 @@ fun OutputScreen(
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // ALERT LINE at top if AlertLevel != "ok"
-        if (entry.alertLevel != "ok" && !entry.alertText.isNullOrBlank()) {
-            val isCrit = entry.alertLevel == "crit"
-            Surface(
-                color = if (isCrit) StatusCritWash else StatusWarnWash,
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("output_alert_banner")
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = if (isCrit) Icons.Default.Warning else Icons.Default.Info,
-                        contentDescription = "Alert",
-                        tint = if (isCrit) StatusCrit else StatusWarn,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = entry.alertText,
-                        color = if (isCrit) StatusCrit else StatusWarn,
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                }
-            }
+        // 0. GIST — quick glance summary, then detailed topic cards below
+        OutputCard(title = "Today at a glance · Day $day") {
+            val gAvg = entry.avgWeight ?: PhysiologicalEngine.bwFromDay(weightAge, breed)
+            val gIdeal = PhysiologicalEngine.bwFromDay(day.toDouble(), breed)
+            val gStdFcr = PhysiologicalEngine.stdFcrFromDay(day.toDouble(), breed)
+            GistRow(
+                GistItem("Avg wt", "${String.format("%.0f", gAvg)}g", "ideal ${String.format("%.0f", gIdeal)}"),
+                GistItem("Wt-age", "${String.format("%.1f", weightAge)}d", "cal. day $day"),
+                GistItem("CV%", entry.cv?.let { String.format("%.1f", it) } ?: "—", "<10 ideal")
+            )
+            GistRow(
+                GistItem("FCR", entry.fcr?.let { String.format("%.2f", it) } ?: "—", "std ${String.format("%.2f", gStdFcr)}"),
+                GistItem("cFCR", entry.cFcr?.let { String.format("%.2f", it) } ?: "—", "→ 2kg"),
+                GistItem("Cum mort", entry.cumMortPct?.let { String.format("%.1f", it) + "%" } ?: "—", "≤ ${String.format("%.1f", entry.maxMortPct)}%")
+            )
+            GistRow(
+                GistItem("Feed", "${entry.feedBags} bags", "${String.format("%.0f", entry.totalFeedKg)} kg"),
+                GistItem("Water", "${String.format("%.0f", entry.totalWaterL)}L", "${entry.tankRefills} fills"),
+                GistItem("Stock", String.format("%.0f", feedStockSummary.totalOnHandBags), "bags left")
+            )
+            GistRow(
+                GistItem("Fans", "${entry.fansToRun}/${farm.fanCount}", entry.cycleText),
+                GistItem("Density", entry.densityKgM2?.let { String.format("%.1f", it) } ?: "—", "≤ ${farm.densityCapDefault}"),
+                GistItem("Set °C", String.format("%.1f", entry.tempIdeal), "${String.format("%.1f", entry.tempMin)}–${String.format("%.1f", entry.tempMax)}")
+            )
+            GistRow(
+                GistItem("Live birds", "${entry.liveBirds}", "of ${flock?.birdsPlaced ?: 0}"),
+                GistItem("Feed/bird", "${String.format("%.0f", entry.feedPerBird)}g", "per day"),
+                GistItem("Livability", entry.livability?.let { String.format("%.1f", it) + "%" } ?: "—", "alive")
+            )
+            Text(
+                "Detailed, topic-wise breakdown below ↓",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        // 0b. IDEAL TARGETS — pure reference from the breed/industry curves, shown for
+        // every parameter whether or not you have measured/computed data for it today.
+        OutputCard(title = "Ideal targets today (Day $day)") {
+            val idBw = PhysiologicalEngine.bwFromDay(day.toDouble(), breed)
+            val idFeed = PhysiologicalEngine.dailyFeedFromDay(max(1.0, day.toDouble()), breed)
+            val idSetTemp = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_TEMP_BY_BW, idBw)
+            val idRh = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_RH_BY_AGE, day.toDouble())
+            val idAir = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_AIRSPEED_BY_AGE, day.toDouble())
+            val idCfm = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MINVENT_BY_AGE, day.toDouble())
+            val idLight = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_LIGHT_BY_AGE, day.toDouble())
+            val idMaxMort = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MAXMORT_BY_AGE, day.toDouble())
+            val idDrinkPress = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_WATERLINE_BY_AGE, day.toDouble())
+            val idDrinkHt = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_DRINKERHT_BY_AGE, day.toDouble())
+            val idFcr = PhysiologicalEngine.stdFcrFromDay(day.toDouble(), breed)
+            IdealRow("Ideal body weight", "${String.format("%.0f", idBw)} g")
+            IdealRow("Feed / bird", "${String.format("%.0f", idFeed)} g/day")
+            IdealRow("Water : feed", "1.8 : 1 (+6%/°C >20°C)")
+            IdealRow("Std FCR", String.format("%.2f", idFcr))
+            IdealRow("cFCR", "(2 − avg kg) × 0.25 + FCR")
+            IdealRow("Uniformity CV%", "< 10 %")
+            IdealRow("Set-point temp", "${String.format("%.1f", idSetTemp)} °C")
+            IdealRow("Humidity", "${String.format("%.0f", idRh)} % (50–70)")
+            IdealRow("Air speed (bird)", "${idAir.toInt()} ft/min")
+            IdealRow("Min-vent air", "${String.format("%.2f", idCfm)} cfm/bird")
+            IdealRow("Static pressure", "25 Pa (15–35)")
+            IdealRow("CO₂ / NH₃ / O₂", "≤3000 / ≤10 ppm / 20.9 %")
+            IdealRow("Light", "${idLight.toInt()} h/day")
+            IdealRow("Drinker pressure / height", "${idDrinkPress.toInt()} / ${idDrinkHt.toInt()} in")
+            IdealRow("Water pH / temp", "6.0–6.8 / < 25 °C")
+            IdealRow("Max mortality (cum)", "≤ ${String.format("%.1f", idMaxMort)} %")
         }
 
         // PROJECTED NOTICE TAG
@@ -209,18 +255,53 @@ fun OutputScreen(
                     )
                 }
             }
+            BigMetric(
+                label = "Approx. Daily Gain / bird",
+                value = String.format("%.0f", entry.gainPerBird),
+                unit = "g/day",
+                toleranceText = "Expected growth at weight-age ${String.format("%.1f", weightAge)} d",
+                statusTag = "curve"
+            )
         }
 
         // 2. FEED & STOCK ON HAND
-        OutputCard(title = "Feed & Stock on Hand") {
-            // Big number: Feed bags to give today
+        OutputCard(title = "Feed plan & stock") {
+            val reqToDateBags = dailyRows.filter { it.dayNumber <= day }.sumOf { it.feedBags }
+            val fullCycleBags = dailyRows.sumOf { it.feedBags }
+            val consumedBags = feedStockSummary.totalUsedBags
+            val onHandBags = feedStockSummary.totalOnHandBags
+
+            // REQUIRED (the plan) — what to give today
             BigMetric(
-                label = "Feed Bags to Give Today",
+                label = "Feed bags required today",
                 value = "${entry.feedBags}",
                 unit = "bags (${farm.feedBagKg.toInt()}kg ea)",
-                toleranceText = "Total: ${String.format("%.1f", entry.totalFeedKg)} kg · Per bird: ${String.format("%.1f", entry.feedPerBird)} g/day",
-                statusTag = "daily target",
+                toleranceText = "Ideal plan · ${String.format("%.1f", entry.totalFeedKg)} kg on ${entry.liveBirds} live birds" +
+                        (if (day == 0) " · Day 0 = pre-load the Day-1 starter ration" else ""),
+                statusTag = "required",
                 isHero = true
+            )
+
+            // Plan (required) vs actual (consumed) vs stock (on-hand)
+            GistRow(
+                GistItem("Req. to date", "$reqToDateBags", "Day 0→$day, ideal"),
+                GistItem("Consumed", "${consumedBags.toInt()}", "you logged"),
+                GistItem("On-hand", "${onHandBags.toInt()}", "in store")
+            )
+            Text(
+                "Whole-cycle plan ≈ $fullCycleBags bags (${String.format("%,.0f", fullCycleBags * farm.feedBagKg)} kg). " +
+                        "“Required” is the ideal plan from the curve; “consumed” is what you logged as used.",
+                style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+            )
+
+            val idealFeedPerBird = PhysiologicalEngine.dailyFeedFromDay(max(1.0, weightAge), breed)
+            BigMetric(
+                label = "Feed / bird",
+                value = String.format("%.0f", entry.feedPerBird),
+                unit = "g/day",
+                toleranceText = "Ideal (breed curve): ${String.format("%.0f", idealFeedPerBird)} g/day" +
+                        (if (entry.feedPerBird < idealFeedPerBird * 0.98) " · trimmed for heat" else ""),
+                statusTag = if (entry.feedPerBird < idealFeedPerBird * 0.9) "heat-reduced" else "on curve"
             )
 
             Divider(modifier = Modifier.padding(vertical = 4.dp))
@@ -299,12 +380,42 @@ fun OutputScreen(
                 }
             }
 
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    BigMetric(
+                        label = "Drinker Line Pressure",
+                        value = String.format("%.0f", entry.drinkerPressureIn),
+                        unit = "in",
+                        toleranceText = "Nipple column height for the day",
+                        statusTag = "age"
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    BigMetric(
+                        label = "Line Flow",
+                        value = String.format("%.0f", entry.drinkerFlowLHrLine),
+                        unit = "L/hr·line",
+                        toleranceText = "Across ${farm.drinkerLines} drinker lines",
+                        statusTag = "flow"
+                    )
+                }
+            }
+            BigMetric(
+                label = "Water range on a ±3°C day",
+                value = "${String.format("%.0f", entry.waterLowL)}–${String.format("%.0f", entry.waterHighL)}",
+                unit = "L",
+                toleranceText = "Cooler day → less; hotter day → more (plan tank fills for the high end)",
+                statusTag = "range"
+            )
             Text(
-                text = "Drinker Line Check: Ensure 12 birds/nipple, flush lines before midday heat.",
+                text = "Drinker Line Check: ~12 birds/nipple, flush lines before midday heat.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+
+        // Animated fan bank (spins only the running fans)
+        FanVisualizer(entry = entry, farm = farm)
 
         // 4. VENTILATION & CYCLING
         OutputCard(title = "Ventilation & Climate Targets") {
@@ -394,6 +505,27 @@ fun OutputScreen(
             }
         }
 
+        // 4b. AIR QUALITY & MEASURED READINGS (always shown; "— no reading" when blank)
+        OutputCard(title = "Air Quality & Measured Readings") {
+            MeasuredMetric("CO₂", entry.measuredCo2, "ppm", 0, "Ideal < 3000 · Max ${entry.co2Max.toInt()} ppm")
+            MeasuredMetric("NH₃ ammonia", entry.measuredNh3, "ppm", 0, "Ideal < 10 · Max ${entry.nh3Max.toInt()} ppm")
+            MeasuredMetric("O₂ oxygen", entry.measuredO2, "%", 1, "Ideal 20.9 · Min 19.5 %")
+            MeasuredMetric("Static pressure", entry.measuredPressure, "Pa", 0, "Ideal 25 · Band 15–35 Pa")
+            MeasuredMetric("Air speed (measured)", entry.measuredAirspeed, "ft/min", 0, "Target ${entry.airspeed.toInt()} ft/min for the day")
+            MeasuredMetric("Light intensity", entry.luxPerFt2, "lux", 0, "Brooding 30–40 · Grow-out 5–10 lux")
+            Divider(modifier = Modifier.padding(vertical = 4.dp))
+            MeasuredMetric("Water temperature", entry.waterTempC, "°C", 1, "Ideal < 25 °C (cool water lifts intake)")
+            MeasuredMetric("Water pH", entry.waterPh, "", 1, "Ideal 6.0 – 6.8")
+            MeasuredMetric("Feed moisture", entry.feedMoisturePct, "%", 1, "Safe < 13 % (mould risk above)")
+            MeasuredMetric("Diesel cans used", entry.dieselCansUsed.takeIf { it > 0 }, "cans", 1, "≈ ${farm.dieselCanL.toInt()} L per can")
+            Divider(modifier = Modifier.padding(vertical = 4.dp))
+            MeasuredMetric("Pad wet time", entry.padWetMin, "min", 0, "Evaporative cooling on-cycle")
+            MeasuredMetric("Pad dry time", entry.padDryMin, "min", 0, "Off-cycle so litter stays dry")
+        }
+
+        // Brooding barricade / floor-plan diagram
+        HouseFloorPlan(entry = entry, farm = farm)
+
         // 5. SPACE & DENSITY
         OutputCard(title = "Space & Density") {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -431,6 +563,14 @@ fun OutputScreen(
 
         // 6. FLOCK HEALTH & MORTALITY
         OutputCard(title = "Flock Health & Mortality") {
+            BigMetric(
+                label = "Balance Birds (alive in shed)",
+                value = "${entry.liveBirds}",
+                unit = "birds",
+                toleranceText = "Placed ${flock?.birdsPlaced ?: 0} − reception − mortality (${entry.cumMort}) − lifted − culls",
+                statusTag = "live",
+                isHero = true
+            )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(modifier = Modifier.weight(1f)) {
                     val cMort = entry.cumMortPct
@@ -483,11 +623,85 @@ fun OutputScreen(
     }
 }
 
+data class GistItem(val label: String, val value: String, val sub: String)
+
+@Composable
+fun GistRow(a: GistItem, b: GistItem, c: GistItem) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        GistTile(a, Modifier.weight(1f))
+        GistTile(b, Modifier.weight(1f))
+        GistTile(c, Modifier.weight(1f))
+    }
+}
+
+@Composable
+fun GistTile(item: GistItem, modifier: Modifier = Modifier) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(10.dp),
+        modifier = modifier
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp)) {
+            Text(
+                item.label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+            Text(
+                item.value,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace),
+                maxLines = 1
+            )
+            Text(
+                item.sub,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+@Composable
+fun IdealRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
+        )
+    }
+}
+
+fun accentForTitle(title: String): Color = when {
+    title.contains("glance", true) -> BrandEmerald
+    title.contains("Growth", true) -> BrandEmerald
+    title.contains("Feed", true) || title.contains("Stock", true) -> DomainFeed
+    title.contains("Water", true) -> DomainWater
+    title.contains("Vent", true) || title.contains("Climate", true) || title.contains("Air", true) -> DomainVent
+    title.contains("Space", true) || title.contains("Density", true) -> DomainInsight
+    title.contains("Health", true) || title.contains("Mortality", true) -> DomainMed
+    title.contains("Ideal", true) -> DomainInsight
+    title.contains("Performance", true) || title.contains("Curve", true) -> DomainVent
+    else -> BrandEmerald
+}
+
 @Composable
 fun OutputCard(
     title: String,
     content: @Composable () -> Unit
 ) {
+    val accent = accentForTitle(title)
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(12.dp),
@@ -498,12 +712,48 @@ fun OutputCard(
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 4.dp, height = 18.dp)
+                        .background(accent, RoundedCornerShape(2.dp))
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = accent)
+                )
+            }
             content()
         }
+    }
+}
+
+@Composable
+fun MeasuredMetric(
+    label: String,
+    measured: Double?,
+    unit: String,
+    decimals: Int,
+    idealText: String
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = measured?.let { String.format("%.${decimals}f", it) + if (unit.isNotBlank()) " $unit" else "" } ?: "— no reading",
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace),
+                color = if (measured == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+            )
+        }
+        Text(
+            text = idealText,
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        )
     }
 }
 

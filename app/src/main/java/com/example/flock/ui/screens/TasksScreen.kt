@@ -1,6 +1,7 @@
 package com.example.flock.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -41,8 +42,20 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.background
 import com.example.flock.data.TaskEntity
+import com.example.flock.ui.components.TimePickerField
 import com.example.ui.theme.BrandEmerald
+import com.example.ui.theme.DomainFeed
+import com.example.ui.theme.DomainTask
+import com.example.ui.theme.DomainVent
+
+/** Minimal segment colour: Morning = amber, Evening = blue, Night = indigo. */
+fun blockColor(block: String): Color = when {
+    block.startsWith("Morning") -> DomainFeed
+    block.startsWith("Evening") -> DomainVent
+    else -> DomainTask
+}
 
 val FIXED_BLOCKS = listOf(
     "Morning 05:00–08:30",
@@ -149,11 +162,10 @@ fun TasksScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        OutlinedTextField(
-                            value = taskTime,
-                            onValueChange = { taskTime = it },
-                            label = { Text("Time (HH:mm)") },
-                            singleLine = true,
+                        TimePickerField(
+                            label = "Time",
+                            valueHHmm = taskTime,
+                            onPick = { taskTime = it },
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("task_time_input")
@@ -231,6 +243,7 @@ fun TasksScreen(
             BlockCard(
                 blockTitle = block,
                 tasks = blockTasks,
+                accent = blockColor(block),
                 onDeleteTask = onDeleteTask
             )
         }
@@ -243,6 +256,7 @@ fun TasksScreen(
 fun BlockCard(
     blockTitle: String,
     tasks: List<TaskEntity>,
+    accent: Color,
     onDeleteTask: (String) -> Unit
 ) {
     Surface(
@@ -261,16 +275,22 @@ fun BlockCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 4.dp, height = 18.dp)
+                            .background(accent, RoundedCornerShape(2.dp))
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Icon(
                         imageVector = Icons.Default.Schedule,
                         contentDescription = null,
-                        tint = BrandEmerald,
+                        tint = accent,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = blockTitle,
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = accent)
                     )
                 }
                 Text(
