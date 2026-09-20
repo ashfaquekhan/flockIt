@@ -138,6 +138,19 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     private var farmDataJob: Job? = null
     private var flockDataJob: Job? = null
 
+    init {
+        // Returning signed-in users: refresh the Drive/Sheets token and pull their farms
+        // (owned + shared) from Google Drive so they reappear after logout / on a new device.
+        if (authState.value.isSignedIn && !authState.value.isDemoMode) {
+            viewModelScope.launch {
+                authManager.refreshAccessToken()
+                _syncStatus.value = "syncing"
+                val res = syncManager.syncUserFarmsFromDrive()
+                _syncStatus.value = if (res.isSuccess) "synced" else "offline"
+            }
+        }
+    }
+
     // No auto-selection of a farm/flock: the user opens one explicitly from the lists.
 
     /** Google Sign-In client for the real OAuth flow (launched from the Activity). */
@@ -602,7 +615,9 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         _userMessage.value = null
     }
 
-    fun openSharedFarm(spreadsheetId: String) {
+    fun openSharedFarm(input: String) {
+        val spreadsheetId = extractSpreadsheetId(input)
+        if (spreadsheetId.isBlank()) return
         viewModelScope.launch {
             _syncStatus.value = "syncing"
             val validation = syncManager.validateCompatibility(spreadsheetId)
@@ -618,14 +633,22 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
             openFarm(spreadsheetId)
 
             if (isSuccess) {
+                syncManager.pullFarmData(spreadsheetId)
                 _syncStatus.value = "synced"
-                _userMessage.value = "Opened shared farm: $farmName"
+                val finalName = repository.getFarmFlow(spreadsheetId).firstOrNull()?.farmName ?: farmName
+                _userMessage.value = "Opened shared farm: $finalName"
             } else {
                 _syncStatus.value = "offline"
                 val errorMsg = validation.exceptionOrNull()?.message ?: "Local cache only"
                 _userMessage.value = "Opened farm ($errorMsg)"
             }
         }
+    }
+
+    /** Accepts a raw spreadsheet ID or a full Google Sheets URL and returns the ID. */
+    private fun extractSpreadsheetId(input: String): String {
+        val t = input.trim()
+        return Regex("/d/([a-zA-Z0-9-_]+)").find(t)?.groupValues?.get(1) ?: t
     }
 
     fun signInWithGoogle() {
@@ -644,6 +667,15 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         authManager.handleSignInResult(account)
         _appScreen.value = AppScreen.FARMS
         _userMessage.value = "Signed in as ${account.email}"
+        viewModelScope.launch {
+            authManager.refreshAccessToken()
+            _syncStatus.value = "syncing"
+            val syncResult = syncManager.syncUserFarmsFromDrive()
+            _syncStatus.value = if (syncResult.isSuccess) "synced" else "offline"
+            if (syncResult.isSuccess && (syncResult.getOrNull() ?: 0) > 0) {
+                _userMessage.value = "Loaded ${syncResult.getOrNull()} farm(s) from your Google Drive"
+            }
+        }
     }
 
     fun handleSignInError(message: String) {

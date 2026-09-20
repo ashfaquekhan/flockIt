@@ -1,5 +1,6 @@
 package com.example.flock.ui.components
 
+import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,12 +13,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
@@ -29,9 +34,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.ui.theme.BrandEmerald
 
@@ -128,6 +138,69 @@ fun ShareFarmDialog(
                     ) {
                         Text("Share via Drive")
                     }
+                }
+
+                Divider(modifier = Modifier.padding(vertical = 4.dp))
+
+                val context = LocalContext.current
+                val clipboardManager = LocalClipboardManager.current
+                val sheetLink = if (spreadsheetId.startsWith("farm_")) {
+                    spreadsheetId
+                } else {
+                    "https://docs.google.com/spreadsheets/d/$spreadsheetId/edit"
+                }
+
+                Text(
+                    text = "SPREADSHEET ID / LINK",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = spreadsheetId,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp
+                            ),
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1
+                        )
+                        IconButton(onClick = {
+                            clipboardManager.setText(AnnotatedString(spreadsheetId))
+                        }) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy ID", tint = BrandEmerald)
+                        }
+                    }
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        val sendIntent = Intent().apply {
+                            action = Intent.ACTION_SEND
+                            putExtra(Intent.EXTRA_TEXT, "Join my FlockIt farm '$farmName'! Spreadsheet ID: $spreadsheetId\nLink: $sheetLink")
+                            type = "text/plain"
+                        }
+                        context.startActivity(Intent.createChooser(sendIntent, "Share Farm via"))
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = null, tint = BrandEmerald)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Share Farm Link / ID", color = BrandEmerald, fontWeight = FontWeight.Bold)
                 }
             }
         }
