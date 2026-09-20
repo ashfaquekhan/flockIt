@@ -4,8 +4,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -71,6 +74,21 @@ fun FarmSettingsDialog(
     var feedBagKg by remember { mutableStateOf(farm.feedBagKg.toString()) }
     var densityCap by remember { mutableStateOf(farm.densityCapDefault.toString()) }
 
+    // Placement area, cooling pads, drinker/feeder hardware, heaters & fuel
+    var usableLengthFt by remember { mutableStateOf(farm.usableLengthFt.toString()) }
+    var usableWidthFt by remember { mutableStateOf(farm.usableWidthFt.toString()) }
+    var padAreaFt2 by remember { mutableStateOf(farm.padAreaFt2.toString()) }
+    var padCount by remember { mutableStateOf(farm.padCount.toString()) }
+    var heaterCount by remember { mutableStateOf(farm.heaterCount.toString()) }
+    var heaterKw by remember { mutableStateOf(farm.heaterKw.toString()) }
+    var drinkerLines by remember { mutableStateOf(farm.drinkerLines.toString()) }
+    var nippleLineHoldL by remember { mutableStateOf(farm.nippleLineHoldL.toString()) }
+    var feederLines by remember { mutableStateOf(farm.feederLines.toString()) }
+    var feederLineBags by remember { mutableStateOf(farm.feederLineBags.toString()) }
+    var feederMoveMin by remember { mutableStateOf(farm.feederMoveMin.toString()) }
+    var pansPerFeederLine by remember { mutableStateOf(farm.pansPerFeederLine.toString()) }
+    var dieselCanL by remember { mutableStateOf(farm.dieselCanL.toString()) }
+
     var tempBand by remember { mutableStateOf(config.tempBand.toString()) }
     var rhMin by remember { mutableStateOf(config.rhMin.toString()) }
     var rhMax by remember { mutableStateOf(config.rhMax.toString()) }
@@ -80,7 +98,7 @@ fun FarmSettingsDialog(
     // FeedType Add state
     var newFeedCode by remember { mutableStateOf("") }
     var newFeedName by remember { mutableStateOf("") }
-    var newFeedBagKg by remember { mutableStateOf("50.0") }
+    var newFeedBagKg by remember { mutableStateOf("60.0") }
     var newFeedPhase by remember { mutableStateOf("grower") }
 
     Dialog(
@@ -90,7 +108,9 @@ fun FarmSettingsDialog(
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.95f)
+                .fillMaxHeight(0.9f)
                 .padding(vertical = 24.dp)
+                .imePadding()
                 .testTag("farm_settings_dialog"),
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
@@ -98,7 +118,7 @@ fun FarmSettingsDialog(
         ) {
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .fillMaxSize()
                     .padding(16.dp)
             ) {
                 // Header
@@ -235,6 +255,43 @@ fun FarmSettingsDialog(
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 modifier = Modifier.weight(1f)
                             )
+                        }
+
+                        Divider(modifier = Modifier.padding(vertical = 4.dp))
+
+                        Text("Placement Area & Cooling Pads", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(usableLengthFt, { usableLengthFt = it }, label = { Text("Placement length (ft)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
+                            OutlinedTextField(usableWidthFt, { usableWidthFt = it }, label = { Text("Placement width (ft)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(padAreaFt2, { padAreaFt2 = it }, label = { Text("Pad area (ft²)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
+                            OutlinedTextField(padCount, { padCount = it }, label = { Text("Number of pads") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                        }
+
+                        Divider(modifier = Modifier.padding(vertical = 4.dp))
+
+                        Text("Heaters & Fuel", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(heaterCount, { heaterCount = it }, label = { Text("Heaters") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                            OutlinedTextField(heaterKw, { heaterKw = it }, label = { Text("Heater kW each") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
+                            OutlinedTextField(dieselCanL, { dieselCanL = it }, label = { Text("Diesel can (L)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
+                        }
+
+                        Divider(modifier = Modifier.padding(vertical = 4.dp))
+
+                        Text("Drinkers & Feeders", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(drinkerLines, { drinkerLines = it }, label = { Text("Drinker lines") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                            OutlinedTextField(nippleLineHoldL, { nippleLineHoldL = it }, label = { Text("Nipple line fill (L)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(feederLines, { feederLines = it }, label = { Text("Feeder lines") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                            OutlinedTextField(feederLineBags, { feederLineBags = it }, label = { Text("Bags/feeder line") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(feederMoveMin, { feederMoveMin = it }, label = { Text("Feeder move (min)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
+                            OutlinedTextField(pansPerFeederLine, { pansPerFeederLine = it }, label = { Text("Pans/feeder line") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
                         }
 
                         Divider(modifier = Modifier.padding(vertical = 4.dp))
@@ -421,7 +478,20 @@ fun FarmSettingsDialog(
                                 fanRatedCfm = fanCfm.toDoubleOrNull() ?: farm.fanRatedCfm,
                                 drinkTankL = drinkTankL.toDoubleOrNull() ?: farm.drinkTankL,
                                 feedBagKg = feedBagKg.toDoubleOrNull() ?: farm.feedBagKg,
-                                densityCapDefault = densityCap.toDoubleOrNull() ?: farm.densityCapDefault
+                                densityCapDefault = densityCap.toDoubleOrNull() ?: farm.densityCapDefault,
+                                usableLengthFt = usableLengthFt.toDoubleOrNull() ?: farm.usableLengthFt,
+                                usableWidthFt = usableWidthFt.toDoubleOrNull() ?: farm.usableWidthFt,
+                                padAreaFt2 = padAreaFt2.toDoubleOrNull() ?: farm.padAreaFt2,
+                                padCount = padCount.toIntOrNull() ?: farm.padCount,
+                                heaterCount = heaterCount.toIntOrNull() ?: farm.heaterCount,
+                                heaterKw = heaterKw.toDoubleOrNull() ?: farm.heaterKw,
+                                drinkerLines = drinkerLines.toIntOrNull() ?: farm.drinkerLines,
+                                nippleLineHoldL = nippleLineHoldL.toDoubleOrNull() ?: farm.nippleLineHoldL,
+                                feederLines = feederLines.toIntOrNull() ?: farm.feederLines,
+                                feederLineBags = feederLineBags.toIntOrNull() ?: farm.feederLineBags,
+                                feederMoveMin = feederMoveMin.toDoubleOrNull() ?: farm.feederMoveMin,
+                                pansPerFeederLine = pansPerFeederLine.toIntOrNull() ?: farm.pansPerFeederLine,
+                                dieselCanL = dieselCanL.toDoubleOrNull() ?: farm.dieselCanL
                             )
                             val updatedConfig = config.copy(
                                 tempBand = tempBand.toDoubleOrNull() ?: config.tempBand,

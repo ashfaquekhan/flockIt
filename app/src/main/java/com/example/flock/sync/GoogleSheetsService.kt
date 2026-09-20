@@ -8,6 +8,7 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -21,10 +22,25 @@ interface GoogleDriveApi {
         @Query("fields") fields: String = "files(id, name, mimeType, modifiedTime, owners)"
     ): Response<DriveFileListResponse>
 
+    @POST("drive/v3/files")
+    suspend fun createFile(
+        @Header("Authorization") authHeader: String,
+        @Body request: CreateDriveFileRequest
+    ): Response<DriveFile>
+
+    @PATCH("drive/v3/files/{fileId}")
+    suspend fun moveFileToFolder(
+        @Header("Authorization") authHeader: String,
+        @Path("fileId") fileId: String,
+        @Query("addParents") addParents: String,
+        @Query("removeParents") removeParents: String? = null
+    ): Response<DriveFile>
+
     @POST("drive/v3/files/{fileId}/permissions")
     suspend fun createPermission(
         @Header("Authorization") authHeader: String,
         @Path("fileId") fileId: String,
+        @Query("sendNotificationEmail") sendNotificationEmail: Boolean = true,
         @Body request: CreatePermissionRequest
     ): Response<PermissionResponse>
 }
@@ -55,6 +71,15 @@ interface GoogleSheetsApi {
         @Path("spreadsheetId") spreadsheetId: String,
         @Body request: BatchUpdateValuesRequest
     ): Response<BatchUpdateValuesResponse>
+
+    @POST("v4/spreadsheets/{spreadsheetId}/values/{range}:append")
+    suspend fun appendValues(
+        @Header("Authorization") authHeader: String,
+        @Path("spreadsheetId") spreadsheetId: String,
+        @Path("range") range: String,
+        @Query("valueInputOption") valueInputOption: String = "USER_ENTERED",
+        @Body request: ValueRange
+    ): Response<AppendValuesResponse>
 }
 
 object GoogleApiClientProvider {

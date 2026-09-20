@@ -1,6 +1,10 @@
 package com.example.flock.ui.screens
 
+import android.app.TimePickerDialog
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -41,8 +45,19 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.background
 import com.example.flock.data.TaskEntity
 import com.example.ui.theme.BrandEmerald
+import com.example.ui.theme.DomainFeed
+import com.example.ui.theme.DomainTask
+import com.example.ui.theme.DomainVent
+
+/** Minimal segment colour: Morning = amber, Evening = blue, Night = indigo. */
+fun blockColor(block: String): Color = when {
+    block.startsWith("Morning") -> DomainFeed
+    block.startsWith("Evening") -> DomainVent
+    else -> DomainTask
+}
 
 val FIXED_BLOCKS = listOf(
     "Morning 05:00–08:30",
@@ -80,6 +95,22 @@ fun TasksScreen(
     var taskLabel by remember { mutableStateOf("") }
     var taskTime by remember { mutableStateOf("07:00") }
     var everyDay by remember { mutableStateOf(true) }
+
+    val context = LocalContext.current
+    val showTimePicker = {
+        val parts = taskTime.split(":")
+        val h = parts.getOrNull(0)?.toIntOrNull() ?: 7
+        val m = parts.getOrNull(1)?.toIntOrNull() ?: 0
+        TimePickerDialog(
+            context,
+            { _, hourOfDay, minute ->
+                taskTime = String.format("%02d:%02d", hourOfDay, minute)
+            },
+            h,
+            m,
+            true
+        ).show()
+    }
 
     val scrollState = rememberScrollState()
 
@@ -151,12 +182,19 @@ fun TasksScreen(
                     ) {
                         OutlinedTextField(
                             value = taskTime,
-                            onValueChange = { taskTime = it },
+                            onValueChange = {},
+                            readOnly = true,
                             label = { Text("Time (HH:mm)") },
+                            trailingIcon = {
+                                IconButton(onClick = showTimePicker) {
+                                    Icon(Icons.Default.Schedule, contentDescription = "Pick time", tint = BrandEmerald)
+                                }
+                            },
                             singleLine = true,
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("task_time_input")
+                                .clickable { showTimePicker() }
                         )
 
                         val autoBlock = detectBlockFromTime(taskTime)
@@ -231,6 +269,7 @@ fun TasksScreen(
             BlockCard(
                 blockTitle = block,
                 tasks = blockTasks,
+                accent = blockColor(block),
                 onDeleteTask = onDeleteTask
             )
         }
@@ -243,6 +282,7 @@ fun TasksScreen(
 fun BlockCard(
     blockTitle: String,
     tasks: List<TaskEntity>,
+    accent: Color,
     onDeleteTask: (String) -> Unit
 ) {
     Surface(
@@ -261,16 +301,22 @@ fun BlockCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 4.dp, height = 18.dp)
+                            .background(accent, RoundedCornerShape(2.dp))
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Icon(
                         imageVector = Icons.Default.Schedule,
                         contentDescription = null,
-                        tint = BrandEmerald,
+                        tint = accent,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = blockTitle,
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = accent)
                     )
                 }
                 Text(

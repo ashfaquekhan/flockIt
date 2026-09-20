@@ -26,6 +26,7 @@ data class FarmRegistryEntity(
     val ownerEmail: String = "",
     val lastOpened: Long = System.currentTimeMillis(),
     val syncStatus: String = "synced", // "synced", "syncing", "offline", "error"
+    val locked: Boolean = false,       // when true, all flocks in this farm are read-only
     val lastSyncedAt: Long = System.currentTimeMillis()
 )
 
@@ -54,7 +55,12 @@ data class FarmEntity(
     val drinkTankL: Double = 2000.0,
     val drinkFillMin: Double = 20.0,
     val feederLines: Int = 4,
-    val feederLineBags: Int = 3,
+    val feederLineBags: Int = 3,       // bags one feeder line holds before it moves
+    val feederMoveMin: Double = 15.0,  // minutes a feeder line takes to run/move one pass
+    val pansPerFeederLine: Int = 60,   // number of pans per feeder line
+    val nippleLineHoldL: Double = 20.0,// litres one nipple/drinker line holds when filled
+    val padCount: Int = 2,             // number of evaporative cooling pads
+    val dieselCanL: Double = 20.0,     // approx litres one diesel can holds
     val feedBagKg: Double = 60.0,
     val baseFeedings: Int = 4,
     val feedDistDay: Int = 40,
@@ -98,7 +104,7 @@ data class FeedTypeEntity(
     val spreadsheetId: String = "local_default",
     val code: String, // "B1", "B2", "B3", "B4", etc.
     val name: String, // "Pre-starter", "Starter", "Finisher", etc.
-    val bagKg: Double = 50.0,
+    val bagKg: Double = 60.0,
     val phase: String = "starter", // "starter", "grower", "finisher", "custom"
     val sortOrder: Int = 1
 )
@@ -113,12 +119,14 @@ data class FlockEntity(
     val name: String,
     val breed: String = "Ross308",
     val startDate: String, // ISO 8601 YYYY-MM-DD
+    val startTime: String = "08:00", // HH:mm the chicks were placed
     val birdsPlaced: Int,
-    val receptionMort: Int = 0,
+    val receptionMort: Int = 0, // transit / reception mortality at placement
     val targetWeight: Double = 3200.0,
     val harvestAge: Int = 42,
     val season: String = "Monsoon",
     val status: String = "active", // "active", "closed"
+    val locked: Boolean = false,   // when true, daily entries can't be edited
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -220,7 +228,28 @@ data class DailyDataEntity(
     val alertLevel: String = "ok", // "ok", "warn", "crit"
     val alertText: String = "All targets nominal",
     val updatedAt: Long = System.currentTimeMillis(),
-    val updatedBy: String = ""
+    val updatedBy: String = "",
+
+    // Measured readings the app cannot compute (farmer enters; null = no reading)
+    val waterTempC: Double? = null,
+    val waterPh: Double? = null,
+    val feedMoisturePct: Double? = null,
+    val measuredCo2: Double? = null,
+    val measuredNh3: Double? = null,
+    val measuredO2: Double? = null,
+    val measuredPressure: Double? = null,   // static pressure, Pa
+    val measuredAirspeed: Double? = null,   // ft/min
+    val padWetMin: Double? = null,          // honeycomb pad wet time, minutes
+    val padDryMin: Double? = null,          // honeycomb pad dry time, minutes
+    val luxPerFt2: Double? = null,          // measured light, lux
+    val dieselCansUsed: Double = 0.0,
+
+    // Additional computed display values (engine-written)
+    val gainPerBird: Double = 0.0,          // approx daily gain, g/bird
+    val drinkerPressureIn: Double = 0.0,    // drinker line pressure, inches
+    val drinkerFlowLHrLine: Double = 0.0,   // water per drinker line, L/hr
+    val waterLowL: Double = 0.0,            // total water at cooler day (−3°C)
+    val waterHighL: Double = 0.0            // total water at hotter day (+3°C)
 )
 
 @Entity(

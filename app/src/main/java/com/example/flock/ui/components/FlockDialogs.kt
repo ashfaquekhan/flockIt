@@ -1,6 +1,10 @@
 package com.example.flock.ui.components
 
+import android.app.DatePickerDialog
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material.icons.filled.CalendarToday
+import java.util.Calendar
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -70,6 +74,25 @@ fun FlockManagementDialog(
     var targetWeight by remember { mutableStateOf("3200") }
     var harvestAge by remember { mutableStateOf("42") }
     var season by remember { mutableStateOf("Monsoon") }
+    val context = LocalContext.current
+
+    val showDatePicker = {
+        val cal = Calendar.getInstance()
+        try {
+            val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(startDate)
+            if (parsed != null) cal.time = parsed
+        } catch (e: Exception) {}
+
+        DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                startDate = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, dayOfMonth)
+            },
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH),
+            cal.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -161,9 +184,15 @@ fun FlockManagementDialog(
                     )
                     OutlinedTextField(
                         value = startDate,
-                        onValueChange = { startDate = it },
+                        onValueChange = {},
+                        readOnly = true,
                         label = { Text("Placement Date (YYYY-MM-DD)") },
-                        modifier = Modifier.fillMaxWidth()
+                        trailingIcon = {
+                            IconButton(onClick = showDatePicker) {
+                                Icon(Icons.Default.CalendarToday, contentDescription = "Pick date", tint = BrandEmerald)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().clickable { showDatePicker() }
                     )
                     OutlinedTextField(
                         value = birdsPlaced,

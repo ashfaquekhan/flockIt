@@ -123,7 +123,8 @@ class FlockRepository(
         receptionMort: Int = 0,
         targetWeight: Double = 3200.0,
         harvestAge: Int = 42,
-        season: String = "Monsoon"
+        season: String = "Monsoon",
+        startTime: String = "08:00"
     ): String = withContext(Dispatchers.IO) {
         val farm = getFarm(spreadsheetId)
         val tz = TimeZone.getTimeZone(farm.timeZone)
@@ -137,6 +138,7 @@ class FlockRepository(
             name = name.ifBlank { "Batch #1" },
             breed = breed.ifBlank { "Ross308" },
             startDate = startDate.ifBlank { sdfDate.format(Date()) },
+            startTime = startTime.ifBlank { "08:00" },
             birdsPlaced = birdsPlaced,
             receptionMort = receptionMort,
             targetWeight = targetWeight,
@@ -178,10 +180,31 @@ class FlockRepository(
         flockDao.updateFlock(flock.copy(status = "closed"))
     }
 
+    suspend fun setFlockLocked(spreadsheetId: String, flockId: String, locked: Boolean) = withContext(Dispatchers.IO) {
+        val flock = flockDao.getFlockById(spreadsheetId, flockId) ?: return@withContext
+        flockDao.updateFlock(flock.copy(locked = locked))
+    }
+
+    suspend fun setFarmLocked(spreadsheetId: String, locked: Boolean) = withContext(Dispatchers.IO) {
+        val reg = farmRegistryDao.getFarm(spreadsheetId) ?: return@withContext
+        farmRegistryDao.insertOrUpdate(reg.copy(locked = locked))
+    }
+
     suspend fun deleteFlock(spreadsheetId: String, flockId: String) = withContext(Dispatchers.IO) {
         dailyDataDao.deleteDailyDataForFlock(spreadsheetId, flockId)
         taskDao.deleteTasksForFlock(spreadsheetId, flockId)
         flockDao.deleteFlock(spreadsheetId, flockId)
+    }
+
+    /** Removes a farm and all its local data (the Google Sheet itself, if any, is left intact). */
+    suspend fun deleteFarm(spreadsheetId: String) = withContext(Dispatchers.IO) {
+        dailyDataDao.deleteAllDailyData(spreadsheetId)
+        taskDao.deleteAllTasks(spreadsheetId)
+        flockDao.deleteAllFlocks(spreadsheetId)
+        feedTypeDao.deleteAllFeedTypes(spreadsheetId)
+        configDao.deleteConfig(spreadsheetId)
+        farmDao.deleteFarm(spreadsheetId)
+        farmRegistryDao.deleteFarm(spreadsheetId)
     }
 
     suspend fun addTask(task: TaskEntity) = withContext(Dispatchers.IO) {
@@ -259,6 +282,12 @@ class FlockRepository(
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val flock = flockDao.getFlockById(spreadsheetId, flockId)
             ?: return@withContext Result.failure(Exception("Flock not found"))
+        if (flock.locked) {
+            return@withContext Result.failure(IllegalStateException("This flock is locked. Unlock it to edit."))
+        }
+        if (farmRegistryDao.getFarm(spreadsheetId)?.locked == true) {
+            return@withContext Result.failure(IllegalStateException("This farm is locked. Unlock it to edit."))
+        }
         val existing = dailyDataDao.getDayEntry(spreadsheetId, flockId, dayNumber)
             ?: return@withContext Result.failure(Exception("Day entry not found"))
 
@@ -393,12 +422,28 @@ class FlockRepository(
             val heatFactor = PhysiologicalEngine.computeFeedHeatDerate(meanTemp, config.feedHeatK)
             val waterUplift = PhysiologicalEngine.computeWaterUplift(meanTemp, config.waterHeatK)
 
-            val feedPerBird = PhysiologicalEngine.dailyFeedFromDay(weightAge, flock.breed) * heatFactor
+            // The breed curve gives 0 g on the hatch day (Day 0). Operationally you still pre-load
+            // the Day-1 starter ration on arrival, so clamp the feed age to >=1 for the "to give"
+            // figure (this does NOT touch FCR, which uses actual bags logged).
+            val feedAge = max(1.0, weightAge)
+            val feedPerBird = PhysiologicalEngine.dailyFeedFromDay(feedAge, flock.breed) * heatFactor
             val totalFeedKg = (feedPerBird * live) / 1000.0
             val feedBags = ceil(totalFeedKg / bagKg).toInt()
             val waterPerBird = feedPerBird * config.wfRatio * waterUplift // mL
             val totalWaterL = (waterPerBird * live) / 1000.0
             val tankRefills = if (farm.drinkTankL > 0) ceil(totalWaterL / farm.drinkTankL).toInt() else 1
+
+            // Approx daily gain (g/bird) from the growth curve at the current weight-age
+            val gainPerBird = PhysiologicalEngine.bwFromDay(weightAge, flock.breed) -
+                    PhysiologicalEngine.bwFromDay(max(0.0, weightAge - 1.0), flock.breed)
+            // Drinker line pressure (inches) by age, and water throughput per line (L/hr over 16 active hrs)
+            val drinkerPressureIn = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_WATERLINE_BY_AGE, day.toDouble())
+            val drinkerFlowLHrLine = if (farm.drinkerLines > 0) totalWaterL / farm.drinkerLines / 16.0 else totalWaterL / 16.0
+            // Total-water sensitivity to a ±3°C day
+            val waterLowL = (feedPerBird * config.wfRatio *
+                    PhysiologicalEngine.computeWaterUplift(meanTemp - 3.0, config.waterHeatK) * live) / 1000.0
+            val waterHighL = (feedPerBird * config.wfRatio *
+                    PhysiologicalEngine.computeWaterUplift(meanTemp + 3.0, config.waterHeatK) * live) / 1000.0
 
             val setTemp = PhysiologicalEngine.interpolate(
                 PhysiologicalEngine.CURVE_TEMP_BY_BW,
@@ -555,7 +600,12 @@ class FlockRepository(
                     ventText = ventText,
                     cycleText = cycleText,
                     alertLevel = alertLevel,
-                    alertText = alertText
+                    alertText = alertText,
+                    gainPerBird = gainPerBird,
+                    drinkerPressureIn = drinkerPressureIn,
+                    drinkerFlowLHrLine = drinkerFlowLHrLine,
+                    waterLowL = waterLowL,
+                    waterHighL = waterHighL
                 )
             )
         }
