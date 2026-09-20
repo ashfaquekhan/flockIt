@@ -117,6 +117,9 @@ interface FlockDao {
     @Query("SELECT * FROM flocks WHERE spreadsheetId = :spreadsheetId AND flockId = :flockId LIMIT 1")
     suspend fun getFlockById(spreadsheetId: String, flockId: String): FlockEntity?
 
+    @Query("SELECT * FROM flocks WHERE spreadsheetId = :spreadsheetId AND deleted = 0")
+    suspend fun getAllFlocksList(spreadsheetId: String): List<FlockEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFlock(flock: FlockEntity)
 

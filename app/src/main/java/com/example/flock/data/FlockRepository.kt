@@ -3,8 +3,12 @@ package com.example.flock.data
 import com.example.flock.engine.PhysiologicalEngine
 import com.example.flock.network.WeatherClient
 import com.example.flock.network.WeatherResult
+import com.example.flock.sync.SheetsSyncManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.time.LocalDate
@@ -37,9 +41,41 @@ class FlockRepository(
     private val dailyDataDao = database.dailyDataDao()
     private val taskDao = database.taskDao()
 
+    /** Set by the ViewModel once the auth/sync layer is ready. Null → offline (Room only). */
+    var sync: SheetsSyncManager? = null
+
+    /** Last cloud read/write outcome, surfaced to the user so sheet sync is never silent. */
+    private val _syncNote = MutableStateFlow<String?>(null)
+    val syncNote: StateFlow<String?> = _syncNote.asStateFlow()
+    fun clearSyncNote() { _syncNote.value = null }
+
     val allFarms: Flow<List<FarmRegistryEntity>> = farmRegistryDao.getAllFarmsFlow()
     val deletedFarms: Flow<List<FarmRegistryEntity>> = farmRegistryDao.getDeletedFarmsFlow()
     val deletedFlocks: Flow<List<FlockEntity>> = flockDao.getDeletedFlocksFlow()
+
+    /**
+     * Pulls the whole farm workspace from the sheet, then recomputes every flock locally.
+     * No-op (success) when offline. Used on farm open and on login.
+     */
+    suspend fun refreshFromCloud(spreadsheetId: String) = withContext(Dispatchers.IO) {
+        val s = sync ?: return@withContext
+        if (!s.isOnline()) return@withContext
+        val res = s.pullFarmData(spreadsheetId)
+        if (res.isSuccess) {
+            flockDao.getAllFlocksList(spreadsheetId).forEach { recomputeFlock(spreadsheetId, it.flockId) }
+        } else {
+            _syncNote.value = "⚠ Couldn't load latest from Google Sheet: ${res.exceptionOrNull()?.message ?: "unknown"}"
+        }
+    }
+
+    /** Runs a verified cloud write and records a user-visible note. No-op when offline. */
+    private suspend fun cloudPush(label: String, block: suspend (SheetsSyncManager) -> Result<Unit>) {
+        val s = sync ?: return
+        if (!s.isOnline()) return
+        val r = try { block(s) } catch (e: Exception) { Result.failure(e) }
+        _syncNote.value = if (r.isSuccess) "✓ $label synced to Google Sheet"
+            else "⚠ $label saved locally but not synced: ${r.exceptionOrNull()?.message ?: "error"}"
+    }
 
     suspend fun registerFarm(
         spreadsheetId: String,
@@ -102,6 +138,7 @@ class FlockRepository(
         farmRegistryDao.getFarm(farm.spreadsheetId)?.let { reg ->
             farmRegistryDao.insertOrUpdate(reg.copy(farmName = farm.farmName, lastOpened = System.currentTimeMillis()))
         }
+        cloudPush("Farm settings") { it.pushFarmSettings(farm.spreadsheetId, farm) }
     }
 
     suspend fun updateConfig(config: ConfigEntity) = withContext(Dispatchers.IO) {
@@ -174,6 +211,8 @@ class FlockRepository(
         }
         dailyDataDao.insertDailyData(dayRows)
         recomputeFlock(spreadsheetId, flockId)
+        // Persist the flock + its day rows to the authoritative Google Sheet.
+        cloudPush("Flock \"${flock.name}\"") { it.pushFlock(spreadsheetId, flock, dayRows) }
         flockId
     }
 
@@ -225,6 +264,7 @@ class FlockRepository(
 
     suspend fun addTask(task: TaskEntity) = withContext(Dispatchers.IO) {
         taskDao.insertTask(task)
+        cloudPush("Task") { it.pushTask(task.spreadsheetId, task) }
     }
 
     suspend fun deleteTask(spreadsheetId: String, taskId: String) = withContext(Dispatchers.IO) {
@@ -340,6 +380,8 @@ class FlockRepository(
 
         dailyDataDao.insertOrUpdateDay(toSave)
         recomputeFlock(spreadsheetId, flockId)
+        // Push the day's inputs to the sheet (upsert by FlockId+Day).
+        cloudPush("Day ${dayNumber}") { it.pushDayEntry(spreadsheetId, toSave) }
         Result.success(Unit)
     }
 

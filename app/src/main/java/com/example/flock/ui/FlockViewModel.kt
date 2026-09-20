@@ -139,6 +139,13 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     private var flockDataJob: Job? = null
 
     init {
+        // The repository is the workspace gateway; give it the cloud layer so every
+        // mutation persists to Google Sheets and surfaces a verified sync note.
+        repository.sync = syncManager
+        viewModelScope.launch {
+            repository.syncNote.collect { note -> if (note != null) _userMessage.value = note }
+        }
+
         // Returning signed-in users: refresh the Drive/Sheets token and pull their farms
         // (owned + accepted-shared) from the appDataFolder index so they reappear after
         // logout / on a new device.
@@ -195,6 +202,14 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     fun selectFarm(spreadsheetId: String) {
         _selectedSpreadsheetId.value = spreadsheetId
         loadFarmData(spreadsheetId)
+        // Pull the latest workspace from the sheet (collaborators' changes, cross-device).
+        if (authState.value.isSignedIn && !authState.value.isDemoMode && spreadsheetId != "local_default") {
+            viewModelScope.launch {
+                _syncStatus.value = "syncing"
+                repository.refreshFromCloud(spreadsheetId)
+                _syncStatus.value = "synced"
+            }
+        }
     }
 
     private fun loadFarmData(spreadsheetId: String) {
@@ -648,30 +663,29 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _syncStatus.value = "syncing"
             val validation = syncManager.validateCompatibility(spreadsheetId)
-            val isSuccess = validation.isSuccess && (validation.getOrNull() == true)
-            val farmName = "Farm " + spreadsheetId.take(8)
+            if (validation.isFailure || validation.getOrNull() != true) {
+                _syncStatus.value = "offline"
+                _userMessage.value =
+                    "Couldn't open shared farm: ${validation.exceptionOrNull()?.message ?: "not a FlockIt farm, or no access"}"
+                return@launch
+            }
 
+            // Register a placeholder, then pull the real name + flocks + daily data.
             repository.registerFarm(
                 spreadsheetId = spreadsheetId,
-                farmName = farmName,
+                farmName = "Farm " + spreadsheetId.take(6),
                 role = "Editor",
                 isOwner = false
             )
-            openFarm(spreadsheetId)
+            repository.refreshFromCloud(spreadsheetId)
+            val finalName = repository.getFarmFlow(spreadsheetId).firstOrNull()?.farmName ?: ("Farm " + spreadsheetId.take(6))
 
-            if (isSuccess) {
-                syncManager.pullFarmData(spreadsheetId)
-                _syncStatus.value = "synced"
-                val finalName = repository.getFarmFlow(spreadsheetId).firstOrNull()?.farmName ?: farmName
-                // Record the accepted shared farm in this user's index so it loads
-                // automatically on all their devices from now on.
-                syncManager.addFarmToIndex(spreadsheetId, finalName, role = "editor")
-                _userMessage.value = "Opened shared farm: $finalName"
-            } else {
-                _syncStatus.value = "offline"
-                val errorMsg = validation.exceptionOrNull()?.message ?: "Local cache only"
-                _userMessage.value = "Opened farm ($errorMsg)"
-            }
+            // Record the accepted shared farm in this user's index so it loads
+            // automatically on all their devices from now on.
+            syncManager.addFarmToIndex(spreadsheetId, finalName, role = "editor")
+            _syncStatus.value = "synced"
+            _userMessage.value = "Opened shared farm: $finalName"
+            openFarm(spreadsheetId)
         }
     }
 
