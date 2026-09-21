@@ -57,8 +57,42 @@ import com.example.ui.theme.StatusCritWash
 import com.example.ui.theme.StatusProjected
 import com.example.ui.theme.StatusWarn
 import com.example.ui.theme.StatusWarnWash
+import com.example.ui.theme.ValueIdeal
+import com.example.ui.theme.ValueIdealWash
+import com.example.ui.theme.ValuePredicted
+import com.example.ui.theme.ValuePredictedWash
+import com.example.ui.theme.ValuePresent
+import com.example.ui.theme.ValuePresentWash
 import kotlin.math.abs
 import kotlin.math.max
+
+/**
+ * How a displayed number was produced — kept visually distinct so present/predicted/ideal
+ * are never confused. PRESENT = you measured/logged it; PREDICTED = estimated from the growth
+ * curve because no sample was entered; IDEAL = the breed-standard target; NEUTRAL = n/a ("—").
+ */
+enum class ValueKind { PRESENT, PREDICTED, IDEAL, NEUTRAL }
+
+fun kindColor(k: ValueKind): Color = when (k) {
+    ValueKind.PRESENT -> ValuePresent
+    ValueKind.PREDICTED -> ValuePredicted
+    ValueKind.IDEAL -> ValueIdeal
+    ValueKind.NEUTRAL -> Color(0xFF9AA0A6)
+}
+
+fun kindWash(k: ValueKind): Color = when (k) {
+    ValueKind.PRESENT -> ValuePresentWash
+    ValueKind.PREDICTED -> ValuePredictedWash
+    ValueKind.IDEAL -> ValueIdealWash
+    ValueKind.NEUTRAL -> Color(0xFF26292E)
+}
+
+fun kindTag(k: ValueKind): String = when (k) {
+    ValueKind.PRESENT -> "measured"
+    ValueKind.PREDICTED -> "predicted"
+    ValueKind.IDEAL -> "ideal"
+    ValueKind.NEUTRAL -> ""
+}
 
 @Composable
 fun OutputScreen(
@@ -89,6 +123,8 @@ fun OutputScreen(
     val day = entry.dayNumber
     val weightAge = entry.weightAge ?: day.toDouble()
     val isProjected = entry.projected
+    // Weight-derived numbers are PRESENT when a sample was entered today, else PREDICTED.
+    val vk = if (isProjected) ValueKind.PREDICTED else ValueKind.PRESENT
 
     Column(
         modifier = modifier
@@ -97,35 +133,38 @@ fun OutputScreen(
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // Colour/position legend so the three kinds of numbers are never confused.
+        ValueLegend(isProjected = isProjected)
+
         // 0. GIST — quick glance summary, then detailed topic cards below
         OutputCard(title = "Today at a glance · Day $day") {
             val gAvg = entry.avgWeight ?: PhysiologicalEngine.bwFromDay(weightAge, breed)
             val gIdeal = PhysiologicalEngine.bwFromDay(day.toDouble(), breed)
             val gStdFcr = PhysiologicalEngine.stdFcrFromDay(day.toDouble(), breed)
             GistRow(
-                GistItem("Avg wt", "${String.format("%.0f", gAvg)}g", "ideal ${String.format("%.0f", gIdeal)}"),
-                GistItem("Wt-age", "${String.format("%.1f", weightAge)}d", "cal. day $day"),
-                GistItem("CV%", entry.cv?.let { String.format("%.1f", it) } ?: "—", "<10 ideal")
+                GistItem("Avg wt", "${String.format("%.0f", gAvg)}g", "ideal ${String.format("%.0f", gIdeal)}", vk),
+                GistItem("Wt-age", "${String.format("%.1f", weightAge)}d", "cal. day $day", vk),
+                GistItem("CV%", entry.cv?.let { String.format("%.1f", it) } ?: "—", "<10 ideal", if (entry.cv != null) ValueKind.PRESENT else ValueKind.NEUTRAL)
             )
             GistRow(
-                GistItem("FCR", entry.fcr?.let { String.format("%.2f", it) } ?: "—", "std ${String.format("%.2f", gStdFcr)}"),
-                GistItem("cFCR", entry.cFcr?.let { String.format("%.2f", it) } ?: "—", "→ 2kg"),
-                GistItem("Cum mort", entry.cumMortPct?.let { String.format("%.1f", it) + "%" } ?: "—", "≤ ${String.format("%.1f", entry.maxMortPct)}%")
+                GistItem("FCR", entry.fcr?.let { String.format("%.2f", it) } ?: "—", "std ${String.format("%.2f", gStdFcr)}", if (entry.fcr != null) ValueKind.PRESENT else ValueKind.NEUTRAL),
+                GistItem("cFCR", entry.cFcr?.let { String.format("%.2f", it) } ?: "—", "→ 2kg", if (entry.cFcr != null) ValueKind.PRESENT else ValueKind.NEUTRAL),
+                GistItem("Cum mort", entry.cumMortPct?.let { String.format("%.1f", it) + "%" } ?: "—", "≤ ${String.format("%.1f", entry.maxMortPct)}%", ValueKind.PRESENT)
             )
             GistRow(
-                GistItem("Feed", "${entry.feedBags} bags", "${String.format("%.0f", entry.totalFeedKg)} kg"),
-                GistItem("Water", "${String.format("%.0f", entry.totalWaterL)}L", "${entry.tankRefills} fills"),
-                GistItem("Stock", String.format("%.0f", feedStockSummary.totalOnHandBags), "bags left")
+                GistItem("Feed", "${entry.feedBags} bags", "${String.format("%.0f", entry.totalFeedKg)} kg", vk),
+                GistItem("Water", "${String.format("%.0f", entry.totalWaterL)}L", "${entry.tankRefills} fills", vk),
+                GistItem("Stock", String.format("%.0f", feedStockSummary.totalOnHandBags), "bags left", ValueKind.PRESENT)
             )
             GistRow(
-                GistItem("Fans", "${entry.fansToRun}/${farm.fanCount}", entry.cycleText),
-                GistItem("Density", entry.densityKgM2?.let { String.format("%.1f", it) } ?: "—", "≤ ${farm.densityCapDefault}"),
-                GistItem("Set °C", String.format("%.1f", entry.tempIdeal), "${String.format("%.1f", entry.tempMin)}–${String.format("%.1f", entry.tempMax)}")
+                GistItem("Fans", "${entry.fansToRun}/${farm.fanCount}", entry.cycleText, vk),
+                GistItem("Density", entry.densityKgM2?.let { String.format("%.1f", it) } ?: "—", "≤ ${farm.densityCapDefault}", vk),
+                GistItem("Set °C", String.format("%.1f", entry.tempIdeal), "${String.format("%.1f", entry.tempMin)}–${String.format("%.1f", entry.tempMax)}", ValueKind.IDEAL)
             )
             GistRow(
-                GistItem("Live birds", "${entry.liveBirds}", "of ${flock?.birdsPlaced ?: 0}"),
-                GistItem("Feed/bird", "${String.format("%.0f", entry.feedPerBird)}g", "per day"),
-                GistItem("Livability", entry.livability?.let { String.format("%.1f", it) + "%" } ?: "—", "alive")
+                GistItem("Live birds", "${entry.liveBirds}", "of ${flock?.birdsPlaced ?: 0}", ValueKind.PRESENT),
+                GistItem("Feed/bird", "${String.format("%.0f", entry.feedPerBird)}g", "per day", vk),
+                GistItem("Livability", entry.livability?.let { String.format("%.1f", it) + "%" } ?: "—", "alive", if (entry.livability != null) ValueKind.PRESENT else ValueKind.NEUTRAL)
             )
             Text(
                 "Detailed, topic-wise breakdown below ↓",
@@ -207,7 +246,8 @@ fun OutputScreen(
                 value = String.format("%.0f", avgG),
                 unit = "g",
                 toleranceText = "Safe: ${String.format("%.0f", idealBw * 0.95)}–${String.format("%.0f", idealBw * 1.05)} g · Ideal: ${String.format("%.0f", idealBw)} g",
-                statusTag = if (abs(bwDiffPct) > 5.0) (if (bwDiffPct > 0) "▲ +${String.format("%.1f", bwDiffPct)}%" else "▼ ${String.format("%.1f", bwDiffPct)}%") else "ok"
+                statusTag = if (abs(bwDiffPct) > 5.0) (if (bwDiffPct > 0) "▲ +${String.format("%.1f", bwDiffPct)}%" else "▼ ${String.format("%.1f", bwDiffPct)}%") else "ok",
+                kind = vk
             )
 
             // Weight-Age anchor comparison
@@ -218,7 +258,8 @@ fun OutputScreen(
                 value = String.format("%.1f", weightAge),
                 unit = "days",
                 toleranceText = "Calendar Day $day · Difference: $ageDiffStr",
-                statusTag = if (abs(ageDiff) > 1.5) (if (ageDiff > 0) "ahead" else "behind") else "on curve"
+                statusTag = if (abs(ageDiff) > 1.5) (if (ageDiff > 0) "ahead" else "behind") else "on curve",
+                kind = vk
             )
 
             // Uniformity CV%
@@ -260,7 +301,8 @@ fun OutputScreen(
                 value = String.format("%.0f", entry.gainPerBird),
                 unit = "g/day",
                 toleranceText = "Expected growth at weight-age ${String.format("%.1f", weightAge)} d",
-                statusTag = "curve"
+                statusTag = "curve",
+                kind = vk
             )
         }
 
@@ -282,14 +324,15 @@ fun OutputScreen(
                 toleranceText = "Ideal plan · ${String.format("%.1f", entry.totalFeedKg)} kg on ${entry.liveBirds} live birds" +
                         (if (day == 0) " · Day 0 = pre-load the Day-1 starter ration" else ""),
                 statusTag = "required",
-                isHero = true
+                isHero = true,
+                kind = vk
             )
 
             // Plan (required) vs actual (consumed) vs stock (on-hand)
             GistRow(
-                GistItem("Req. to date", "$reqToDateBags", "Day 0→$day, ideal"),
-                GistItem("Consumed", "${consumedBags.toInt()}", "you logged"),
-                GistItem("On-hand", "${onHandBags.toInt()}", "in store")
+                GistItem("Req. to date", "$reqToDateBags", "Day 0→$day, plan", vk),
+                GistItem("Consumed", "${consumedBags.toInt()}", "you logged", ValueKind.PRESENT),
+                GistItem("On-hand", "${onHandBags.toInt()}", "in store", ValueKind.PRESENT)
             )
             Text(
                 "Whole-cycle plan ≈ $fullCycleBags bags (${String.format("%,.0f", fullCycleBags * farm.feedBagKg)} kg). " +
@@ -304,7 +347,8 @@ fun OutputScreen(
                 unit = "g/day",
                 toleranceText = "Ideal (breed curve): ${String.format("%.0f", idealFeedPerBird)} g/day" +
                         (if (entry.feedPerBird < idealFeedPerBird * 0.98) " · trimmed for heat" else ""),
-                statusTag = if (entry.feedPerBird < idealFeedPerBird * 0.9) "heat-reduced" else "on curve"
+                statusTag = if (entry.feedPerBird < idealFeedPerBird * 0.9) "heat-reduced" else "on curve",
+                kind = vk
             )
 
             Divider(modifier = Modifier.padding(vertical = 4.dp))
@@ -369,7 +413,8 @@ fun OutputScreen(
                         value = String.format("%.0f", entry.waterPerBird),
                         unit = "mL",
                         toleranceText = "Water:Feed ratio 1.8x adjusted for heat",
-                        statusTag = "nominal"
+                        statusTag = "nominal",
+                        kind = vk
                     )
                 }
                 Column(modifier = Modifier.weight(1f)) {
@@ -378,7 +423,8 @@ fun OutputScreen(
                         value = String.format("%.0f", entry.totalWaterL),
                         unit = "L",
                         toleranceText = "Tank refills: ~${entry.tankRefills} (${farm.drinkTankL.toInt()}L tank)",
-                        statusTag = "${entry.tankRefills} refills"
+                        statusTag = "${entry.tankRefills} refills",
+                        kind = vk
                     )
                 }
             }
@@ -390,7 +436,8 @@ fun OutputScreen(
                         value = String.format("%.0f", entry.drinkerPressureIn),
                         unit = "in",
                         toleranceText = "Nipple column height for the day",
-                        statusTag = "age"
+                        statusTag = "age",
+                        kind = ValueKind.IDEAL
                     )
                 }
                 Column(modifier = Modifier.weight(1f)) {
@@ -399,7 +446,8 @@ fun OutputScreen(
                         value = String.format("%.0f", entry.drinkerFlowLHrLine),
                         unit = "L/hr·line",
                         toleranceText = "Across ${farm.drinkerLines} drinker lines",
-                        statusTag = "flow"
+                        statusTag = "flow",
+                        kind = vk
                     )
                 }
             }
@@ -408,7 +456,8 @@ fun OutputScreen(
                 value = "${String.format("%.0f", entry.waterLowL)}–${String.format("%.0f", entry.waterHighL)}",
                 unit = "L",
                 toleranceText = "Cooler day → less; hotter day → more (plan tank fills for the high end)",
-                statusTag = "range"
+                statusTag = "range",
+                kind = vk
             )
             Text(
                 text = "Drinker Line Check: ~12 birds/nipple, flush lines before midday heat.",
@@ -427,7 +476,8 @@ fun OutputScreen(
                 value = entry.ventText,
                 unit = "",
                 toleranceText = "Cycle: ${entry.cycleText} · Fans to run: ${entry.fansToRun} of ${farm.fanCount}",
-                statusTag = if (entry.ventMode == 2) "tunnel" else "min-vent"
+                statusTag = if (entry.ventMode == 2) "tunnel" else "min-vent",
+                kind = vk
             )
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -437,7 +487,8 @@ fun OutputScreen(
                         value = String.format("%.2f", entry.cfmPerBird),
                         unit = "CFM/bird",
                         toleranceText = "NPTC minimum ventilation standard",
-                        statusTag = "ok"
+                        statusTag = "ok",
+                        kind = ValueKind.IDEAL
                     )
                 }
                 Column(modifier = Modifier.weight(1f)) {
@@ -446,7 +497,8 @@ fun OutputScreen(
                         value = "${entry.airspeed.toInt()}",
                         unit = "ft/min",
                         toleranceText = "Tunnel wind chill delta: ~${String.format("%.1f", 0.0114 * entry.airspeed)}°C",
-                        statusTag = "nominal"
+                        statusTag = "nominal",
+                        kind = ValueKind.IDEAL
                     )
                 }
             }
@@ -461,7 +513,8 @@ fun OutputScreen(
                         value = String.format("%.1f", entry.tempIdeal),
                         unit = "°C",
                         toleranceText = "Safe min: ${String.format("%.1f", entry.tempMin)} · Ideal: ${String.format("%.1f", entry.tempIdeal)} · Max: ${String.format("%.1f", entry.tempMax)}°C",
-                        statusTag = "±1.5°C band"
+                        statusTag = "±1.5°C band",
+                        kind = ValueKind.IDEAL
                     )
                 }
                 Column(modifier = Modifier.weight(1f)) {
@@ -470,7 +523,8 @@ fun OutputScreen(
                         value = String.format("%.0f", entry.rhIdeal),
                         unit = "%",
                         toleranceText = "Safe min: ${entry.rhMin.toInt()}% · Ideal: ${entry.rhIdeal.toInt()}% · Max: ${entry.rhMax.toInt()}%",
-                        statusTag = "ok"
+                        statusTag = "ok",
+                        kind = ValueKind.IDEAL
                     )
                 }
             }
@@ -493,7 +547,8 @@ fun OutputScreen(
                         value = "CO₂ ≤ ${entry.co2Max.toInt()}",
                         unit = "ppm",
                         toleranceText = "NH₃ critical ceiling: ≤ ${entry.nh3Max.toInt()} ppm",
-                        statusTag = "max"
+                        statusTag = "max",
+                        kind = ValueKind.IDEAL
                     )
                 }
                 Column(modifier = Modifier.weight(1f)) {
@@ -502,7 +557,8 @@ fun OutputScreen(
                         value = String.format("%.1f", entry.lightHours),
                         unit = "hours",
                         toleranceText = "Dark period: ${String.format("%.1f", 24.0 - entry.lightHours)} hours",
-                        statusTag = "light"
+                        statusTag = "light",
+                        kind = ValueKind.IDEAL
                     )
                 }
             }
@@ -521,7 +577,8 @@ fun OutputScreen(
                         value = density?.let { String.format("%.1f", it) } ?: "—",
                         unit = "kg/m²",
                         toleranceText = "Safe cap: ≤ ${farm.densityCapDefault} kg/m²",
-                        statusTag = if (density != null && density > farm.densityCapDefault) "▲ over cap" else "ok"
+                        statusTag = if (density != null && density > farm.densityCapDefault) "▲ over cap" else "ok",
+                        kind = vk
                     )
                 }
                 Column(modifier = Modifier.weight(1f)) {
@@ -530,7 +587,8 @@ fun OutputScreen(
                         value = String.format("%.2f", entry.ftPerBird),
                         unit = "ft²/bird",
                         toleranceText = "Minimum recommended: ≥ ${String.format("%.2f", entry.minFtPerBird)} ft²",
-                        statusTag = if (entry.ftPerBird < entry.minFtPerBird) "▼ crowded" else "ok"
+                        statusTag = if (entry.ftPerBird < entry.minFtPerBird) "▼ crowded" else "ok",
+                        kind = vk
                     )
                 }
             }
@@ -541,7 +599,8 @@ fun OutputScreen(
                     value = "${entry.barricadeFt}",
                     unit = "ft",
                     toleranceText = "Occupied floor area: ${String.format("%.0f", entry.occupiedFt2)} ft²",
-                    statusTag = "brooding"
+                    statusTag = "brooding",
+                    kind = vk
                 )
             }
         }
@@ -608,7 +667,7 @@ fun OutputScreen(
     }
 }
 
-data class GistItem(val label: String, val value: String, val sub: String)
+data class GistItem(val label: String, val value: String, val sub: String, val kind: ValueKind = ValueKind.NEUTRAL)
 
 @Composable
 fun GistRow(a: GistItem, b: GistItem, c: GistItem) {
@@ -621,6 +680,7 @@ fun GistRow(a: GistItem, b: GistItem, c: GistItem) {
 
 @Composable
 fun GistTile(item: GistItem, modifier: Modifier = Modifier) {
+    val valColor = if (item.value == "—") kindColor(ValueKind.NEUTRAL) else kindColor(item.kind)
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(10.dp),
@@ -636,6 +696,7 @@ fun GistTile(item: GistItem, modifier: Modifier = Modifier) {
             Text(
                 item.value,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace),
+                color = valColor,
                 maxLines = 1
             )
             Text(
@@ -644,6 +705,45 @@ fun GistTile(item: GistItem, modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1
             )
+        }
+    }
+}
+
+/** Explains the three colours (and that ideal targets sit in their own card). */
+@Composable
+fun ValueLegend(isProjected: Boolean) {
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(12.dp),
+        tonalElevation = 1.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                LegendChip("Present", ValuePresent, "measured")
+                LegendChip("Predicted", ValuePredicted, "estimate")
+                LegendChip("Ideal", ValueIdeal, "target")
+            }
+            Text(
+                text = if (isProjected)
+                    "No weight sample today → weight-based numbers are PREDICTED (amber). Enter a sample to turn them into measured (green) values."
+                else
+                    "A weight sample was entered → weight-based numbers are PRESENT (green). Ideal targets sit in their own card below.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun LegendChip(label: String, color: Color, sub: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(modifier = Modifier.size(10.dp).background(color, RoundedCornerShape(3.dp)))
+        Spacer(modifier = Modifier.width(5.dp))
+        Column {
+            Text(label, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = color))
+            Text(sub, style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -663,6 +763,7 @@ fun IdealRow(label: String, value: String) {
         )
         Text(
             text = value,
+            color = ValueIdeal,
             style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
         )
     }
@@ -749,8 +850,10 @@ fun BigMetric(
     unit: String,
     toleranceText: String,
     statusTag: String,
-    isHero: Boolean = false
+    isHero: Boolean = false,
+    kind: ValueKind = ValueKind.PRESENT
 ) {
+    val effectiveKind = if (value == "—") ValueKind.NEUTRAL else kind
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -761,11 +864,24 @@ fun BigMetric(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (kindTag(effectiveKind).isNotEmpty()) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Surface(color = kindWash(effectiveKind), shape = RoundedCornerShape(4.dp)) {
+                        Text(
+                            text = kindTag(effectiveKind),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                            color = kindColor(effectiveKind),
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                        )
+                    }
+                }
+            }
             Text(
                 text = statusTag,
                 style = MaterialTheme.typography.labelSmall.copy(
@@ -783,6 +899,7 @@ fun BigMetric(
         ) {
             Text(
                 text = value,
+                color = kindColor(effectiveKind),
                 style = if (isHero) MaterialTheme.typography.headlineLarge.copy(
                     fontWeight = FontWeight.Black,
                     fontFamily = FontFamily.Monospace,
@@ -986,13 +1103,13 @@ fun GrowthCurveCanvas(dailyRows: List<DailyDataEntity>, breed: String) {
                     actualPath.lineTo(x, y)
                 }
                 drawCircle(
-                    color = if (r.sampleEntered) BrandEmerald else StatusProjected,
+                    color = if (r.sampleEntered) ValuePresent else ValuePredicted,
                     radius = if (r.sampleEntered) 4.5f else 3f,
                     center = Offset(x, y)
                 )
             }
         }
-        drawPath(actualPath, color = BrandEmerald, style = Stroke(width = 2.5f))
+        drawPath(actualPath, color = ValuePresent, style = Stroke(width = 2.5f))
     }
 }
 

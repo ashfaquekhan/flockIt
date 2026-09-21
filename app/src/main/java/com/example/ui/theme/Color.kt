@@ -54,3 +54,11 @@ val LineDark = Color(0xFF2A2F34)     // hairlines / outlines
 // Calm accent for dark mode (not flashy) — a muted teal-emerald
 val AccentDark = Color(0xFF4CA98E)
 val AccentDarkWash = Color(0xFF15302A)
+
+// Value provenance — keep the three kinds visually distinct so they're never confused:
+val ValuePresent = Color(0xFF46B98C)     // measured / actual (you entered it) — green
+val ValuePresentWash = Color(0xFF15332A)
+val ValuePredicted = Color(0xFFD9A441)   // projected estimate (no sample yet) — amber
+val ValuePredictedWash = Color(0xFF33290F)
+val ValueIdeal = Color(0xFF6FA8DA)       // breed-standard target — blue
+val ValueIdealWash = Color(0xFF14263A)
