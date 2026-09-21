@@ -143,7 +143,6 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
                     },
                     onDeleteFlock = { viewModel.deleteFlock(it) },
                     onToggleLock = { flockId, locked -> viewModel.toggleFlockLock(flockId, locked) },
-                    onOpenSettings = { showSettings = true },
                     modifier = content
                 )
                 AppScreen.DASHBOARD -> MainFlockScreen(

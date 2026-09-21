@@ -73,7 +73,6 @@ fun FlocksScreen(
     onCreateFlock: (name: String, breed: String, startDate: String, startTime: String, placed: Int, transitMort: Int, harvestAge: Int) -> Unit,
     onDeleteFlock: (String) -> Unit,
     onToggleLock: (flockId: String, locked: Boolean) -> Unit,
-    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showCreate by remember { mutableStateOf(false) }
@@ -100,9 +99,6 @@ fun FlocksScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                }
-                IconButton(onClick = onOpenSettings) {
-                    Icon(Icons.Default.Settings, contentDescription = "Farm settings", tint = BrandEmerald)
                 }
             }
 

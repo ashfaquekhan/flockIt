@@ -138,7 +138,7 @@ fun HouseFloorPlan(
                 text = if (fullHouse)
                     "Full house open — ${usableLength.toInt()} × ${farm.usableWidthFt.toInt()} ft"
                 else
-                    "Barricade at $barricadeFt ft of ${usableLength.toInt()} ft (house ${farm.usableWidthFt.toInt()} ft wide). Move it back as the birds grow.",
+                    "Barricade at $barricadeFt ft of ${usableLength.toInt()} ft (house ${farm.usableWidthFt.toInt()} ft wide). Updates daily — move it back a little each day; full house by ~day 11.",
                 style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
                 modifier = Modifier.padding(top = 6.dp)
             )
@@ -197,7 +197,7 @@ fun HouseFloorPlan(
                         )
                     )
                     Text(
-                        text = String.format("%.1f / %.0f kg/m²", density, farm.densityCapDefault),
+                        text = String.format("%.2f / %.2f kg/ft²", density * 0.092903, farm.densityCapDefault * 0.092903),
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontWeight = FontWeight.Bold,
                             color = if (densityOk) StatusGood else StatusCrit

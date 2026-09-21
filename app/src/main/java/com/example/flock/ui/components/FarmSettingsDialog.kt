@@ -73,7 +73,8 @@ fun FarmSettingsDialog(
     var fanCfm by remember { mutableStateOf(farm.fanRatedCfm.toString()) }
     var drinkTankL by remember { mutableStateOf(farm.drinkTankL.toString()) }
     var feedBagKg by remember { mutableStateOf(farm.feedBagKg.toString()) }
-    var densityCap by remember { mutableStateOf(farm.densityCapDefault.toString()) }
+    // Density stored kg/m² but shown/edited in kg/ft² (1 m² = 10.7639 ft²).
+    var densityCap by remember { mutableStateOf(String.format("%.2f", farm.densityCapDefault * 0.092903)) }
 
     // Placement area, cooling pads, drinker/feeder hardware, heaters & fuel
     var usableLengthFt by remember { mutableStateOf(farm.usableLengthFt.toString()) }
@@ -178,10 +179,10 @@ fun FarmSettingsDialog(
                                 label = { Text("Farm / house name") },
                                 modifier = Modifier.weight(1f)
                             )
-                            OutlinedTextField(
-                                value = cutoffTime,
-                                onValueChange = { cutoffTime = it },
-                                label = { Text("Daily Cutoff Time") },
+                            TimePickerField(
+                                label = "Daily lock-out time",
+                                valueHHmm = cutoffTime,
+                                onPick = { cutoffTime = it },
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -252,7 +253,7 @@ fun FarmSettingsDialog(
                             OutlinedTextField(
                                 value = densityCap,
                                 onValueChange = { densityCap = it },
-                                label = { Text("Density Cap (kg/m²)") },
+                                label = { Text("Density cap (kg/ft²)") },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 modifier = Modifier.weight(1f)
                             )
@@ -480,7 +481,7 @@ fun FarmSettingsDialog(
                                 fanRatedCfm = fanCfm.toDoubleOrNull() ?: farm.fanRatedCfm,
                                 drinkTankL = drinkTankL.toDoubleOrNull() ?: farm.drinkTankL,
                                 feedBagKg = feedBagKg.toDoubleOrNull() ?: farm.feedBagKg,
-                                densityCapDefault = densityCap.toDoubleOrNull() ?: farm.densityCapDefault,
+                                densityCapDefault = densityCap.toDoubleOrNull()?.let { it / 0.092903 } ?: farm.densityCapDefault,
                                 usableLengthFt = usableLengthFt.toDoubleOrNull() ?: farm.usableLengthFt,
                                 usableWidthFt = usableWidthFt.toDoubleOrNull() ?: farm.usableWidthFt,
                                 padAreaFt2 = padAreaFt2.toDoubleOrNull() ?: farm.padAreaFt2,

@@ -371,13 +371,21 @@ object PhysiologicalEngine {
         val grossUsableFt2 = usableLengthFt * usableWidthFt
         val usableM2 = grossUsableFt2 * 0.092903
 
-        val areaBrood = if (broodDensity > 0) liveBirds / broodDensity else 0.0
-        val areaCap = if (densityCapDefault > 0) (liveBirds * avgKg / densityCapDefault) / 0.092903 else 0.0
-        val areaNeeded = max(areaBrood, areaCap)
+        // Brooding expansion: chicks start on a portion of the house and the barricade is moved
+        // back a little EVERY DAY, reaching the full house by ~day 11. This makes the occupied
+        // area (and the floor-plan drawing) update daily as the birds grow.
+        val broodDays = 11.0
+        val startFrac = 0.30 // day 0 ≈ 30% of the house
+        val ageFrac = (startFrac + (1.0 - startFrac) * (day / broodDays)).coerceIn(startFrac, 1.0)
+        val broodArea = grossUsableFt2 * ageFrac
 
-        val barricadeFt = min(usableLengthFt, min(grossUsableFt2, areaNeeded) / max(1.0, usableWidthFt)).roundToInt()
-        val fullHouse = day >= 11 || barricadeFt >= usableLengthFt.toInt()
-        val occupiedFt2 = if (fullHouse) grossUsableFt2 else min(grossUsableFt2, areaNeeded)
+        // As birds get heavy they need at least the area that keeps them under the density cap.
+        val areaCap = if (densityCapDefault > 0) (liveBirds * avgKg / densityCapDefault) / 0.092903 else 0.0
+        val areaNeeded = max(broodArea, areaCap).coerceAtMost(grossUsableFt2)
+
+        val fullHouse = areaNeeded >= grossUsableFt2 * 0.98
+        val occupiedFt2 = areaNeeded
+        val barricadeFt = min(usableLengthFt, occupiedFt2 / max(1.0, usableWidthFt)).roundToInt()
 
         val ftPerBird = if (liveBirds > 0) occupiedFt2 / liveBirds else 0.0
         val minFtPerBird = if (densityCapDefault > 0) (avgKg / densityCapDefault) / 0.092903 else 0.0

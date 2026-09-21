@@ -255,6 +255,8 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
                     if (f != null) {
                         _farm.value = f
                         refreshWeather(f)
+                        // Cut-off time lives on the farm, so re-evaluate the lock whenever it changes.
+                        updateLockStatus()
                     }
                 }
             }
@@ -553,6 +555,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
             repository.updateConfig(config)
             _farm.value = farm
             _config.value = config
+            updateLockStatus()  // apply a changed cut-off time immediately, everywhere
             val flock = _activeFlock.value
             if (flock != null) {
                 repository.recomputeFlock(_selectedSpreadsheetId.value, flock.flockId)

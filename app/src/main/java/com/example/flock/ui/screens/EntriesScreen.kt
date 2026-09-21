@@ -1,11 +1,14 @@
 package com.example.flock.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,6 +21,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -253,7 +262,7 @@ fun EntriesScreen(
             val isDay0 = dayNumber == 0
             Text(
                 text = if (isDay0) "No feed consumed before placement day (Day 0)"
-                       else "Feed bags used (add a row per feed type)",
+                       else "Feed used yesterday · $yesterdayDate — one row per feed type",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -267,7 +276,8 @@ fun EntriesScreen(
                         OutlinedTextField(
                             value = row.bags,
                             onValueChange = { row.bags = it },
-                            label = { Text("Bags") },
+                            label = { Text("Bags · $yesterdayDate") },
+                            placeholder = { Text("used on $yesterdayDate") },
                             singleLine = true,
                             enabled = importantEnabled,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -352,9 +362,11 @@ fun EntriesScreen(
             )
         }
 
-        // SAVE
-        Button(
-            onClick = {
+        // SAVE — press & hold for 2.5s so it can't be tapped by accident (it locks after saving)
+        HoldToSaveButton(
+            label = if (committed) "Hold to update · Day $dayNumber" else "Hold to save · Day $dayNumber",
+            enabled = !isHardLocked,
+            onSave = {
                 val rows = feedUse.filter { (it.bags.toDoubleOrNull() ?: 0.0) > 0.0 }
                 val breakdown = rows.joinToString(";") { "${it.type}=${it.bags.toDoubleOrNull() ?: 0.0}" }
                 val feedSum = rows.sumOf { it.bags.toDoubleOrNull() ?: 0.0 }
@@ -382,25 +394,84 @@ fun EntriesScreen(
                         dieselCansUsed = dieselCansUsed.toDoubleOrNull() ?: 0.0
                     )
                 )
-            },
-            enabled = !isHardLocked,
-            colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald),
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth().height(52.dp).testTag("save_day_entry_button")
-        ) {
-            Icon(Icons.Default.Check, contentDescription = "Save")
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = if (committed) "Update soft fields · Day $dayNumber" else "Save Day $dayNumber",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-            )
-        }
+            }
+        )
 
         Spacer(modifier = Modifier.height(96.dp).navigationBarsPadding())
     }
 }
 
 private fun Double.fmt(): String = if (this % 1.0 == 0.0) this.toInt().toString() else this.toString()
+
+/**
+ * A full-width button that must be pressed and held for ~2.5s to fire, so it can't be
+ * triggered by an accidental tap (the day locks once saved). A fill sweeps left→right
+ * while held; releasing early cancels.
+ */
+@Composable
+fun HoldToSaveButton(
+    label: String,
+    enabled: Boolean,
+    onSave: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val holdMs = 2500f
+    var progress by remember { mutableStateOf(0f) }
+    val base = if (enabled) BrandEmerald else BrandEmerald.copy(alpha = 0.35f)
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(54.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(base)
+            .then(
+                if (!enabled) Modifier
+                else Modifier.pointerInput(Unit) {
+                    detectTapGestures(
+                        onPress = {
+                            progress = 0f
+                            var fired = false
+                            coroutineScope {
+                                val anim = launch {
+                                    val t0 = System.nanoTime()
+                                    while (true) {
+                                        val elapsed = (System.nanoTime() - t0) / 1_000_000f
+                                        progress = (elapsed / holdMs).coerceIn(0f, 1f)
+                                        if (progress >= 1f) { fired = true; onSave(); break }
+                                        delay(16)
+                                    }
+                                }
+                                tryAwaitRelease()
+                                anim.cancel()
+                            }
+                            if (!fired) progress = 0f
+                        }
+                    )
+                }
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        // progress sweep
+        if (progress > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(progress)
+                    .background(Color.White.copy(alpha = 0.22f))
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Check, contentDescription = "Save", tint = Color.White, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = if (progress in 0.001f..0.999f) "Keep holding…" else label,
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+            )
+        }
+    }
+}
 
 @Composable
 private fun Section(
