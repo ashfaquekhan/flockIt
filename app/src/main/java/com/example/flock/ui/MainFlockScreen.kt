@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -15,6 +16,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,15 +48,16 @@ enum class FlockNavTab(val label: String, val icon: ImageVector) {
  * The single-flock dashboard: ENTRY / OUTPUT / TASKS. Reached by opening a flock from the
  * Flocks screen. The top bar's farm/flock taps navigate back up the stack.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainFlockScreen(
     viewModel: FlockViewModel,
     onNavFarms: () -> Unit,
     onNavFlocks: () -> Unit,
-    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var currentTab by remember { mutableStateOf(FlockNavTab.ENTRY) }
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
 
     val activeFlock by viewModel.activeFlock.collectAsState()
     val farm by viewModel.farm.collectAsState()
@@ -112,7 +115,6 @@ fun MainFlockScreen(
                 onSelectDay = { viewModel.selectDay(it) },
                 onFarmClick = onNavFarms,
                 onFlockClick = onNavFlocks,
-                onSettingsClick = onOpenSettings,
                 onWeatherClick = { viewModel.refreshWeather() }
             )
         },
@@ -147,7 +149,9 @@ fun MainFlockScreen(
             }
         }
     ) { innerPadding ->
-        Box(
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = { viewModel.refreshCurrentFarm() },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)

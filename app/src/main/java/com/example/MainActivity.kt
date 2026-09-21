@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -61,6 +62,7 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
     val userMessage by viewModel.userMessage.collectAsState()
     val deletedFarms by viewModel.deletedFarms.collectAsState()
     val deletedFlocks by viewModel.deletedFlocks.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
 
     var showSettings by remember { mutableStateOf(false) }
     var sharingFarm by remember { mutableStateOf<FarmRegistryEntity?>(null) }
@@ -116,10 +118,13 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
                     farms = farms,
                     userEmail = authState.email,
                     isDemoMode = authState.isDemoMode,
+                    isRefreshing = isRefreshing,
+                    onRefresh = { viewModel.refreshFarms() },
                     onOpenFarm = { viewModel.openFarm(it) },
                     onCreateFarm = { name -> viewModel.createFarm(name) {} },
                     onOpenSharedFarm = { viewModel.openSharedFarm(it) },
                     onShareFarm = { sharingFarm = it },
+                    onOpenSettings = { viewModel.selectFarm(it.spreadsheetId); showSettings = true },
                     onDeleteFarm = { viewModel.deleteFarm(it.spreadsheetId) },
                     onToggleLock = { viewModel.toggleFarmLock(it.spreadsheetId, !it.locked) },
                     onOpenAccount = { showAccount = true },
@@ -129,6 +134,8 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
                     farmName = farm.farmName,
                     timeZone = farm.timeZone,
                     flocks = flocks,
+                    isRefreshing = isRefreshing,
+                    onRefresh = { viewModel.refreshCurrentFarm() },
                     onBack = { viewModel.goToFarms() },
                     onOpenFlock = { viewModel.openFlock(it) },
                     onCreateFlock = { name, breed, startDate, startTime, placed, transitMort, harvestAge ->
@@ -143,7 +150,6 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
                     viewModel = viewModel,
                     onNavFarms = { viewModel.goToFarms() },
                     onNavFlocks = { viewModel.goToFlocks() },
-                    onOpenSettings = { showSettings = true },
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -151,15 +157,19 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
     }
 
     if (showSettings) {
-        FarmSettingsDialog(
-            farm = farm,
-            config = config,
-            feedTypes = feedTypes,
-            onDismiss = { showSettings = false },
-            onSaveFarmSettings = { f, c -> viewModel.updateFarmSettings(f, c) },
-            onSaveFeedType = { ft -> viewModel.saveFeedType(ft) },
-            onDeleteFeedType = { code -> viewModel.deleteFeedType(code) }
-        )
+        // Re-key on the farm id so the dialog reloads its fields when a different farm is
+        // selected (e.g. opened from a farm's ⋮ menu on the Farms list).
+        key(farm.spreadsheetId) {
+            FarmSettingsDialog(
+                farm = farm,
+                config = config,
+                feedTypes = feedTypes,
+                onDismiss = { showSettings = false },
+                onSaveFarmSettings = { f, c -> viewModel.updateFarmSettings(f, c) },
+                onSaveFeedType = { ft -> viewModel.saveFeedType(ft) },
+                onDeleteFeedType = { code -> viewModel.deleteFeedType(code) }
+            )
+        }
     }
     sharingFarm?.let { f ->
         ShareFarmDialog(

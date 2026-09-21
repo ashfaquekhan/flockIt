@@ -67,7 +67,6 @@ fun TopFlockBar(
     onSelectDay: (Int) -> Unit,
     onFarmClick: () -> Unit,
     onFlockClick: () -> Unit,
-    onSettingsClick: () -> Unit,
     onWeatherClick: () -> Unit = {}
 ) {
     val harvestAge = flock?.harvestAge ?: 42
@@ -203,20 +202,6 @@ fun TopFlockBar(
                             tint = tint
                         )
                     }
-                }
-
-                // Farm Settings Icon
-                IconButton(
-                    onClick = onSettingsClick,
-                    modifier = Modifier
-                        .size(38.dp)
-                        .testTag("farm_settings_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = "Farm Settings",
-                        modifier = Modifier.size(20.dp)
-                    )
                 }
             }
 

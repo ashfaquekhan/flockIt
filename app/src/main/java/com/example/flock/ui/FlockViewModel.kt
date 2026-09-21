@@ -50,6 +50,7 @@ data class DailyInputs(
     val w1: Double?, val n1: Int?, val w2: Double?, val n2: Int?, val w3: Double?, val n3: Int?,
     val w4: Double?, val n4: Int?, val w5: Double?, val n5: Int?,
     val mortality: Int, val feedBagsUsed: Double, val feedUsedType: String,
+    val feedUsedBreakdown: String = "",
     val birdsLifted: Int, val weightLifted: Double, val lameSeparated: Int,
     val feedRecB1: Double, val feedTypeB1: String,
     val feedRecB2: Double, val feedTypeB2: String,
@@ -116,6 +117,10 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     private val _syncStatus = MutableStateFlow("synced")
     val syncStatus: StateFlow<String> = _syncStatus.asStateFlow()
 
+    // Pull-to-refresh spinner state (shared by all pages).
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
     private val _lockStatus = MutableStateFlow(
         LockStatus(
             isPastDay = false,
@@ -174,6 +179,35 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         if (legacy.isSuccess) imported += legacy.getOrNull() ?: 0
         syncManager.backfillIndexFromRegistry()
         return imported
+    }
+
+    /** Pull-to-refresh on the Farms list: re-sync the whole account (index + owned + shared). */
+    fun refreshFarms() {
+        if (authState.value.isDemoMode) { _isRefreshing.value = false; return }
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            _syncStatus.value = "syncing"
+            authManager.refreshAccessToken()
+            val imported = runCatching { runFullSync() }.getOrDefault(0)
+            _syncStatus.value = "synced"
+            if (imported > 0) _userMessage.value = "Loaded $imported farm(s) from your account"
+            _isRefreshing.value = false
+        }
+    }
+
+    /** Pull-to-refresh on a farm/flock/dashboard: pull the sheet + weather for the open farm. */
+    fun refreshCurrentFarm() {
+        val id = _selectedSpreadsheetId.value
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            if (!authState.value.isDemoMode && id != "local_default") {
+                _syncStatus.value = "syncing"
+                runCatching { repository.refreshFromCloud(id) }
+                _syncStatus.value = "synced"
+            }
+            refreshWeather()
+            _isRefreshing.value = false
+        }
     }
 
     // No auto-selection of a farm/flock: the user opens one explicitly from the lists.
@@ -401,6 +435,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
                     mortality = inputs.mortality,
                     feedBagsUsed = if (day == 0) 0.0 else inputs.feedBagsUsed,
                     feedUsedType = inputs.feedUsedType,
+                    feedUsedBreakdown = if (day == 0) "" else inputs.feedUsedBreakdown,
                     birdsLifted = inputs.birdsLifted,
                     weightLifted = inputs.weightLifted,
                     lameSeparated = inputs.lameSeparated,

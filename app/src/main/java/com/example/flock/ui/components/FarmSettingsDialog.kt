@@ -62,7 +62,8 @@ fun FarmSettingsDialog(
 ) {
     var selectedTab by remember { mutableStateOf(0) }
 
-    var houseName by remember { mutableStateOf(farm.houseName) }
+    // Farm name IS the house name (one house per farm).
+    var farmName by remember { mutableStateOf(farm.farmName) }
     var timeZone by remember { mutableStateOf(farm.timeZone) }
     var cutoffTime by remember { mutableStateOf(farm.cutoffTime) }
     var lengthFt by remember { mutableStateOf(farm.lengthFt.toString()) }
@@ -172,9 +173,9 @@ fun FarmSettingsDialog(
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
-                                value = houseName,
-                                onValueChange = { houseName = it },
-                                label = { Text("House Name") },
+                                value = farmName,
+                                onValueChange = { farmName = it },
+                                label = { Text("Farm / house name") },
                                 modifier = Modifier.weight(1f)
                             )
                             OutlinedTextField(
@@ -283,11 +284,11 @@ fun FarmSettingsDialog(
                         Text("Drinkers & Feeders", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(drinkerLines, { drinkerLines = it }, label = { Text("Drinker lines") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
-                            OutlinedTextField(nippleLineHoldL, { nippleLineHoldL = it }, label = { Text("Nipple line fill (L)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
+                            OutlinedTextField(nippleLineHoldL, { nippleLineHoldL = it }, label = { Text("Water 1 drinker line holds (L)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(feederLines, { feederLines = it }, label = { Text("Feeder lines") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
-                            OutlinedTextField(feederLineBags, { feederLineBags = it }, label = { Text("Bags/feeder line") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                            OutlinedTextField(feederLineBags, { feederLineBags = it }, label = { Text("Bags 1 feeder line holds") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(feederMoveMin, { feederMoveMin = it }, label = { Text("Feeder move (min)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
@@ -468,7 +469,8 @@ fun FarmSettingsDialog(
                     Button(
                         onClick = {
                             val updatedFarm = farm.copy(
-                                houseName = houseName,
+                                farmName = farmName.ifBlank { farm.farmName },
+                                houseName = farmName.ifBlank { farm.houseName },
                                 timeZone = timeZone,
                                 cutoffTime = cutoffTime,
                                 lengthFt = lengthFt.toDoubleOrNull() ?: farm.lengthFt,

@@ -1,6 +1,5 @@
 package com.example.flock.ui.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,45 +19,56 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.flock.data.DailyDataEntity
 import com.example.flock.data.FeedTypeEntity
+import com.example.flock.data.parseFeedBreakdown
 import com.example.flock.engine.PhysiologicalEngine
 import com.example.flock.ui.DailyInputs
 import com.example.flock.ui.LockStatus
 import com.example.ui.theme.BrandEmerald
 import com.example.ui.theme.StatusCrit
 import com.example.ui.theme.StatusCritWash
+import com.example.ui.theme.StatusGood
+import com.example.ui.theme.StatusGoodWash
 import com.example.ui.theme.StatusWarn
 import com.example.ui.theme.StatusWarnWash
+
+/** One editable "feed used" line (type + bags). */
+private class FeedUseRow(type: String, bags: String) {
+    var type by mutableStateOf(type)
+    var bags by mutableStateOf(bags)
+}
 
 @Composable
 fun EntriesScreen(
@@ -83,8 +93,9 @@ fun EntriesScreen(
     var n5 by remember { mutableStateOf("") }
 
     var mortality by remember { mutableStateOf("") }
-    var feedBagsUsed by remember { mutableStateOf("") }
-    var feedUsedType by remember { mutableStateOf("") }
+
+    // Feed used today — one or more (type, bags) rows.
+    val feedUse = remember { mutableStateListOf<FeedUseRow>() }
 
     var birdsLifted by remember { mutableStateOf("") }
     var weightLifted by remember { mutableStateOf("") }
@@ -97,42 +108,26 @@ fun EntriesScreen(
     var feedRecB3 by remember { mutableStateOf("") }
     var feedTypeB3 by remember { mutableStateOf("") }
 
-    var broodingLength by remember { mutableStateOf("") }
-    var actualFans by remember { mutableStateOf("") }
-    var actualFanTime by remember { mutableStateOf("") }
-    var outTemp by remember { mutableStateOf("") }
-    var outRH by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
-
-    // Measured readings (optional)
-    var waterTempC by remember { mutableStateOf("") }
-    var waterPh by remember { mutableStateOf("") }
-    var feedMoisturePct by remember { mutableStateOf("") }
-    var measuredCo2 by remember { mutableStateOf("") }
-    var measuredNh3 by remember { mutableStateOf("") }
-    var measuredO2 by remember { mutableStateOf("") }
-    var measuredPressure by remember { mutableStateOf("") }
-    var measuredAirspeed by remember { mutableStateOf("") }
-    var padWetMin by remember { mutableStateOf("") }
-    var padDryMin by remember { mutableStateOf("") }
-    var luxPerFt2 by remember { mutableStateOf("") }
     var dieselCansUsed by remember { mutableStateOf("") }
 
     LaunchedEffect(entry) {
-        w1 = entry?.w1?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: ""
-        n1 = entry?.n1?.toString() ?: ""
-        w2 = entry?.w2?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: ""
-        n2 = entry?.n2?.toString() ?: ""
-        w3 = entry?.w3?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: ""
-        n3 = entry?.n3?.toString() ?: ""
-        w4 = entry?.w4?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: ""
-        n4 = entry?.n4?.toString() ?: ""
-        w5 = entry?.w5?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: ""
-        n5 = entry?.n5?.toString() ?: ""
+        w1 = entry?.w1?.fmt() ?: ""; n1 = entry?.n1?.toString() ?: ""
+        w2 = entry?.w2?.fmt() ?: ""; n2 = entry?.n2?.toString() ?: ""
+        w3 = entry?.w3?.fmt() ?: ""; n3 = entry?.n3?.toString() ?: ""
+        w4 = entry?.w4?.fmt() ?: ""; n4 = entry?.n4?.toString() ?: ""
+        w5 = entry?.w5?.fmt() ?: ""; n5 = entry?.n5?.toString() ?: ""
 
         mortality = entry?.mortality?.let { if (it > 0) it.toString() else "" } ?: ""
-        feedBagsUsed = entry?.feedBagsUsed?.let { if (it > 0) it.toString() else "" } ?: ""
-        feedUsedType = entry?.feedUsedType ?: feedTypes.firstOrNull()?.code ?: "B1"
+
+        feedUse.clear()
+        val breakdown = parseFeedBreakdown(entry?.feedUsedBreakdown ?: "")
+        when {
+            breakdown.isNotEmpty() -> breakdown.forEach { (c, b) -> feedUse.add(FeedUseRow(c, b.fmt())) }
+            (entry?.feedBagsUsed ?: 0.0) > 0 ->
+                feedUse.add(FeedUseRow(entry?.feedUsedType ?: (feedTypes.firstOrNull()?.code ?: "B1"), entry!!.feedBagsUsed.fmt()))
+            else -> feedUse.add(FeedUseRow(feedTypes.firstOrNull()?.code ?: "B1", ""))
+        }
 
         birdsLifted = entry?.birdsLifted?.let { if (it > 0) it.toString() else "" } ?: ""
         weightLifted = entry?.weightLifted?.let { if (it > 0) it.toString() else "" } ?: ""
@@ -145,31 +140,16 @@ fun EntriesScreen(
         feedRecB3 = entry?.feedRecB3?.let { if (it > 0) it.toString() else "" } ?: ""
         feedTypeB3 = entry?.feedTypeB3?.ifEmpty { "B3" } ?: (feedTypes.getOrNull(2)?.code ?: "B3")
 
-        broodingLength = entry?.broodingLength?.toString() ?: ""
-        actualFans = entry?.actualFans?.toString() ?: ""
-        actualFanTime = entry?.actualFanTime?.toString() ?: ""
-        outTemp = entry?.outTemp?.toString() ?: ""
-        outRH = entry?.outRH?.toString() ?: ""
         notes = entry?.notes ?: ""
-
-        waterTempC = entry?.waterTempC?.toString() ?: ""
-        waterPh = entry?.waterPh?.toString() ?: ""
-        feedMoisturePct = entry?.feedMoisturePct?.toString() ?: ""
-        measuredCo2 = entry?.measuredCo2?.toString() ?: ""
-        measuredNh3 = entry?.measuredNh3?.toString() ?: ""
-        measuredO2 = entry?.measuredO2?.toString() ?: ""
-        measuredPressure = entry?.measuredPressure?.toString() ?: ""
-        measuredAirspeed = entry?.measuredAirspeed?.toString() ?: ""
-        padWetMin = entry?.padWetMin?.toString() ?: ""
-        padDryMin = entry?.padDryMin?.toString() ?: ""
-        luxPerFt2 = entry?.luxPerFt2?.toString() ?: ""
         dieselCansUsed = entry?.dieselCansUsed?.let { if (it > 0) it.toString() else "" } ?: ""
     }
 
     val isHardLocked = lockStatus.isHardLocked
+    val committed = entry?.committed == true
+    // Important fields (weight+location, mortality, feed used) are read-only once saved.
+    val importantEnabled = !isHardLocked && !committed
     val scrollState = rememberScrollState()
 
-    // Live calculation of 5-location sample
     val liveSamples = listOf(
         PhysiologicalEngine.LocationSample(w1.toDoubleOrNull() ?: 0.0, n1.toIntOrNull() ?: 0),
         PhysiologicalEngine.LocationSample(w2.toDoubleOrNull() ?: 0.0, n2.toIntOrNull() ?: 0),
@@ -187,477 +167,198 @@ fun EntriesScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Lock Banner if locked
+        // Banners
+        if (committed && !isHardLocked) {
+            InfoBanner(
+                icon = Icons.Default.Lock, tint = StatusGood, wash = StatusGoodWash,
+                text = "Day saved. Weight, mortality & feed are locked. Edit directly in the Google Sheet to change them."
+            )
+        }
         if (isHardLocked) {
-            Surface(
-                color = StatusCritWash,
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = "Locked",
-                        tint = StatusCrit,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = lockStatus.lockReason.ifEmpty { "Inputs locked. Direct edit in Google Sheet required." },
-                        color = StatusCrit,
-                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold)
-                    )
-                }
-            }
+            InfoBanner(
+                icon = Icons.Default.Lock, tint = StatusCrit, wash = StatusCritWash,
+                text = lockStatus.lockReason.ifEmpty { "Inputs locked. Edit directly in the Google Sheet." }
+            )
         } else if (lockStatus.isCutoffApproaching) {
-            Surface(
-                color = StatusWarnWash,
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Warning,
-                        contentDescription = "Warning",
-                        tint = StatusWarn,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Cutoff approaching! Today's samples and mortality lock at ${lockStatus.cutoffTime}.",
-                        color = StatusWarn,
-                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold)
-                    )
-                }
-            }
+            InfoBanner(
+                icon = Icons.Default.Warning, tint = StatusWarn, wash = StatusWarnWash,
+                text = "Cutoff approaching! Today's samples and mortality lock at ${lockStatus.cutoffTime}."
+            )
         }
 
         // SECTION 1: 5 Location Weight Samples
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(12.dp),
-            tonalElevation = 1.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "1. 5 Location Weight Samples",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
-                Text(
-                    text = "Zig-zag across 5 house locations before 11:00 AM cutoff",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+        Section(title = "1. Weight samples (5 locations)", subtitle = "Zig-zag across 5 house spots before the ${lockStatus.cutoffTime} cutoff") {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Location", style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1.2f))
+                Text("Total Weight (g)", style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(2f))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Chicks Count", style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1.5f))
+            }
+            WeightSampleRow("Loc 1", w1, n1, importantEnabled, { w1 = it }, { n1 = it }, "w1_input", "n1_input")
+            WeightSampleRow("Loc 2", w2, n2, importantEnabled, { w2 = it }, { n2 = it }, "w2_input", "n2_input")
+            WeightSampleRow("Loc 3", w3, n3, importantEnabled, { w3 = it }, { n3 = it }, "w3_input", "n3_input")
+            WeightSampleRow("Loc 4", w4, n4, importantEnabled, { w4 = it }, { n4 = it }, "w4_input", "n4_input")
+            WeightSampleRow("Loc 5", w5, n5, importantEnabled, { w5 = it }, { n5 = it }, "w5_input", "n5_input")
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Table Header
+            Spacer(modifier = Modifier.height(8.dp))
+            Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Location", style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1.2f))
-                    Text("Total Weight (g)", style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(2f))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Chicks Count", style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1.5f))
-                }
-
-                // 5 Rows
-                WeightSampleRow(
-                    loc = "Loc 1",
-                    weight = w1,
-                    count = n1,
-                    enabled = !isHardLocked,
-                    onWeightChange = { w1 = it },
-                    onCountChange = { n1 = it },
-                    weightTag = "w1_input",
-                    countTag = "n1_input"
-                )
-                WeightSampleRow(
-                    loc = "Loc 2",
-                    weight = w2,
-                    count = n2,
-                    enabled = !isHardLocked,
-                    onWeightChange = { w2 = it },
-                    onCountChange = { n2 = it },
-                    weightTag = "w2_input",
-                    countTag = "n2_input"
-                )
-                WeightSampleRow(
-                    loc = "Loc 3",
-                    weight = w3,
-                    count = n3,
-                    enabled = !isHardLocked,
-                    onWeightChange = { w3 = it },
-                    onCountChange = { n3 = it },
-                    weightTag = "w3_input",
-                    countTag = "n3_input"
-                )
-                WeightSampleRow(
-                    loc = "Loc 4",
-                    weight = w4,
-                    count = n4,
-                    enabled = !isHardLocked,
-                    onWeightChange = { w4 = it },
-                    onCountChange = { n4 = it },
-                    weightTag = "w4_input",
-                    countTag = "n4_input"
-                )
-                WeightSampleRow(
-                    loc = "Loc 5",
-                    weight = w5,
-                    count = n5,
-                    enabled = !isHardLocked,
-                    onWeightChange = { w5 = it },
-                    onCountChange = { n5 = it },
-                    weightTag = "w5_input",
-                    countTag = "n5_input"
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Live Summary Strip
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Flock Avg (ΣW / ΣN)", style = MaterialTheme.typography.labelSmall)
-                            Text(
-                                text = if (liveSampleRes.hasSample) String.format("%.1f g", liveSampleRes.flockAvgG) else "No sample",
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
+                    Column {
+                        Text("Flock Avg (ΣW / ΣN)", style = MaterialTheme.typography.labelSmall)
+                        Text(
+                            text = if (liveSampleRes.hasSample) String.format("%.1f g", liveSampleRes.flockAvgG) else "No sample",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        )
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("Uniformity CV%", style = MaterialTheme.typography.labelSmall)
+                        val cvStr = if (liveSampleRes.hasSample && liveSampleRes.totalWeighed >= 2) String.format("%.1f%%", liveSampleRes.cvPercent) else "—"
+                        Text(
+                            text = cvStr,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace,
+                                color = if (liveSampleRes.cvPercent >= 12.0) StatusCrit else if (liveSampleRes.cvPercent >= 10.0) StatusWarn else BrandEmerald
                             )
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("Uniformity CV%", style = MaterialTheme.typography.labelSmall)
-                            val cvStr = if (liveSampleRes.hasSample && liveSampleRes.totalWeighed >= 2) String.format("%.1f%%", liveSampleRes.cvPercent) else "—"
-                            Text(
-                                text = cvStr,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = if (liveSampleRes.cvPercent >= 12.0) StatusCrit else if (liveSampleRes.cvPercent >= 10.0) StatusWarn else BrandEmerald
-                                )
-                            )
-                        }
+                        )
                     }
                 }
             }
+            if (!liveSampleRes.hasSample) {
+                Text(
+                    text = "No weights entered — the dashboard is running on ideal / projected targets for Day $dayNumber.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
         }
 
-        // SECTION 2: Mortality & Feed Consumption
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(12.dp),
-            tonalElevation = 1.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = "2. Mortality & Feed Consumed",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
+        // SECTION 2: Mortality & Feed used (multi-type)
+        Section(title = "2. Mortality & feed used") {
+            OutlinedTextField(
+                value = mortality,
+                onValueChange = { mortality = it },
+                label = { Text("Mortality (chicks dead today)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                enabled = importantEnabled,
+                modifier = Modifier.fillMaxWidth().testTag("mortality_input")
+            )
 
-                // Mortality
-                OutlinedTextField(
-                    value = mortality,
-                    onValueChange = { mortality = it },
-                    label = { Text("Mortality (chicks dead today)") },
-                    placeholder = { Text("Mortality for Day $dayNumber · $dayDate") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    enabled = !isHardLocked,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("mortality_input")
-                )
-
-                // Feed bags used + Feed type used
-                val isDay0 = dayNumber == 0
-                Column {
+            val isDay0 = dayNumber == 0
+            Text(
+                text = if (isDay0) "No feed consumed before placement day (Day 0)"
+                       else "Feed bags used (add a row per feed type)",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (!isDay0) {
+                feedUse.forEachIndexed { idx, row ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         OutlinedTextField(
-                            value = if (isDay0) "0" else feedBagsUsed,
-                            onValueChange = { if (!isDay0) feedBagsUsed = it },
-                            label = { Text("Feed bags used") },
-                            placeholder = { Text("Bags used up to Day ${if (dayNumber > 0) dayNumber - 1 else 0} · $yesterdayDate") },
+                            value = row.bags,
+                            onValueChange = { row.bags = it },
+                            label = { Text("Bags") },
+                            singleLine = true,
+                            enabled = importantEnabled,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            enabled = !isHardLocked && !isDay0,
-                            modifier = Modifier
-                                .weight(1.8f)
-                                .testTag("feed_bags_used_input")
+                            modifier = Modifier.weight(1.4f)
                         )
-
                         FeedTypeDropdown(
-                            selectedCode = feedUsedType,
+                            selectedCode = row.type,
                             options = feedTypes,
-                            enabled = !isHardLocked && !isDay0,
-                            onSelect = { feedUsedType = it },
-                            modifier = Modifier.weight(1.2f)
+                            enabled = importantEnabled,
+                            onSelect = { row.type = it },
+                            modifier = Modifier.weight(1.4f)
                         )
+                        IconButton(
+                            onClick = { if (feedUse.size > 1) feedUse.removeAt(idx) },
+                            enabled = importantEnabled && feedUse.size > 1,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Remove feed row", modifier = Modifier.size(18.dp))
+                        }
                     }
-
-                    if (isDay0) {
-                        Text(
-                            text = "No feed consumed before placement day (Day 0)",
-                            style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
-                            modifier = Modifier.padding(start = 4.dp, top = 4.dp)
-                        )
+                }
+                if (importantEnabled) {
+                    OutlinedButton(
+                        onClick = { feedUse.add(FeedUseRow(feedTypes.firstOrNull()?.code ?: "B1", "")) },
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Add feed type")
                     }
                 }
             }
         }
 
-        // SECTION 3: Feed Deliveries (Up to 3 slots)
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(12.dp),
-            tonalElevation = 1.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = "3. Feed Received Today",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
-                Text(
-                    text = "Log delivery receipts for stock inventory (up to 3 batches)",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                // Slot 1
-                DeliveryRow(
-                    slotLabel = "Delivery 1",
-                    bags = feedRecB1,
-                    feedTypeCode = feedTypeB1,
-                    feedTypes = feedTypes,
-                    enabled = !isHardLocked,
-                    onBagsChange = { feedRecB1 = it },
-                    onTypeChange = { feedTypeB1 = it }
-                )
-
-                // Slot 2
-                DeliveryRow(
-                    slotLabel = "Delivery 2",
-                    bags = feedRecB2,
-                    feedTypeCode = feedTypeB2,
-                    feedTypes = feedTypes,
-                    enabled = !isHardLocked,
-                    onBagsChange = { feedRecB2 = it },
-                    onTypeChange = { feedTypeB2 = it }
-                )
-
-                // Slot 3 (Bug 1 Fix)
-                DeliveryRow(
-                    slotLabel = "Delivery 3",
-                    bags = feedRecB3,
-                    feedTypeCode = feedTypeB3,
-                    feedTypes = feedTypes,
-                    enabled = !isHardLocked,
-                    onBagsChange = { feedRecB3 = it },
-                    onTypeChange = { feedTypeB3 = it }
-                )
-            }
+        // SECTION 3: Feed received (stock)
+        Section(title = "3. Feed received today", subtitle = "Log delivery receipts for stock (up to 3 batches)") {
+            DeliveryRow("Delivery 1", feedRecB1, feedTypeB1, feedTypes, !isHardLocked, { feedRecB1 = it }, { feedTypeB1 = it })
+            DeliveryRow("Delivery 2", feedRecB2, feedTypeB2, feedTypes, !isHardLocked, { feedRecB2 = it }, { feedTypeB2 = it })
+            DeliveryRow("Delivery 3", feedRecB3, feedTypeB3, feedTypes, !isHardLocked, { feedRecB3 = it }, { feedTypeB3 = it })
         }
 
-        // SECTION 4: Lifting & Culls
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(12.dp),
-            tonalElevation = 1.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = "4. Harvest Lifting & Culls",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = birdsLifted,
-                        onValueChange = { birdsLifted = it },
-                        label = { Text("Birds lifted") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        enabled = !isHardLocked,
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("birds_lifted_input")
-                    )
-                    OutlinedTextField(
-                        value = weightLifted,
-                        onValueChange = { weightLifted = it },
-                        label = { Text("Lift weight (kg)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        enabled = !isHardLocked,
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("weight_lifted_input")
-                    )
-                }
-
+        // SECTION 4: Lifting & culls
+        Section(title = "4. Harvest lifting & culls") {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
-                    value = lameSeparated,
-                    onValueChange = { lameSeparated = it },
-                    label = { Text("Lame / culls separated") },
+                    value = birdsLifted, onValueChange = { birdsLifted = it },
+                    label = { Text("Birds lifted") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    enabled = !isHardLocked,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("lame_separated_input")
+                    enabled = !isHardLocked, modifier = Modifier.weight(1f).testTag("birds_lifted_input")
                 )
-            }
-        }
-
-        // SECTION 5: Shed Management & Climate (Soft Fields - editable until midnight)
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(12.dp),
-            tonalElevation = 1.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = "5. House Checks & Climate (Optional)",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
-
                 OutlinedTextField(
-                    value = broodingLength,
-                    onValueChange = { broodingLength = it },
-                    label = { Text("Brooding barricade length (ft)") },
+                    value = weightLifted, onValueChange = { weightLifted = it },
+                    label = { Text("Lift weight (kg)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("brooding_length_input")
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = actualFans,
-                        onValueChange = { actualFans = it },
-                        label = { Text("Fans running") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = actualFanTime,
-                        onValueChange = { actualFanTime = it },
-                        label = { Text("Fan ON sec") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = outTemp,
-                        onValueChange = { outTemp = it },
-                        label = { Text("Measured Temp (°C)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = outRH,
-                        onValueChange = { outRH = it },
-                        label = { Text("Measured RH (%)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                OutlinedTextField(
-                    value = notes,
-                    onValueChange = { notes = it },
-                    label = { Text("Special notes (miscellaneous)") },
-                    placeholder = { Text("One point per line:\n- litter turned\n- bird activity normal") },
-                    minLines = 3,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("notes_input")
+                    enabled = !isHardLocked, modifier = Modifier.weight(1f).testTag("weight_lifted_input")
                 )
             }
+            OutlinedTextField(
+                value = lameSeparated, onValueChange = { lameSeparated = it },
+                label = { Text("Lame / culls separated") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                enabled = !isHardLocked, modifier = Modifier.fillMaxWidth().testTag("lame_separated_input")
+            )
         }
 
-        // SECTION 6: Measured Readings (optional — Output shows "— no reading" if blank)
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(12.dp),
-            tonalElevation = 1.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = "6. Measured Readings (optional)",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
-                Text(
-                    text = "Air-quality, water and feed probe readings. Leave blank if not measured.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    NumField(measuredCo2, { measuredCo2 = it }, "CO₂ (ppm)", Modifier.weight(1f))
-                    NumField(measuredNh3, { measuredNh3 = it }, "NH₃ (ppm)", Modifier.weight(1f))
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    NumField(measuredO2, { measuredO2 = it }, "O₂ (%)", Modifier.weight(1f))
-                    NumField(measuredPressure, { measuredPressure = it }, "Static pressure (Pa)", Modifier.weight(1f))
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    NumField(measuredAirspeed, { measuredAirspeed = it }, "Air speed (ft/min)", Modifier.weight(1f))
-                    NumField(luxPerFt2, { luxPerFt2 = it }, "Light (lux)", Modifier.weight(1f))
-                }
-                Divider(modifier = Modifier.padding(vertical = 2.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    NumField(waterTempC, { waterTempC = it }, "Water temp (°C)", Modifier.weight(1f))
-                    NumField(waterPh, { waterPh = it }, "Water pH", Modifier.weight(1f))
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    NumField(feedMoisturePct, { feedMoisturePct = it }, "Feed moisture (%)", Modifier.weight(1f))
-                    NumField(dieselCansUsed, { dieselCansUsed = it }, "Diesel cans used", Modifier.weight(1f))
-                }
-                Divider(modifier = Modifier.padding(vertical = 2.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    NumField(padWetMin, { padWetMin = it }, "Pad wet time (min)", Modifier.weight(1f))
-                    NumField(padDryMin, { padDryMin = it }, "Pad dry time (min)", Modifier.weight(1f))
-                }
-            }
+        // SECTION 5: Notes & diesel (only miscellaneous section kept)
+        Section(title = "5. Notes & diesel") {
+            OutlinedTextField(
+                value = dieselCansUsed, onValueChange = { dieselCansUsed = it },
+                label = { Text("Diesel cans used") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                enabled = !isHardLocked, modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = notes, onValueChange = { notes = it },
+                label = { Text("Miscellaneous notes") },
+                placeholder = { Text("One point per line:\n- litter turned\n- bird activity normal") },
+                minLines = 3,
+                enabled = !isHardLocked,
+                modifier = Modifier.fillMaxWidth().testTag("notes_input")
+            )
         }
 
-        // SAVE BUTTON
+        // SAVE
         Button(
             onClick = {
+                val rows = feedUse.filter { (it.bags.toDoubleOrNull() ?: 0.0) > 0.0 }
+                val breakdown = rows.joinToString(";") { "${it.type}=${it.bags.toDoubleOrNull() ?: 0.0}" }
+                val feedSum = rows.sumOf { it.bags.toDoubleOrNull() ?: 0.0 }
+                val firstType = rows.firstOrNull()?.type ?: (feedTypes.firstOrNull()?.code ?: "B1")
                 onSave(
                     DailyInputs(
                         w1 = w1.toDoubleOrNull(), n1 = n1.toIntOrNull(),
@@ -666,70 +367,77 @@ fun EntriesScreen(
                         w4 = w4.toDoubleOrNull(), n4 = n4.toIntOrNull(),
                         w5 = w5.toDoubleOrNull(), n5 = n5.toIntOrNull(),
                         mortality = mortality.toIntOrNull() ?: 0,
-                        feedBagsUsed = feedBagsUsed.toDoubleOrNull() ?: 0.0,
-                        feedUsedType = feedUsedType,
+                        feedBagsUsed = feedSum,
+                        feedUsedType = firstType,
+                        feedUsedBreakdown = breakdown,
                         birdsLifted = birdsLifted.toIntOrNull() ?: 0,
                         weightLifted = weightLifted.toDoubleOrNull() ?: 0.0,
                         lameSeparated = lameSeparated.toIntOrNull() ?: 0,
                         feedRecB1 = feedRecB1.toDoubleOrNull() ?: 0.0, feedTypeB1 = feedTypeB1,
                         feedRecB2 = feedRecB2.toDoubleOrNull() ?: 0.0, feedTypeB2 = feedTypeB2,
                         feedRecB3 = feedRecB3.toDoubleOrNull() ?: 0.0, feedTypeB3 = feedTypeB3,
-                        broodingLength = broodingLength.toDoubleOrNull(),
-                        actualFans = actualFans.toIntOrNull(),
-                        actualFanTime = actualFanTime.toIntOrNull(),
-                        outTemp = outTemp.toDoubleOrNull(),
-                        outRH = outRH.toDoubleOrNull(),
+                        broodingLength = null, actualFans = null, actualFanTime = null,
+                        outTemp = null, outRH = null,
                         notes = notes,
-                        waterTempC = waterTempC.toDoubleOrNull(),
-                        waterPh = waterPh.toDoubleOrNull(),
-                        feedMoisturePct = feedMoisturePct.toDoubleOrNull(),
-                        measuredCo2 = measuredCo2.toDoubleOrNull(),
-                        measuredNh3 = measuredNh3.toDoubleOrNull(),
-                        measuredO2 = measuredO2.toDoubleOrNull(),
-                        measuredPressure = measuredPressure.toDoubleOrNull(),
-                        measuredAirspeed = measuredAirspeed.toDoubleOrNull(),
-                        padWetMin = padWetMin.toDoubleOrNull(),
-                        padDryMin = padDryMin.toDoubleOrNull(),
-                        luxPerFt2 = luxPerFt2.toDoubleOrNull(),
                         dieselCansUsed = dieselCansUsed.toDoubleOrNull() ?: 0.0
                     )
                 )
             },
+            enabled = !isHardLocked,
             colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald),
             shape = RoundedCornerShape(12.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp)
-                .testTag("save_day_entry_button")
+            modifier = Modifier.fillMaxWidth().height(52.dp).testTag("save_day_entry_button")
         ) {
             Icon(Icons.Default.Check, contentDescription = "Save")
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "Save Day $dayNumber",
+                text = if (committed) "Update soft fields · Day $dayNumber" else "Save Day $dayNumber",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
             )
         }
 
-        // Extra bottom room so the Save button clears the keyboard / bottom nav bar
         Spacer(modifier = Modifier.height(96.dp).navigationBarsPadding())
     }
 }
 
+private fun Double.fmt(): String = if (this % 1.0 == 0.0) this.toInt().toString() else this.toString()
+
 @Composable
-private fun NumField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String,
-    modifier: Modifier = Modifier
+private fun Section(
+    title: String,
+    subtitle: String? = null,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
 ) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(label) },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-        modifier = modifier
-    )
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(12.dp),
+        tonalElevation = 1.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+            if (subtitle != null) {
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            content()
+        }
+    }
+}
+
+@Composable
+private fun InfoBanner(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    tint: androidx.compose.ui.graphics.Color,
+    wash: androidx.compose.ui.graphics.Color,
+    text: String
+) {
+    Surface(color = wash, shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(text, color = tint, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold))
+        }
+    }
 }
 
 @Composable
@@ -744,42 +452,23 @@ fun WeightSampleRow(
     countTag: String
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(
-            text = loc,
-            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-            modifier = Modifier.weight(1.2f)
-        )
-
+        Text(loc, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), modifier = Modifier.weight(1.2f))
         OutlinedTextField(
-            value = weight,
-            onValueChange = onWeightChange,
-            placeholder = { Text("Weight (g)") },
-            singleLine = true,
-            enabled = enabled,
+            value = weight, onValueChange = onWeightChange,
+            placeholder = { Text("Weight (g)") }, singleLine = true, enabled = enabled,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            modifier = Modifier
-                .weight(2f)
-                .testTag(weightTag)
+            modifier = Modifier.weight(2f).testTag(weightTag)
         )
-
         Spacer(modifier = Modifier.width(8.dp))
-
         OutlinedTextField(
-            value = count,
-            onValueChange = onCountChange,
-            placeholder = { Text("Count") },
-            singleLine = true,
-            enabled = enabled,
+            value = count, onValueChange = onCountChange,
+            placeholder = { Text("Count") }, singleLine = true, enabled = enabled,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier
-                .weight(1.5f)
-                .testTag(countTag)
+            modifier = Modifier.weight(1.5f).testTag(countTag)
         )
     }
 }
@@ -800,23 +489,12 @@ fun DeliveryRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         OutlinedTextField(
-            value = bags,
-            onValueChange = onBagsChange,
-            label = { Text("$slotLabel (bags)") },
-            placeholder = { Text("Bags received") },
-            singleLine = true,
-            enabled = enabled,
+            value = bags, onValueChange = onBagsChange,
+            label = { Text("$slotLabel (bags)") }, singleLine = true, enabled = enabled,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             modifier = Modifier.weight(1.8f)
         )
-
-        FeedTypeDropdown(
-            selectedCode = feedTypeCode,
-            options = feedTypes,
-            enabled = enabled,
-            onSelect = onTypeChange,
-            modifier = Modifier.weight(1.2f)
-        )
+        FeedTypeDropdown(feedTypeCode, feedTypes, enabled, onTypeChange, Modifier.weight(1.2f))
     }
 }
 
@@ -833,32 +511,21 @@ fun FeedTypeDropdown(
 
     Box(modifier = modifier) {
         OutlinedTextField(
-            value = displayLabel,
-            onValueChange = {},
-            readOnly = true,
-            enabled = enabled,
+            value = displayLabel, onValueChange = {}, readOnly = true, enabled = enabled,
             label = { Text("Feed Type") },
             trailingIcon = {
                 Icon(
-                    imageVector = Icons.Default.ArrowDropDown,
-                    contentDescription = "Select feed type",
+                    imageVector = Icons.Default.ArrowDropDown, contentDescription = "Select feed type",
                     modifier = Modifier.clickable(enabled = enabled) { expanded = true }
                 )
             },
             modifier = Modifier.fillMaxWidth()
         )
-
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             for (opt in options) {
                 DropdownMenuItem(
                     text = { Text("${opt.code} — ${opt.name} (${opt.bagKg}kg)") },
-                    onClick = {
-                        onSelect(opt.code)
-                        expanded = false
-                    }
+                    onClick = { onSelect(opt.code); expanded = false }
                 )
             }
         }

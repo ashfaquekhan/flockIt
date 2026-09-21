@@ -41,12 +41,16 @@ val Ink2Light = Color(0xFF4A5149)
 val MutedLight = Color(0xFF7C8378)
 val LineLight = Color(0xFFE2DED3)
 
-// Dark Backgrounds & Neutrals
-val GroundDark = Color(0xFF121615)
-val SurfaceDark = Color(0xFF191E1D)
-val Surface2Dark = Color(0xFF202624)
-val SunkDark = Color(0xFF0E1211)
-val InkDark = Color(0xFFEBE9E1)
-val Ink2Dark = Color(0xFFC0C4BB)
-val MutedDark = Color(0xFF8C9288)
-val LineDark = Color(0xFF2B322F)
+// Dark Backgrounds & Neutrals — neutral charcoal, calm and clearly legible
+val GroundDark = Color(0xFF101214)
+val SurfaceDark = Color(0xFF181B1E)
+val Surface2Dark = Color(0xFF212529)
+val SunkDark = Color(0xFF0B0D0F)
+val InkDark = Color(0xFFE7EAED)      // primary text — high contrast
+val Ink2Dark = Color(0xFFAEB4BA)     // secondary text — clearly visible
+val MutedDark = Color(0xFF757C83)    // captions / hints
+val LineDark = Color(0xFF2A2F34)     // hairlines / outlines
+
+// Calm accent for dark mode (not flashy) — a muted teal-emerald
+val AccentDark = Color(0xFF4CA98E)
+val AccentDarkWash = Color(0xFF15302A)

@@ -23,11 +23,13 @@ import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -36,6 +38,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,15 +54,19 @@ import com.example.flock.ui.components.InitialsAvatar
 import com.example.ui.theme.BrandEmerald
 import com.example.ui.theme.StatusWarn
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FarmsScreen(
     farms: List<FarmRegistryEntity>,
     userEmail: String,
     isDemoMode: Boolean,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
     onOpenFarm: (String) -> Unit,
     onCreateFarm: (String) -> Unit,
     onOpenSharedFarm: (String) -> Unit,
     onShareFarm: (FarmRegistryEntity) -> Unit,
+    onOpenSettings: (FarmRegistryEntity) -> Unit,
     onDeleteFarm: (FarmRegistryEntity) -> Unit,
     onToggleLock: (FarmRegistryEntity) -> Unit,
     onOpenAccount: () -> Unit,
@@ -95,40 +102,50 @@ fun FarmsScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            if (farms.isEmpty()) {
-                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.Agriculture,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            "No farms yet",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-                        Text(
-                            "Create a farm to start managing flocks.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+            PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = onRefresh,
+                modifier = Modifier.weight(1f)
+            ) {
+                if (farms.isEmpty()) {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        item {
+                            Column(
+                                modifier = Modifier.fillParentMaxSize(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Agriculture,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(48.dp)
+                                )
+                                Spacer(Modifier.height(10.dp))
+                                Text("No farms yet", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                                Text(
+                                    "Create a farm, or pull down to sync your account.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(farms, key = { it.spreadsheetId }) { farm ->
-                        FarmCard(
-                            farm = farm,
-                            onOpen = { onOpenFarm(farm.spreadsheetId) },
-                            onShare = { onShareFarm(farm) },
-                            onDelete = { deletingFarm = farm },
-                            onToggleLock = { onToggleLock(farm) }
-                        )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(farms, key = { it.spreadsheetId }) { farm ->
+                            FarmCard(
+                                farm = farm,
+                                onOpen = { onOpenFarm(farm.spreadsheetId) },
+                                onShare = { onShareFarm(farm) },
+                                onOpenSettings = { onOpenSettings(farm) },
+                                onDelete = { deletingFarm = farm },
+                                onToggleLock = { onToggleLock(farm) }
+                            )
+                        }
                     }
                 }
             }
@@ -189,6 +206,7 @@ private fun FarmCard(
     farm: FarmRegistryEntity,
     onOpen: () -> Unit,
     onShare: () -> Unit,
+    onOpenSettings: () -> Unit,
     onDelete: () -> Unit,
     onToggleLock: () -> Unit
 ) {
@@ -230,6 +248,11 @@ private fun FarmCard(
                             onClick = { menuOpen = false; onShare() }
                         )
                     }
+                    DropdownMenuItem(
+                        text = { Text("Farm & shed settings") },
+                        leadingIcon = { Icon(Icons.Default.Tune, contentDescription = null) },
+                        onClick = { menuOpen = false; onOpenSettings() }
+                    )
                     DropdownMenuItem(
                         text = { Text(if (farm.locked) "Unlock (allow edits)" else "Lock (read-only)") },
                         leadingIcon = { Icon(if (farm.locked) Icons.Default.LockOpen else Icons.Default.Lock, contentDescription = null) },

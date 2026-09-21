@@ -29,6 +29,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -37,6 +38,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,11 +60,14 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FlocksScreen(
     farmName: String,
     timeZone: String,
     flocks: List<FlockEntity>,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
     onBack: () -> Unit,
     onOpenFlock: (String) -> Unit,
     onCreateFlock: (name: String, breed: String, startDate: String, startTime: String, placed: Int, transitMort: Int, harvestAge: Int) -> Unit,
@@ -103,34 +108,46 @@ fun FlocksScreen(
 
             Spacer(Modifier.height(10.dp))
 
-            if (ordered.isEmpty()) {
-                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.Egg, contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        Text("No flocks yet", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                        Text(
-                            "Add a batch to start day-by-day tracking.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+            PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = onRefresh,
+                modifier = Modifier.weight(1f)
+            ) {
+                if (ordered.isEmpty()) {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        item {
+                            Column(
+                                modifier = Modifier.fillParentMaxSize(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Egg, contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(48.dp)
+                                )
+                                Spacer(Modifier.height(10.dp))
+                                Text("No flocks yet", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                                Text(
+                                    "Add a batch, or pull down to sync.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
-                }
-            } else {
-                LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(ordered.size) { idx ->
-                        val flock = ordered[idx]
-                        FlockCard(
-                            seq = idx + 1,
-                            flock = flock,
-                            timeZone = timeZone,
-                            onOpen = { onOpenFlock(flock.flockId) },
-                            onDelete = { deletingFlock = flock },
-                            onToggleLock = { onToggleLock(flock.flockId, !flock.locked) }
-                        )
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(ordered.size) { idx ->
+                            val flock = ordered[idx]
+                            FlockCard(
+                                seq = idx + 1,
+                                flock = flock,
+                                timeZone = timeZone,
+                                onOpen = { onOpenFlock(flock.flockId) },
+                                onDelete = { deletingFlock = flock },
+                                onToggleLock = { onToggleLock(flock.flockId, !flock.locked) }
+                            )
+                        }
                     }
                 }
             }

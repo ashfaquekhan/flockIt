@@ -58,12 +58,9 @@ fun blockColor(block: String): Color = when {
 }
 
 val FIXED_BLOCKS = listOf(
-    "Morning 05:00–08:30",
-    "Morning 08:30–12:00",
-    "Evening 12:00–16:00",
-    "Evening 16:00–20:00",
-    "Night 20:00–00:00",
-    "Night 00:00–05:00"
+    "Morning 05:00–12:00",
+    "Evening 12:00–20:00",
+    "Night 20:00–05:00"
 )
 
 fun detectBlockFromTime(time: String): String {
@@ -71,13 +68,10 @@ fun detectBlockFromTime(time: String): String {
     val min = time.split(":").getOrNull(1)?.toIntOrNull() ?: 0
     val totalMin = hour * 60 + min
 
-    return when {
-        totalMin in (5 * 60)..(8 * 60 + 30) -> "Morning 05:00–08:30"
-        totalMin in (8 * 60 + 31)..(12 * 60) -> "Morning 08:30–12:00"
-        totalMin in (12 * 60 + 1)..(16 * 60) -> "Evening 12:00–16:00"
-        totalMin in (16 * 60 + 1)..(20 * 60) -> "Evening 16:00–20:00"
-        totalMin in (20 * 60 + 1)..(23 * 60 + 59) -> "Night 20:00–00:00"
-        else -> "Night 00:00–05:00"
+    return when (totalMin) {
+        in (5 * 60)..(12 * 60 - 1) -> "Morning 05:00–12:00"
+        in (12 * 60)..(20 * 60 - 1) -> "Evening 12:00–20:00"
+        else -> "Night 20:00–05:00"
     }
 }
 
@@ -115,7 +109,7 @@ fun TasksScreen(
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                 )
                 Text(
-                    text = "6 Fixed Daily Operational Blocks",
+                    text = "Morning · Evening · Night — add any number of tasks",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

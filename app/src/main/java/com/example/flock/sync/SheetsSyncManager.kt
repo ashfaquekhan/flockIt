@@ -272,7 +272,7 @@ class SheetsSyncManager(
         "BroodingLength", "ActualFans", "ActualFanTime", "OutTemp", "OutRH", "Notes",
         "WaterTempC", "WaterPh", "FeedMoisturePct", "MeasuredCo2", "MeasuredNh3", "MeasuredO2",
         "MeasuredPressure", "MeasuredAirspeed", "PadWetMin", "PadDryMin", "LuxPerFt2", "DieselCansUsed",
-        "UpdatedAt", "UpdatedBy"
+        "UpdatedAt", "UpdatedBy", "Committed", "FeedUsedBreakdown"
     )
     private fun dayToRow(d: DailyDataEntity): List<String> = listOf(
         d.flockId, sv(d.dayNumber), d.date, sv(d.locked), sv(d.sampleEntered),
@@ -282,7 +282,7 @@ class SheetsSyncManager(
         sv(d.broodingLength), sv(d.actualFans), sv(d.actualFanTime), sv(d.outTemp), sv(d.outRH), d.notes,
         sv(d.waterTempC), sv(d.waterPh), sv(d.feedMoisturePct), sv(d.measuredCo2), sv(d.measuredNh3), sv(d.measuredO2),
         sv(d.measuredPressure), sv(d.measuredAirspeed), sv(d.padWetMin), sv(d.padDryMin), sv(d.luxPerFt2), sv(d.dieselCansUsed),
-        sv(d.updatedAt), d.updatedBy
+        sv(d.updatedAt), d.updatedBy, sv(d.committed), d.feedUsedBreakdown
     )
     private fun rowToDay(spreadsheetId: String, r: List<Any>): DailyDataEntity? {
         val fId = r.s(0); if (fId.isBlank()) return null
@@ -304,7 +304,8 @@ class SheetsSyncManager(
             measuredPressure = r.d(39), measuredAirspeed = r.d(40),
             padWetMin = r.d(41), padDryMin = r.d(42), luxPerFt2 = r.d(43),
             dieselCansUsed = r.d(44) ?: 0.0,
-            updatedAt = r.l(45) ?: System.currentTimeMillis(), updatedBy = r.s(46)
+            updatedAt = r.l(45) ?: System.currentTimeMillis(), updatedBy = r.s(46),
+            committed = r.b(47), feedUsedBreakdown = r.s(48)
         )
     }
 
@@ -849,7 +850,7 @@ class SheetsSyncManager(
             val ranges = listOf(
                 a1("_Farm", "A1:B80"),
                 appendRange("Flocks", "A1:N1000"),
-                appendRange("DailyData", "A1:AU5000"),
+                appendRange("DailyData", "A1:AW5000"),
                 appendRange("Tasks", "A1:H2000")
             )
             val res = GoogleApiClientProvider.sheetsApi.batchGet(authHeader, spreadsheetId, ranges)

@@ -264,6 +264,9 @@ fun OutputScreen(
             )
         }
 
+        // 1b. BIRD SIZE & UNIFORMITY — population distribution from today's 5-spot sample
+        PopulationDistributionCard(entry = entry)
+
         // 2. FEED & STOCK ON HAND
         OutputCard(title = "Feed plan & stock") {
             val reqToDateBags = dailyRows.filter { it.dayNumber <= day }.sumOf { it.feedBags }
@@ -503,24 +506,6 @@ fun OutputScreen(
                     )
                 }
             }
-        }
-
-        // 4b. AIR QUALITY & MEASURED READINGS (always shown; "— no reading" when blank)
-        OutputCard(title = "Air Quality & Measured Readings") {
-            MeasuredMetric("CO₂", entry.measuredCo2, "ppm", 0, "Ideal < 3000 · Max ${entry.co2Max.toInt()} ppm")
-            MeasuredMetric("NH₃ ammonia", entry.measuredNh3, "ppm", 0, "Ideal < 10 · Max ${entry.nh3Max.toInt()} ppm")
-            MeasuredMetric("O₂ oxygen", entry.measuredO2, "%", 1, "Ideal 20.9 · Min 19.5 %")
-            MeasuredMetric("Static pressure", entry.measuredPressure, "Pa", 0, "Ideal 25 · Band 15–35 Pa")
-            MeasuredMetric("Air speed (measured)", entry.measuredAirspeed, "ft/min", 0, "Target ${entry.airspeed.toInt()} ft/min for the day")
-            MeasuredMetric("Light intensity", entry.luxPerFt2, "lux", 0, "Brooding 30–40 · Grow-out 5–10 lux")
-            Divider(modifier = Modifier.padding(vertical = 4.dp))
-            MeasuredMetric("Water temperature", entry.waterTempC, "°C", 1, "Ideal < 25 °C (cool water lifts intake)")
-            MeasuredMetric("Water pH", entry.waterPh, "", 1, "Ideal 6.0 – 6.8")
-            MeasuredMetric("Feed moisture", entry.feedMoisturePct, "%", 1, "Safe < 13 % (mould risk above)")
-            MeasuredMetric("Diesel cans used", entry.dieselCansUsed.takeIf { it > 0 }, "cans", 1, "≈ ${farm.dieselCanL.toInt()} L per can")
-            Divider(modifier = Modifier.padding(vertical = 4.dp))
-            MeasuredMetric("Pad wet time", entry.padWetMin, "min", 0, "Evaporative cooling on-cycle")
-            MeasuredMetric("Pad dry time", entry.padDryMin, "min", 0, "Off-cycle so litter stays dry")
         }
 
         // Brooding barricade / floor-plan diagram
@@ -827,6 +812,118 @@ fun BigMetric(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         )
+    }
+}
+
+/**
+ * Population size distribution from today's 5-spot weight sample — shows how big the birds
+ * are and how uniform the flock is (the infographic the original workbook had for CV%).
+ */
+@Composable
+fun PopulationDistributionCard(entry: DailyDataEntity) {
+    data class Loc(val label: String, val avg: Double, val count: Int)
+    val locs = buildList {
+        val pairs = listOf(
+            "L1" to (entry.w1 to entry.n1), "L2" to (entry.w2 to entry.n2), "L3" to (entry.w3 to entry.n3),
+            "L4" to (entry.w4 to entry.n4), "L5" to (entry.w5 to entry.n5)
+        )
+        for ((label, wn) in pairs) {
+            val w = wn.first ?: 0.0
+            val n = wn.second ?: 0
+            if (w > 0 && n > 0) add(Loc(label, w / n, n))
+        }
+    }
+
+    OutputCard(title = "Bird size & uniformity") {
+        if (locs.isEmpty()) {
+            Text(
+                "No weights entered today — the dashboard is on ideal / projected targets. " +
+                        "Weigh 5 spots (in the ENTRY tab) to see the live size distribution.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            return@OutputCard
+        }
+
+        val totalN = locs.sumOf { it.count }
+        val mean = entry.avgWeight ?: (locs.sumOf { it.avg * it.count } / totalN)
+        val cv = entry.cv
+        val minScale = mean * 0.8
+        val maxScale = mean * 1.2
+
+        // Header numbers
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GistTile(GistItem("Mean wt", "${String.format("%.0f", mean)}g", "$totalN birds"), Modifier.weight(1f))
+            GistTile(
+                GistItem("CV%", cv?.let { String.format("%.1f", it) } ?: "—",
+                    if (cv == null) "need ≥2 spots" else if (cv < 10) "uniform" else if (cv < 12) "uneven" else "very uneven"),
+                Modifier.weight(1f)
+            )
+            val spread = (locs.maxOf { it.avg } - locs.minOf { it.avg })
+            GistTile(GistItem("Spread", "${String.format("%.0f", spread)}g", "min→max"), Modifier.weight(1f))
+        }
+
+        // Bars — one per weighed location, height ∝ average weight, colour ∝ deviation from mean
+        Row(
+            modifier = Modifier.fillMaxWidth().height(150.dp).padding(top = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            for (loc in locs) {
+                val frac = ((loc.avg - minScale) / (maxScale - minScale)).coerceIn(0.08, 1.0)
+                val dev = if (mean > 0) (loc.avg - mean) / mean else 0.0
+                val barColor = when {
+                    abs(dev) <= 0.05 -> BrandEmerald
+                    abs(dev) <= 0.10 -> StatusWarn
+                    else -> StatusCrit
+                }
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Bottom
+                ) {
+                    Text(
+                        String.format("%.0f", loc.avg),
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height((frac * 110).dp)
+                            .background(barColor, RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                    )
+                    Text(loc.label, style = MaterialTheme.typography.labelSmall)
+                    Text("n=${loc.count}", style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant))
+                }
+            }
+        }
+
+        // Size bands relative to the flock mean
+        val light = locs.count { it.avg < mean * 0.95 }
+        val onTarget = locs.count { it.avg >= mean * 0.95 && it.avg <= mean * 1.05 }
+        val heavy = locs.count { it.avg > mean * 1.05 }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            BandChip("Light <95%", light, StatusWarn, Modifier.weight(1f))
+            BandChip("On-target", onTarget, BrandEmerald, Modifier.weight(1f))
+            BandChip("Heavy >105%", heavy, StatusCrit, Modifier.weight(1f))
+        }
+        Text(
+            text = if ((cv ?: 0.0) >= 10.0)
+                "Uneven flock — grade/sort the lighter spots and check feeder/drinker access there."
+            else "Uniform flock — birds are close to the mean across all sampled spots.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun BandChip(label: String, count: Int, color: Color, modifier: Modifier = Modifier) {
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(8.dp), modifier = modifier) {
+        Column(modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("$count", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black, color = color, fontFamily = FontFamily.Monospace))
+            Text(label, style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        }
     }
 }
 

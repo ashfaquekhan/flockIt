@@ -146,6 +146,9 @@ data class DailyDataEntity(
     val date: String, // ISO 8601 YYYY-MM-DD
     val locked: Boolean = false,
     val sampleEntered: Boolean = false,
+    // Set true once the day's important fields (samples, mortality, feed) are saved;
+    // those fields then become read-only (display only).
+    val committed: Boolean = false,
 
     // 5 location weight samples (total weight g + chicks counted)
     val w1: Double? = null,
@@ -161,8 +164,10 @@ data class DailyDataEntity(
 
     // Day inputs
     val mortality: Int = 0,
-    val feedBagsUsed: Double = 0.0,
-    val feedUsedType: String = "B1",
+    val feedBagsUsed: Double = 0.0,       // total bags used today (sum of breakdown)
+    val feedUsedType: String = "B1",      // dominant type (first in breakdown) — engine compat
+    // Multiple feed types used today, "CODE=bags;CODE=bags" e.g. "B1=2.5;B2=1.0". "" = single/none.
+    val feedUsedBreakdown: String = "",
     val birdsLifted: Int = 0,
     val weightLifted: Double = 0.0,
     val lameSeparated: Int = 0,

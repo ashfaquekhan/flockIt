@@ -23,6 +23,17 @@ import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.roundToInt
 
+/** Parses a "CODE=bags;CODE=bags" feed-used breakdown string into (code, bags) pairs. */
+fun parseFeedBreakdown(s: String): List<Pair<String, Double>> {
+    if (s.isBlank()) return emptyList()
+    return s.split(";").mapNotNull { part ->
+        val kv = part.split("=")
+        val code = kv.getOrNull(0)?.trim().orEmpty()
+        val bags = kv.getOrNull(1)?.trim()?.toDoubleOrNull()
+        if (code.isNotBlank() && bags != null) code to bags else null
+    }
+}
+
 data class FeedStockSummary(
     val totalReceivedBags: Double,
     val totalUsedBags: Double,
@@ -372,8 +383,12 @@ class FlockRepository(
                 ((modified.w4 ?: 0.0) > 0 && (modified.n4 ?: 0) > 0) ||
                 ((modified.w5 ?: 0.0) > 0 && (modified.n5 ?: 0) > 0)
 
+        // Once the day is saved with any of the important fields (a weight sample, mortality,
+        // or feed used) it is "committed" — those fields become read-only in the entry screen.
+        val hasImportant = hasSample || modified.mortality > 0 || modified.feedBagsUsed > 0.0
         val toSave = modified.copy(
             sampleEntered = hasSample,
+            committed = modified.committed || hasImportant,
             updatedAt = System.currentTimeMillis(),
             updatedBy = userEmail
         )
@@ -680,7 +695,12 @@ class FlockRepository(
 
         for (r in rows) {
             totalUsed += r.feedBagsUsed
-            if (r.feedBagsUsed > 0 && r.feedUsedType.isNotBlank()) {
+            val usedRows = parseFeedBreakdown(r.feedUsedBreakdown)
+            if (usedRows.isNotEmpty()) {
+                for ((code, bags) in usedRows) if (bags > 0) {
+                    usedPerType[code] = (usedPerType[code] ?: 0.0) + bags
+                }
+            } else if (r.feedBagsUsed > 0 && r.feedUsedType.isNotBlank()) {
                 usedPerType[r.feedUsedType] = (usedPerType[r.feedUsedType] ?: 0.0) + r.feedBagsUsed
             }
             if (r.feedRecB1 > 0 && r.feedTypeB1.isNotBlank()) {
