@@ -823,17 +823,21 @@ fun BigMetric(
             verticalAlignment = Alignment.Bottom,
             modifier = Modifier.padding(vertical = 2.dp)
         ) {
+            // Word values (e.g. "Minimum Ventilation") get a smaller, non-mono style so they
+            // don't blow up like a big number.
+            val isWord = value.any { it.isLetter() }
             Text(
                 text = value,
                 color = kindColor(effectiveKind),
-                style = if (isHero) MaterialTheme.typography.headlineLarge.copy(
-                    fontWeight = FontWeight.Black,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 36.sp
-                ) else MaterialTheme.typography.headlineMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
+                style = when {
+                    isWord -> MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    isHero -> MaterialTheme.typography.headlineLarge.copy(
+                        fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace, fontSize = 36.sp
+                    )
+                    else -> MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace
+                    )
+                }
             )
             if (unit.isNotBlank()) {
                 Spacer(modifier = Modifier.width(6.dp))
