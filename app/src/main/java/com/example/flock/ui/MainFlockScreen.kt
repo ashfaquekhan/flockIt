@@ -182,10 +182,16 @@ fun MainFlockScreen(
                     feedStockSummary = feedStockSummary
                 )
                 FlockNavTab.TASKS -> TasksScreen(
-                    tasks = tasks,
+                    allTasks = tasks,
                     dayNumber = selectedDay,
-                    onAddTask = { block, label, time, everyDay -> viewModel.addTask(block, label, time, everyDay) },
-                    onDeleteTask = { taskId -> viewModel.deleteTask(taskId) }
+                    harvestAge = activeFlock?.harvestAge ?: 42,
+                    onSaveTask = { id, block, label, time, s, e, rec, n, alert, kind ->
+                        viewModel.saveTask(id, block, label, time, s, e, rec, n, alert, kind)
+                    },
+                    onDeleteTask = { taskId -> viewModel.deleteTask(taskId) },
+                    onToggleComplete = { id, day, done -> viewModel.toggleTaskComplete(id, day, done) },
+                    onToggleAlert = { id, en -> viewModel.toggleTaskAlert(id, en) },
+                    onCopyToRange = { id, f, t -> viewModel.copyTaskToRange(id, f, t) }
                 )
             }
         }

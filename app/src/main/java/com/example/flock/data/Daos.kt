@@ -171,6 +171,9 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE spreadsheetId = :spreadsheetId AND flockId = :flockId ORDER BY time ASC")
     suspend fun getTasksList(spreadsheetId: String, flockId: String): List<TaskEntity>
 
+    @Query("SELECT * FROM tasks WHERE spreadsheetId = :spreadsheetId AND taskId = :taskId LIMIT 1")
+    suspend fun getTaskById(spreadsheetId: String, taskId: String): TaskEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTask(task: TaskEntity)
 

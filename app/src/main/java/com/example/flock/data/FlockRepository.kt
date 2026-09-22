@@ -302,13 +302,30 @@ class FlockRepository(
         farmRegistryDao.deleteFarm(spreadsheetId)
     }
 
-    suspend fun addTask(task: TaskEntity) = withContext(Dispatchers.IO) {
+    fun getFlockTasksFlow(spreadsheetId: String, flockId: String): Flow<List<TaskEntity>> =
+        taskDao.getTasksForFlock(spreadsheetId, flockId)
+
+    suspend fun getFlockTasks(spreadsheetId: String, flockId: String): List<TaskEntity> =
+        withContext(Dispatchers.IO) { taskDao.getTasksList(spreadsheetId, flockId) }
+
+    /** Insert or update a task (upsert), pushing the change to the sheet. */
+    suspend fun upsertTask(task: TaskEntity) = withContext(Dispatchers.IO) {
         taskDao.insertTask(task)
         cloudPush("Task") { it.pushTask(task.spreadsheetId, task) }
     }
 
+    suspend fun addTask(task: TaskEntity) = upsertTask(task)
+
+    /** Mark a task done/undone on a specific flock-day. */
+    suspend fun setTaskCompleted(spreadsheetId: String, taskId: String, day: Int, done: Boolean) =
+        withContext(Dispatchers.IO) {
+            val t = taskDao.getTaskById(spreadsheetId, taskId) ?: return@withContext
+            upsertTask(t.withCompletion(day, done))
+        }
+
     suspend fun deleteTask(spreadsheetId: String, taskId: String) = withContext(Dispatchers.IO) {
         taskDao.deleteTask(spreadsheetId, taskId)
+        cloudPush("Task removed") { it.deleteTaskRow(spreadsheetId, taskId) }
     }
 
     suspend fun fetchWeather(farm: FarmEntity): WeatherResult = withContext(Dispatchers.IO) {

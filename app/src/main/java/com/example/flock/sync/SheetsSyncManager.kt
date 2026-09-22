@@ -311,17 +311,22 @@ class SheetsSyncManager(
 
     // ---- Tasks tab ----
     private val TASK_HEADERS = listOf(
-        "taskId", "flockId", "block", "label", "time", "everyDay", "dayNumber", "createdAt"
+        "taskId", "flockId", "block", "label", "time", "everyDay", "dayNumber", "createdAt",
+        "startDay", "endDay", "recurrence", "everyN", "alertEnabled", "completedDays", "kind"
     )
     private fun taskToRow(t: TaskEntity): List<String> = listOf(
-        t.taskId, t.flockId, t.block, t.label, t.time, sv(t.everyDay), t.dayNumber?.toString() ?: "", sv(t.createdAt)
+        t.taskId, t.flockId, t.block, t.label, t.time, sv(t.everyDay), t.dayNumber?.toString() ?: "", sv(t.createdAt),
+        sv(t.startDay), sv(t.endDay), t.recurrence, sv(t.everyN), sv(t.alertEnabled), t.completedDays, t.kind
     )
     private fun rowToTask(spreadsheetId: String, r: List<Any>): TaskEntity? {
         val id = r.s(0); if (id.isBlank()) return null
         return TaskEntity(
             spreadsheetId = spreadsheetId, taskId = id, flockId = r.s(1),
             block = r.s(2), label = r.s(3), time = r.s(4),
-            everyDay = r.b(5), dayNumber = r.i(6), createdAt = r.l(7) ?: System.currentTimeMillis()
+            everyDay = r.b(5), dayNumber = r.i(6), createdAt = r.l(7) ?: System.currentTimeMillis(),
+            startDay = r.i(8) ?: -1, endDay = r.i(9) ?: -1, recurrence = r.s(10),
+            everyN = r.i(11) ?: 1, alertEnabled = r.b(12), completedDays = r.s(13),
+            kind = r.s(14).ifBlank { "task" }
         )
     }
 
@@ -461,12 +466,48 @@ class SheetsSyncManager(
             } catch (e: Exception) { Result.failure(e) }
         }
 
-    /** Appends a task row. */
+    /** Upserts a task row by taskId (update in place, else append) so edits don't duplicate rows. */
     suspend fun pushTask(spreadsheetId: String, task: TaskEntity): Result<Unit> = withContext(Dispatchers.IO) {
         val authHeader = authManager.getAuthHeader() ?: return@withContext Result.success(Unit)
         try {
-            val ok = appendRows(authHeader, spreadsheetId, "Tasks", listOf(taskToRow(task)))
+            val keyRes = GoogleApiClientProvider.sheetsApi.batchGet(
+                authHeader, spreadsheetId, listOf(appendRange("Tasks", "A2:A"))
+            )
+            val rows = keyRes.body()?.valueRanges?.getOrNull(0)?.values ?: emptyList()
+            var rowNum = -1
+            for ((idx, r) in rows.withIndex()) if (r.s(0) == task.taskId) { rowNum = idx + 2; break }
+            val ok = if (rowNum > 0) {
+                val res = GoogleApiClientProvider.sheetsApi.batchUpdateValues(
+                    authHeader, spreadsheetId,
+                    BatchUpdateValuesRequest(valueInputOption = RAW,
+                        data = listOf(ValueRange(range = a1("Tasks", "A$rowNum"), values = listOf(taskToRow(task)))))
+                )
+                res.isSuccessful
+            } else {
+                appendRows(authHeader, spreadsheetId, "Tasks", listOf(taskToRow(task)))
+            }
             if (ok) Result.success(Unit) else Result.failure(Exception("Tasks write failed"))
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    /** Deletes a task row (blanks it) by taskId. Sheet keeps the empty row; Room deletes it. */
+    suspend fun deleteTaskRow(spreadsheetId: String, taskId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val authHeader = authManager.getAuthHeader() ?: return@withContext Result.success(Unit)
+        try {
+            val keyRes = GoogleApiClientProvider.sheetsApi.batchGet(
+                authHeader, spreadsheetId, listOf(appendRange("Tasks", "A2:A"))
+            )
+            val rows = keyRes.body()?.valueRanges?.getOrNull(0)?.values ?: emptyList()
+            var rowNum = -1
+            for ((idx, r) in rows.withIndex()) if (r.s(0) == taskId) { rowNum = idx + 2; break }
+            if (rowNum > 0) {
+                GoogleApiClientProvider.sheetsApi.batchUpdateValues(
+                    authHeader, spreadsheetId,
+                    BatchUpdateValuesRequest(valueInputOption = RAW,
+                        data = listOf(ValueRange(range = a1("Tasks", "A$rowNum:O$rowNum"), values = listOf(List(15) { "" }))))
+                )
+            }
+            Result.success(Unit)
         } catch (e: Exception) { Result.failure(e) }
     }
 
@@ -851,7 +892,7 @@ class SheetsSyncManager(
                 a1("_Farm", "A1:B80"),
                 appendRange("Flocks", "A1:N1000"),
                 appendRange("DailyData", "A1:AW5000"),
-                appendRange("Tasks", "A1:H2000")
+                appendRange("Tasks", "A1:O2000")
             )
             val res = GoogleApiClientProvider.sheetsApi.batchGet(authHeader, spreadsheetId, ranges)
             if (!res.isSuccessful || res.body()?.valueRanges == null) {

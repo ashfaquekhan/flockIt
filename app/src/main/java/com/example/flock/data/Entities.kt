@@ -269,10 +269,42 @@ data class TaskEntity(
     val spreadsheetId: String = "local_default",
     val taskId: String,
     val flockId: String,
-    val block: String, // "Morning 05:00–08:30", "Morning 08:30–12:00", "Evening 12:00–16:00", "Evening 16:00–20:00", "Night 20:00–00:00", "Night 00:00–05:00"
+    val block: String, // "Morning" / "Evening" / "Night" time band
     val label: String,
     val time: String, // HH:mm
-    val everyDay: Boolean = true,
-    val dayNumber: Int? = null, // null means every day
-    val createdAt: Long = System.currentTimeMillis()
-)
+    val everyDay: Boolean = true,       // legacy
+    val dayNumber: Int? = null,         // legacy: null = every day
+    val createdAt: Long = System.currentTimeMillis(),
+    // Planner scheduling (backward compatible; -1 / "" → derive from legacy fields)
+    val startDay: Int = -1,             // first flock-day the task applies
+    val endDay: Int = -1,               // last flock-day
+    val recurrence: String = "",        // "" legacy | "daily" | "once" | "everyN"
+    val everyN: Int = 1,                // step for "everyN"
+    val alertEnabled: Boolean = false,  // fire an OS notification at `time`
+    val completedDays: String = "",     // comma list of day numbers marked done
+    val kind: String = "task"           // "task" | "waterfill" (increasing daily reminder)
+) {
+    private fun effStart(harvestAge: Int) = if (startDay >= 0) startDay else if (everyDay) 0 else (dayNumber ?: 0)
+    private fun effEnd(harvestAge: Int) = if (endDay >= 0) endDay else if (everyDay) harvestAge else (dayNumber ?: harvestAge)
+
+    /** Does this task occur on flock-day [day]? */
+    fun appliesOn(day: Int, harvestAge: Int): Boolean {
+        val s = effStart(harvestAge); val e = effEnd(harvestAge)
+        if (day < s || day > e) return false
+        return when (recurrence) {
+            "once" -> day == s
+            "everyN" -> ((day - s) % everyN.coerceAtLeast(1)) == 0
+            "daily" -> true
+            else -> if (everyDay) true else (dayNumber == day) // legacy
+        }
+    }
+
+    fun isCompletedOn(day: Int): Boolean =
+        completedDays.split(",").mapNotNull { it.trim().toIntOrNull() }.contains(day)
+
+    fun withCompletion(day: Int, done: Boolean): TaskEntity {
+        val set = completedDays.split(",").mapNotNull { it.trim().toIntOrNull() }.toMutableSet()
+        if (done) set.add(day) else set.remove(day)
+        return copy(completedDays = set.sorted().joinToString(","))
+    }
+}

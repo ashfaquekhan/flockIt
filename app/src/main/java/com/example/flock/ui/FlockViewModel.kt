@@ -15,6 +15,7 @@ import com.example.flock.data.FlockRepository
 import com.example.flock.data.TaskEntity
 import com.example.flock.network.ForecastResult
 import com.example.flock.network.WeatherResult
+import com.example.flock.notify.TaskNotify
 import com.example.flock.sync.AuthUserState
 import com.example.flock.sync.GoogleAuthManager
 import com.example.flock.sync.SheetsSyncManager
@@ -332,12 +333,16 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-            // Collect Tasks for current day
+            // Collect ALL tasks for the flock (the planner filters by day) + (re)schedule alerts.
             launch {
-                repository.getTasksFlow(spreadsheetId, flockId, _selectedDay.value).collect { t ->
+                repository.getFlockTasksFlow(spreadsheetId, flockId).collect { t ->
                     _tasks.value = t
+                    rescheduleAlerts()
                 }
             }
+
+            // Pull in any completions the user tapped from a notification while the app was closed.
+            ingestNotificationCompletions()
         }
     }
 
@@ -347,12 +352,6 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         _selectedDay.value = clamped
         _currentDayEntry.value = _dailyRows.value.firstOrNull { it.dayNumber == clamped }
         updateLockStatus()
-
-        viewModelScope.launch {
-            repository.getTasksFlow(_selectedSpreadsheetId.value, flock.flockId, clamped).collect { t ->
-                _tasks.value = t
-            }
-        }
     }
 
     private fun updateLockStatus() {
@@ -521,30 +520,93 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun addTask(block: String, label: String, time: String, everyDay: Boolean) {
+    /** Save a new or edited planner task. Pass an existing taskId to edit, or null to create. */
+    fun saveTask(
+        taskId: String?,
+        block: String,
+        label: String,
+        time: String,
+        startDay: Int,
+        endDay: Int,
+        recurrence: String,
+        everyN: Int,
+        alertEnabled: Boolean,
+        kind: String
+    ) {
         val flock = _activeFlock.value ?: return
-        val day = _selectedDay.value
         val spreadsheetId = _selectedSpreadsheetId.value
-        val taskId = "tsk_" + System.currentTimeMillis()
-
         viewModelScope.launch {
-            val task = TaskEntity(
+            val existing = taskId?.let { id -> _tasks.value.firstOrNull { it.taskId == id } }
+            val task = (existing ?: TaskEntity(
                 spreadsheetId = spreadsheetId,
-                taskId = taskId,
+                taskId = "tsk_" + System.currentTimeMillis(),
                 flockId = flock.flockId,
-                block = block,
-                label = label,
-                time = time,
-                everyDay = everyDay,
-                dayNumber = if (everyDay) null else day
+                block = block, label = label, time = time
+            )).copy(
+                block = block, label = label, time = time,
+                startDay = startDay, endDay = endDay, recurrence = recurrence, everyN = everyN,
+                alertEnabled = alertEnabled, kind = kind,
+                everyDay = recurrence == "daily", dayNumber = if (recurrence == "once") startDay else null
             )
-            repository.addTask(task)
+            repository.upsertTask(task)
+            rescheduleAlerts()
         }
     }
 
     fun deleteTask(taskId: String) {
         viewModelScope.launch {
             repository.deleteTask(_selectedSpreadsheetId.value, taskId)
+            rescheduleAlerts()
+        }
+    }
+
+    /** Toggle completion of a task on a specific flock-day (used by the hold-to-complete control). */
+    fun toggleTaskComplete(taskId: String, day: Int, done: Boolean) {
+        viewModelScope.launch {
+            repository.setTaskCompleted(_selectedSpreadsheetId.value, taskId, day, done)
+        }
+    }
+
+    fun toggleTaskAlert(taskId: String, enabled: Boolean) {
+        viewModelScope.launch {
+            val t = _tasks.value.firstOrNull { it.taskId == taskId } ?: return@launch
+            repository.upsertTask(t.copy(alertEnabled = enabled))
+            rescheduleAlerts()
+            _userMessage.value = if (enabled) "Alerts on for \"${t.label}\"" else "Alerts off for \"${t.label}\""
+        }
+    }
+
+    /** Duplicate a task across a day-range as a daily task (quick "copy to other days"). */
+    fun copyTaskToRange(taskId: String, fromDay: Int, toDay: Int) {
+        val flock = _activeFlock.value ?: return
+        viewModelScope.launch {
+            val t = _tasks.value.firstOrNull { it.taskId == taskId } ?: return@launch
+            val copy = t.copy(
+                taskId = "tsk_" + System.currentTimeMillis(),
+                startDay = fromDay.coerceIn(0, flock.harvestAge),
+                endDay = toDay.coerceIn(0, flock.harvestAge),
+                recurrence = "daily", everyDay = true, dayNumber = null, completedDays = ""
+            )
+            repository.upsertTask(copy)
+            rescheduleAlerts()
+            _userMessage.value = "Copied to days $fromDay–$toDay"
+        }
+    }
+
+    private fun rescheduleAlerts() {
+        val flock = _activeFlock.value ?: return
+        val curDay = repository.calculateCurrentDay(flock.startDate, _farm.value.timeZone)
+        TaskNotify.scheduleUpcoming(
+            getApplication(),
+            _selectedSpreadsheetId.value, flock.flockId,
+            _tasks.value, curDay, flock.harvestAge
+        )
+    }
+
+    private fun ingestNotificationCompletions() {
+        viewModelScope.launch {
+            val done = TaskNotify.drainCompletedInbox(getApplication())
+            for ((sid, tid, day) in done) repository.setTaskCompleted(sid, tid, day, true)
         }
     }
 
