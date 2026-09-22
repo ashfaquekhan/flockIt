@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.flock.data.DailyDataEntity
@@ -233,16 +234,17 @@ fun OutputScreen(
                         value = fcrVal?.let { String.format("%.2f", it) } ?: "—",
                         unit = "",
                         toleranceText = "Ideal: ${String.format("%.2f", stdFcr)} · Crit: >${String.format("%.2f", stdFcr * 1.15)}",
-                        statusTag = if (fcrVal != null && fcrVal > stdFcr * 1.15) "▲ crit" else "ok"
+                        // FCR is meaningless in the first week (birds have barely gained weight).
+                        statusTag = if (day < 7) "settling" else if (fcrVal != null && fcrVal > stdFcr * 1.15) "▲ crit" else "ok"
                     )
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     BigMetric(
-                        label = "cFCR (2.0kg std)",
+                        label = "cFCR → 2 kg",
                         value = cFcrVal?.let { String.format("%.2f", it) } ?: "—",
                         unit = "",
-                        toleranceText = "(2 - avgKg) × 0.25 + FCR",
-                        statusTag = "standardised"
+                        toleranceText = "(2 − avg kg) × 0.25 + FCR",
+                        statusTag = if (day < 7) "settling" else "std"
                     )
                 }
             }
@@ -326,7 +328,8 @@ fun OutputScreen(
                         value = cMort?.let { String.format("%.2f", it) } ?: "—",
                         unit = "%",
                         toleranceText = "Ceiling: ≤ ${String.format("%.1f", entry.maxMortPct)}% · Total: ${entry.cumMort} dead",
-                        statusTag = if (cMort != null && cMort > entry.maxMortPct) "▲ crit" else "ok",
+                        // Early ceilings are tiny and reception deaths skew them, so don't cry "crit" in week 1.
+                        statusTag = if (cMort != null && cMort > entry.maxMortPct) (if (day < 7) "settling" else "▲ crit") else "ok",
                         kind = ValueKind.PRESENT
                     )
                 }
@@ -785,43 +788,40 @@ fun BigMetric(
             .fillMaxWidth()
             .padding(vertical = 4.dp)
     ) {
+        // Header: label (ellipsised) on the left, status tag on the right — never overlaps.
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (kindTag(effectiveKind).isNotEmpty()) {
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Surface(color = kindWash(effectiveKind), shape = RoundedCornerShape(4.dp)) {
-                        Text(
-                            text = kindTag(effectiveKind),
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
-                            color = kindColor(effectiveKind),
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                        )
-                    }
-                }
-            }
             Text(
-                text = statusTag,
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = if (statusTag.contains("crit") || statusTag.contains("over")) StatusCrit
-                    else if (statusTag.contains("warn") || statusTag.contains("behind")) StatusWarn
-                    else BrandEmerald
-                )
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
             )
+            if (statusTag.isNotBlank()) {
+                Text(
+                    text = statusTag,
+                    maxLines = 1,
+                    softWrap = false,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = if (statusTag.contains("crit") || statusTag.contains("over")) StatusCrit
+                        else if (statusTag.contains("warn") || statusTag.contains("behind")) StatusWarn
+                        else BrandEmerald
+                    ),
+                    modifier = Modifier.padding(start = 6.dp)
+                )
+            }
         }
 
+        // Value row: big value + unit on the left, provenance chip pinned to the right.
         Row(
             verticalAlignment = Alignment.Bottom,
-            modifier = Modifier.padding(vertical = 2.dp)
+            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
         ) {
             // Word values (e.g. "Minimum Ventilation") get a smaller, non-mono style so they
             // don't blow up like a big number.
@@ -829,6 +829,8 @@ fun BigMetric(
             Text(
                 text = value,
                 color = kindColor(effectiveKind),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 style = when {
                     isWord -> MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     isHero -> MaterialTheme.typography.headlineLarge.copy(
@@ -843,12 +845,31 @@ fun BigMetric(
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = unit,
+                    maxLines = 1,
+                    softWrap = false,
                     style = MaterialTheme.typography.bodyMedium.copy(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Medium
                     ),
                     modifier = Modifier.padding(bottom = 4.dp)
                 )
+            }
+            if (kindTag(effectiveKind).isNotEmpty()) {
+                Spacer(modifier = Modifier.weight(1f))
+                Surface(
+                    color = kindWash(effectiveKind),
+                    shape = RoundedCornerShape(4.dp),
+                    modifier = Modifier.padding(bottom = 4.dp)
+                ) {
+                    Text(
+                        text = kindTag(effectiveKind),
+                        maxLines = 1,
+                        softWrap = false,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                        color = kindColor(effectiveKind),
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                    )
+                }
             }
         }
 
