@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
@@ -995,185 +996,167 @@ private fun BandChip(label: String, count: Int, color: Color, modifier: Modifier
     }
 }
 
+/** Smooth (Catmull-Rom → cubic-bezier) path through the given points. */
+private fun buildSmoothPath(pts: List<Offset>): Path {
+    val path = Path()
+    if (pts.isEmpty()) return path
+    path.moveTo(pts[0].x, pts[0].y)
+    if (pts.size == 1) return path
+    if (pts.size == 2) { path.lineTo(pts[1].x, pts[1].y); return path }
+    for (i in 0 until pts.size - 1) {
+        val p0 = pts[if (i - 1 < 0) 0 else i - 1]
+        val p1 = pts[i]
+        val p2 = pts[i + 1]
+        val p3 = pts[if (i + 2 > pts.size - 1) pts.size - 1 else i + 2]
+        val c1x = p1.x + (p2.x - p0.x) / 6f
+        val c1y = p1.y + (p2.y - p0.y) / 6f
+        val c2x = p2.x - (p3.x - p1.x) / 6f
+        val c2y = p2.y - (p3.y - p1.y) / 6f
+        path.cubicTo(c1x, c1y, c2x, c2y, p2.x, p2.y)
+    }
+    return path
+}
+
+private fun smoothFill(pts: List<Offset>, baseline: Float): Path {
+    val p = buildSmoothPath(pts)
+    if (pts.isNotEmpty()) { p.lineTo(pts.last().x, baseline); p.lineTo(pts.first().x, baseline); p.close() }
+    return p
+}
+
 @Composable
 fun GrowthCurveCanvas(dailyRows: List<DailyDataEntity>, breed: String, markerDay: Int = -1) {
-    val gridC = MaterialTheme.colorScheme.outlineVariant
+    val gridC = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
     val labelArgb = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
     val idealC = ValueIdeal
     val presentC = ValuePresent
-    val predictedC = ValuePredicted
     val markerC = MaterialTheme.colorScheme.primary
     Canvas(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(190.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
-            .padding(10.dp)
+        modifier = Modifier.fillMaxWidth().height(200.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)).padding(12.dp)
     ) {
-        val maxDays = 42f
-        val maxWeight = 3600f
-        val padL = 30f
-        val padB = 16f
-        val gw = size.width - padL
-        val gh = size.height - padB
+        val maxDays = 42f; val maxWeight = 3600f
+        val padL = 34f; val padB = 18f
+        val gw = size.width - padL; val gh = size.height - padB
         fun px(d: Float) = padL + (d / maxDays) * gw
         fun py(wt: Float) = gh - (wt / maxWeight) * gh
-        val lbl = Paint().apply { color = labelArgb; textSize = 20f; isAntiAlias = true }
+        val lbl = Paint().apply { color = labelArgb; textSize = 22f; isAntiAlias = true }
 
-        // gridlines + y labels
         for (gv in listOf(1000f, 2000f, 3000f)) {
             val y = py(gv)
             drawLine(gridC, Offset(padL, y), Offset(padL + gw, y), strokeWidth = 1f)
-            drawContext.canvas.nativeCanvas.drawText("${(gv / 1000).toInt()}k", 0f, y + 6f, lbl)
+            drawContext.canvas.nativeCanvas.drawText("${(gv / 1000).toInt()}k", 0f, y + 7f, lbl)
         }
-        // x labels
-        for (d in listOf(0, 14, 28, 42)) {
-            drawContext.canvas.nativeCanvas.drawText("$d", px(d.toFloat()) - 5f, size.height, lbl)
-        }
+        for (d in listOf(0, 14, 28, 42)) drawContext.canvas.nativeCanvas.drawText("$d", px(d.toFloat()) - 5f, size.height, lbl)
 
-        // Ideal (breed standard) centre line
-        val idealPath = Path()
-        for (d in 0..42) {
-            val bw = PhysiologicalEngine.bwFromDay(d.toDouble(), breed).toFloat()
-            val x = px(d.toFloat()); val y = py(bw)
-            if (d == 0) idealPath.moveTo(x, y) else idealPath.lineTo(x, y)
+        // faint ±5% band
+        val band = Path().apply {
+            moveTo(px(0f), py(PhysiologicalEngine.bwFromDay(0.0, breed).toFloat() * 1.05f))
+            for (d in 1..42) lineTo(px(d.toFloat()), py(PhysiologicalEngine.bwFromDay(d.toDouble(), breed).toFloat() * 1.05f))
+            for (d in 42 downTo 0) lineTo(px(d.toFloat()), py(PhysiologicalEngine.bwFromDay(d.toDouble(), breed).toFloat() * 0.95f))
+            close()
         }
-        drawPath(idealPath, color = idealC.copy(alpha = 0.9f), style = Stroke(width = 2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f))))
+        drawPath(band, color = idealC.copy(alpha = 0.07f))
 
-        // Actual/projected points + line + gradient fill
-        val pts = mutableListOf<Triple<Float, Float, Boolean>>()
-        for (r in dailyRows.sortedBy { it.dayNumber }) {
-            val weight = r.avgWeight ?: (if (r.projected) PhysiologicalEngine.bwFromDay(r.weightAge ?: r.dayNumber.toDouble(), breed) else null)
-            if (weight != null && weight > 0) pts.add(Triple(px(r.dayNumber.toFloat()), py(weight.toFloat()), r.sampleEntered))
+        // ideal centre line (smooth, solid)
+        val idealPts = (0..42).map { Offset(px(it.toFloat()), py(PhysiologicalEngine.bwFromDay(it.toDouble(), breed).toFloat())) }
+        drawPath(buildSmoothPath(idealPts), color = idealC.copy(alpha = 0.85f), style = Stroke(width = 2.5f, cap = StrokeCap.Round))
+
+        // present/projected line + gradient fill; dots only on measured points
+        val rows = dailyRows.sortedBy { it.dayNumber }
+        val pts = rows.mapNotNull { r ->
+            val w = r.avgWeight ?: (if (r.projected) PhysiologicalEngine.bwFromDay(r.weightAge ?: r.dayNumber.toDouble(), breed) else null)
+            if (w != null && w > 0) Offset(px(r.dayNumber.toFloat()), py(w.toFloat())) else null
         }
         if (pts.isNotEmpty()) {
-            val fill = Path().apply {
-                moveTo(pts.first().first, gh)
-                pts.forEach { lineTo(it.first, it.second) }
-                lineTo(pts.last().first, gh); close()
+            drawPath(smoothFill(pts, gh), brush = Brush.verticalGradient(listOf(presentC.copy(alpha = 0.28f), presentC.copy(alpha = 0f)), startY = 0f, endY = gh))
+            drawPath(buildSmoothPath(pts), color = presentC, style = Stroke(width = 4.5f, cap = StrokeCap.Round))
+            rows.filter { it.sampleEntered }.forEach { r ->
+                val w = r.avgWeight ?: return@forEach
+                val c = Offset(px(r.dayNumber.toFloat()), py(w.toFloat()))
+                drawCircle(presentC, 5.5f, c)
+                drawCircle(Color.White, 2.2f, c)
             }
-            drawPath(fill, brush = Brush.verticalGradient(listOf(presentC.copy(alpha = 0.30f), presentC.copy(alpha = 0f)), startY = 0f, endY = gh))
-            val line = Path().apply {
-                moveTo(pts.first().first, pts.first().second)
-                pts.drop(1).forEach { lineTo(it.first, it.second) }
-            }
-            drawPath(line, color = presentC, style = Stroke(width = 2.5f))
-            pts.forEach { drawCircle(if (it.third) presentC else predictedC, if (it.third) 4.5f else 3f, Offset(it.first, it.second)) }
         }
-
-        // Selected-day marker
-        if (markerDay in 0..42) {
-            val x = px(markerDay.toFloat())
-            drawLine(markerC.copy(alpha = 0.6f), Offset(x, 0f), Offset(x, gh), strokeWidth = 1.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f)))
-        }
+        if (markerDay in 0..42) drawLine(markerC.copy(alpha = 0.5f), Offset(px(markerDay.toFloat()), 0f), Offset(px(markerDay.toFloat()), gh), strokeWidth = 1.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f)))
     }
 }
 
 @Composable
 fun FcrCurveCanvas(dailyRows: List<DailyDataEntity>, breed: String = "Ross308", markerDay: Int = -1) {
-    val gridC = MaterialTheme.colorScheme.outlineVariant
+    val gridC = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
     val labelArgb = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
     val idealC = ValueIdeal
     val presentC = ValuePresent
     val critC = StatusCrit
     val markerC = MaterialTheme.colorScheme.primary
     Canvas(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(150.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
-            .padding(10.dp)
+        modifier = Modifier.fillMaxWidth().height(175.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)).padding(12.dp)
     ) {
         val maxDays = 42f; val maxFcr = 2.2f; val minFcr = 0.9f; val range = maxFcr - minFcr
-        val padL = 32f; val padB = 16f
+        val padL = 34f; val padB = 18f
         val gw = size.width - padL; val gh = size.height - padB
         fun px(d: Float) = padL + (d / maxDays) * gw
         fun py(f: Float) = gh - ((f - minFcr) / range) * gh
-        val lbl = Paint().apply { color = labelArgb; textSize = 20f; isAntiAlias = true }
+        val lbl = Paint().apply { color = labelArgb; textSize = 22f; isAntiAlias = true }
 
         for (fv in listOf(1.0f, 1.5f, 2.0f)) {
             val y = py(fv)
             drawLine(gridC, Offset(padL, y), Offset(padL + gw, y), strokeWidth = 1f)
-            drawContext.canvas.nativeCanvas.drawText(String.format("%.1f", fv), 0f, y + 6f, lbl)
+            drawContext.canvas.nativeCanvas.drawText(String.format("%.1f", fv), 0f, y + 7f, lbl)
         }
         for (d in listOf(0, 14, 28, 42)) drawContext.canvas.nativeCanvas.drawText("$d", px(d.toFloat()) - 5f, size.height, lbl)
 
-        val stdPath = Path(); val critPath = Path()
-        for (d in 1..42) {
-            val std = PhysiologicalEngine.stdFcrFromDay(d.toDouble(), breed).toFloat()
-            val x = px(d.toFloat()); val yStd = py(std); val yCrit = py((std * 1.15f).coerceAtMost(maxFcr))
-            if (d == 1) { stdPath.moveTo(x, yStd); critPath.moveTo(x, yCrit) } else { stdPath.lineTo(x, yStd); critPath.lineTo(x, yCrit) }
-        }
-        drawPath(stdPath, color = idealC.copy(alpha = 0.9f), style = Stroke(width = 2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f))))
-        drawPath(critPath, color = critC.copy(alpha = 0.7f), style = Stroke(width = 1.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 6f))))
+        val critPts = (5..42).map { Offset(px(it.toFloat()), py((PhysiologicalEngine.stdFcrFromDay(it.toDouble(), breed).toFloat() * 1.15f).coerceAtMost(maxFcr))) }
+        drawPath(buildSmoothPath(critPts), color = critC.copy(alpha = 0.55f), style = Stroke(width = 2f, cap = StrokeCap.Round))
+        val idealPts = (5..42).map { Offset(px(it.toFloat()), py(PhysiologicalEngine.stdFcrFromDay(it.toDouble(), breed).toFloat())) }
+        drawPath(buildSmoothPath(idealPts), color = idealC.copy(alpha = 0.85f), style = Stroke(width = 2.5f, cap = StrokeCap.Round))
 
-        val pts = dailyRows.mapNotNull { r -> r.fcr?.toFloat()?.let { if (it in minFcr..maxFcr) Offset(px(r.dayNumber.toFloat()), py(it)) else null } }
-        if (pts.size > 1) {
-            val line = Path().apply { moveTo(pts.first().x, pts.first().y); pts.drop(1).forEach { lineTo(it.x, it.y) } }
-            drawPath(line, color = presentC, style = Stroke(width = 2.5f))
-        }
-        pts.forEach { drawCircle(presentC, 4f, it) }
+        // present — skip the first few days (FCR is meaningless before real weight gain)
+        val pts = dailyRows.filter { it.dayNumber >= 5 }.sortedBy { it.dayNumber }
+            .mapNotNull { r -> r.fcr?.toFloat()?.let { if (it in minFcr..maxFcr) Offset(px(r.dayNumber.toFloat()), py(it)) else null } }
+        if (pts.size > 1) drawPath(buildSmoothPath(pts), color = presentC, style = Stroke(width = 4.5f, cap = StrokeCap.Round))
+        pts.forEach { drawCircle(presentC, 4.5f, it); drawCircle(Color.White, 1.8f, it) }
 
-        if (markerDay in 0..42) {
-            val x = px(markerDay.toFloat())
-            drawLine(markerC.copy(alpha = 0.6f), Offset(x, 0f), Offset(x, gh), strokeWidth = 1.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f)))
-        }
+        if (markerDay in 0..42) drawLine(markerC.copy(alpha = 0.5f), Offset(px(markerDay.toFloat()), 0f), Offset(px(markerDay.toFloat()), gh), strokeWidth = 1.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f)))
     }
 }
 
 @Composable
 fun MortalityCurveCanvas(dailyRows: List<DailyDataEntity>, markerDay: Int = -1) {
-    val gridC = MaterialTheme.colorScheme.outlineVariant
+    val gridC = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
     val labelArgb = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
     val critC = StatusCrit
     val presentC = ValuePresent
     val markerC = MaterialTheme.colorScheme.primary
     Canvas(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(150.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
-            .padding(10.dp)
+        modifier = Modifier.fillMaxWidth().height(175.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)).padding(12.dp)
     ) {
         val maxDays = 42f; val maxMort = 6.0f
-        val padL = 30f; val padB = 16f
+        val padL = 34f; val padB = 18f
         val gw = size.width - padL; val gh = size.height - padB
         fun px(d: Float) = padL + (d / maxDays) * gw
         fun py(m: Float) = gh - (m / maxMort) * gh
-        val lbl = Paint().apply { color = labelArgb; textSize = 20f; isAntiAlias = true }
+        val lbl = Paint().apply { color = labelArgb; textSize = 22f; isAntiAlias = true }
 
         for (mv in listOf(2f, 4f, 6f)) {
             val y = py(mv)
             drawLine(gridC, Offset(padL, y), Offset(padL + gw, y), strokeWidth = 1f)
-            drawContext.canvas.nativeCanvas.drawText("${mv.toInt()}%", 0f, y + 6f, lbl)
+            drawContext.canvas.nativeCanvas.drawText("${mv.toInt()}%", 0f, y + 7f, lbl)
         }
         for (d in listOf(0, 14, 28, 42)) drawContext.canvas.nativeCanvas.drawText("$d", px(d.toFloat()) - 5f, size.height, lbl)
 
-        val ceilingPath = Path()
-        for (d in 0..42) {
-            val ceil = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MAXMORT_BY_AGE, d.toDouble()).toFloat()
-            val x = px(d.toFloat()); val y = py(ceil)
-            if (d == 0) ceilingPath.moveTo(x, y) else ceilingPath.lineTo(x, y)
-        }
-        drawPath(ceilingPath, color = critC.copy(alpha = 0.8f), style = Stroke(width = 2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f))))
+        val ceilPts = (0..42).map { Offset(px(it.toFloat()), py(PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MAXMORT_BY_AGE, it.toDouble()).toFloat())) }
+        drawPath(buildSmoothPath(ceilPts), color = critC.copy(alpha = 0.7f), style = Stroke(width = 2.5f, cap = StrokeCap.Round))
 
         val pts = dailyRows.sortedBy { it.dayNumber }.mapNotNull { r -> r.cumMortPct?.toFloat()?.let { Offset(px(r.dayNumber.toFloat()), py(it.coerceAtMost(maxMort))) } }
         if (pts.isNotEmpty()) {
-            val fill = Path().apply {
-                moveTo(pts.first().x, gh); pts.forEach { lineTo(it.x, it.y) }; lineTo(pts.last().x, gh); close()
-            }
-            drawPath(fill, brush = Brush.verticalGradient(listOf(presentC.copy(alpha = 0.25f), presentC.copy(alpha = 0f)), startY = 0f, endY = gh))
-            if (pts.size > 1) {
-                val line = Path().apply { moveTo(pts.first().x, pts.first().y); pts.drop(1).forEach { lineTo(it.x, it.y) } }
-                drawPath(line, color = presentC, style = Stroke(width = 2f))
-            }
-            pts.forEach { drawCircle(presentC, 3.5f, it) }
+            drawPath(smoothFill(pts, gh), brush = Brush.verticalGradient(listOf(presentC.copy(alpha = 0.28f), presentC.copy(alpha = 0f)), startY = 0f, endY = gh))
+            if (pts.size > 1) drawPath(buildSmoothPath(pts), color = presentC, style = Stroke(width = 4f, cap = StrokeCap.Round))
+            drawCircle(presentC, 4.5f, pts.last()); drawCircle(Color.White, 1.8f, pts.last())
         }
-
-        if (markerDay in 0..42) {
-            val x = px(markerDay.toFloat())
-            drawLine(markerC.copy(alpha = 0.6f), Offset(x, 0f), Offset(x, gh), strokeWidth = 1.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f)))
-        }
+        if (markerDay in 0..42) drawLine(markerC.copy(alpha = 0.5f), Offset(px(markerDay.toFloat()), 0f), Offset(px(markerDay.toFloat()), gh), strokeWidth = 1.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f)))
     }
 }
 
@@ -1284,53 +1267,41 @@ private fun GraphDot(color: Color, label: String) {
 
 @Composable
 fun CfcrCurveCanvas(dailyRows: List<DailyDataEntity>, breed: String = "Ross308", markerDay: Int = -1) {
-    val gridC = MaterialTheme.colorScheme.outlineVariant
+    val gridC = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
     val labelArgb = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
     val idealC = ValueIdeal
     val presentC = ValuePresent
     val markerC = MaterialTheme.colorScheme.primary
     Canvas(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(150.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
-            .padding(10.dp)
+        modifier = Modifier.fillMaxWidth().height(175.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)).padding(12.dp)
     ) {
         val maxDays = 42f; val maxV = 2.2f; val minV = 0.9f; val range = maxV - minV
-        val padL = 32f; val padB = 16f
+        val padL = 34f; val padB = 18f
         val gw = size.width - padL; val gh = size.height - padB
         fun px(d: Float) = padL + (d / maxDays) * gw
         fun py(v: Float) = gh - ((v - minV) / range) * gh
-        val lbl = Paint().apply { color = labelArgb; textSize = 20f; isAntiAlias = true }
+        val lbl = Paint().apply { color = labelArgb; textSize = 22f; isAntiAlias = true }
 
         for (fv in listOf(1.0f, 1.5f, 2.0f)) {
             val y = py(fv)
             drawLine(gridC, Offset(padL, y), Offset(padL + gw, y), strokeWidth = 1f)
-            drawContext.canvas.nativeCanvas.drawText(String.format("%.1f", fv), 0f, y + 6f, lbl)
+            drawContext.canvas.nativeCanvas.drawText(String.format("%.1f", fv), 0f, y + 7f, lbl)
         }
         for (d in listOf(0, 14, 28, 42)) drawContext.canvas.nativeCanvas.drawText("$d", px(d.toFloat()) - 5f, size.height, lbl)
 
-        // Ideal cFCR = (2 - idealKg) * 0.25 + stdFCR
-        val idealPath = Path()
-        for (d in 1..42) {
-            val idealKg = PhysiologicalEngine.bwFromDay(d.toDouble(), breed) / 1000.0
-            val stdFcr = PhysiologicalEngine.stdFcrFromDay(d.toDouble(), breed)
-            val v = ((2.0 - idealKg) * 0.25 + stdFcr).toFloat().coerceIn(minV, maxV)
-            val x = px(d.toFloat()); val y = py(v)
-            if (d == 1) idealPath.moveTo(x, y) else idealPath.lineTo(x, y)
+        val idealPts = (5..42).map {
+            val idealKg = PhysiologicalEngine.bwFromDay(it.toDouble(), breed) / 1000.0
+            val v = ((2.0 - idealKg) * 0.25 + PhysiologicalEngine.stdFcrFromDay(it.toDouble(), breed)).toFloat().coerceIn(minV, maxV)
+            Offset(px(it.toFloat()), py(v))
         }
-        drawPath(idealPath, color = idealC.copy(alpha = 0.9f), style = Stroke(width = 2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f))))
+        drawPath(buildSmoothPath(idealPts), color = idealC.copy(alpha = 0.85f), style = Stroke(width = 2.5f, cap = StrokeCap.Round))
 
-        val pts = dailyRows.mapNotNull { r -> r.cFcr?.toFloat()?.let { if (it in minV..maxV) Offset(px(r.dayNumber.toFloat()), py(it)) else null } }
-        if (pts.size > 1) {
-            val line = Path().apply { moveTo(pts.first().x, pts.first().y); pts.drop(1).forEach { lineTo(it.x, it.y) } }
-            drawPath(line, color = presentC, style = Stroke(width = 2.5f))
-        }
-        pts.forEach { drawCircle(presentC, 4f, it) }
+        val pts = dailyRows.filter { it.dayNumber >= 5 }.sortedBy { it.dayNumber }
+            .mapNotNull { r -> r.cFcr?.toFloat()?.let { if (it in minV..maxV) Offset(px(r.dayNumber.toFloat()), py(it)) else null } }
+        if (pts.size > 1) drawPath(buildSmoothPath(pts), color = presentC, style = Stroke(width = 4.5f, cap = StrokeCap.Round))
+        pts.forEach { drawCircle(presentC, 4.5f, it); drawCircle(Color.White, 1.8f, it) }
 
-        if (markerDay in 0..42) {
-            val x = px(markerDay.toFloat())
-            drawLine(markerC.copy(alpha = 0.6f), Offset(x, 0f), Offset(x, gh), strokeWidth = 1.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f)))
-        }
+        if (markerDay in 0..42) drawLine(markerC.copy(alpha = 0.5f), Offset(px(markerDay.toFloat()), 0f), Offset(px(markerDay.toFloat()), gh), strokeWidth = 1.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f)))
     }
 }
