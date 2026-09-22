@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.flock.ui.components.TopFlockBar
+import com.example.flock.ui.components.WeatherForecastDialog
 import com.example.flock.ui.screens.EntriesScreen
 import com.example.flock.ui.screens.OutputScreen
 import com.example.flock.ui.screens.TasksScreen
@@ -69,8 +70,11 @@ fun MainFlockScreen(
     val feedStockSummary by viewModel.feedStockSummary.collectAsState()
     val tasks by viewModel.tasks.collectAsState()
     val lockStatus by viewModel.lockStatus.collectAsState()
+    val cutoffLockEnabled by viewModel.cutoffLockEnabled.collectAsState()
     val weather by viewModel.weather.collectAsState()
     val syncStatus by viewModel.syncStatus.collectAsState()
+    val showForecast by viewModel.showForecast.collectAsState()
+    val forecast by viewModel.forecast.collectAsState()
 
     val (dayDateStr, yesterdayDateStr) = remember(activeFlock, selectedDay, farm.timeZone) {
         try {
@@ -115,7 +119,7 @@ fun MainFlockScreen(
                 onSelectDay = { viewModel.selectDay(it) },
                 onFarmClick = onNavFarms,
                 onFlockClick = onNavFlocks,
-                onWeatherClick = { viewModel.refreshWeather() }
+                onWeatherClick = { viewModel.openWeatherForecast() }
             )
         },
         bottomBar = {
@@ -165,7 +169,10 @@ fun MainFlockScreen(
                     yesterdayDate = yesterdayDateStr,
                     feedTypes = feedTypes,
                     lockStatus = lockStatus,
-                    onSave = { inputs -> viewModel.saveDayEntry(inputs) }
+                    cutoffLockEnabled = cutoffLockEnabled,
+                    onSave = { inputs -> viewModel.saveDayEntry(inputs) },
+                    onToggleLockTimer = { viewModel.toggleCutoffLock() },
+                    onRevertDay = { viewModel.revertDay() }
                 )
                 FlockNavTab.OUTPUT -> OutputScreen(
                     flock = activeFlock,
@@ -182,5 +189,9 @@ fun MainFlockScreen(
                 )
             }
         }
+    }
+
+    if (showForecast) {
+        WeatherForecastDialog(forecast = forecast, onDismiss = { viewModel.closeWeatherForecast() })
     }
 }

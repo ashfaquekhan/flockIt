@@ -13,6 +13,7 @@ import com.example.flock.data.FlockDatabase
 import com.example.flock.data.FlockEntity
 import com.example.flock.data.FlockRepository
 import com.example.flock.data.TaskEntity
+import com.example.flock.network.ForecastResult
 import com.example.flock.network.WeatherResult
 import com.example.flock.sync.AuthUserState
 import com.example.flock.sync.GoogleAuthManager
@@ -114,12 +115,21 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     private val _weather = MutableStateFlow<WeatherResult?>(null)
     val weather: StateFlow<WeatherResult?> = _weather.asStateFlow()
 
+    private val _forecast = MutableStateFlow<ForecastResult?>(null)
+    val forecast: StateFlow<ForecastResult?> = _forecast.asStateFlow()
+    private val _showForecast = MutableStateFlow(false)
+    val showForecast: StateFlow<Boolean> = _showForecast.asStateFlow()
+
     private val _syncStatus = MutableStateFlow("synced")
     val syncStatus: StateFlow<String> = _syncStatus.asStateFlow()
 
     // Pull-to-refresh spinner state (shared by all pages).
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
+    // When false, the daily cut-off timer does NOT hard-lock today's inputs (user override).
+    private val _cutoffLockEnabled = MutableStateFlow(true)
+    val cutoffLockEnabled: StateFlow<Boolean> = _cutoffLockEnabled.asStateFlow()
 
     private val _lockStatus = MutableStateFlow(
         LockStatus(
@@ -231,6 +241,8 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     fun openFlock(flockId: String) {
         selectFlock(flockId)
         _appScreen.value = AppScreen.DASHBOARD
+        // Auto-refresh from the sheet when a flock is opened (collaborators' latest data).
+        refreshCurrentFarm()
     }
 
     fun selectFarm(spreadsheetId: String) {
@@ -364,10 +376,10 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
             val cutoff = LocalTime.of(cutoffHour, cutoffMin)
             val now = LocalTime.now(zone)
 
-            val cutoffPassed = isToday && now.isAfter(cutoff)
+            val cutoffPassed = _cutoffLockEnabled.value && isToday && now.isAfter(cutoff)
             val isHardLocked = isPast || isFuture || cutoffPassed
 
-            val isApproaching = isToday && !cutoffPassed && now.isAfter(cutoff.minusMinutes(45))
+            val isApproaching = _cutoffLockEnabled.value && isToday && !cutoffPassed && now.isAfter(cutoff.minusMinutes(45))
 
             val reason = when {
                 isPast -> "Past days are read-only. Direct sheet edit required."
@@ -409,6 +421,37 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val w = repository.fetchWeather(farm)
             _weather.value = w
+        }
+    }
+
+    /** Opens the 14-day forecast popup for the farm's configured location. */
+    fun openWeatherForecast() {
+        val farm = _farm.value
+        if (farm.weatherLat == 0.0 && farm.weatherLon == 0.0) {
+            _userMessage.value = "Set your farm location in settings to see the forecast."
+            return
+        }
+        _forecast.value = null
+        _showForecast.value = true
+        viewModelScope.launch { _forecast.value = repository.fetchForecast(farm) }
+    }
+
+    fun closeWeatherForecast() { _showForecast.value = false }
+
+    /** Enable/disable the daily cut-off timer lock for entering data. */
+    fun toggleCutoffLock() {
+        _cutoffLockEnabled.value = !_cutoffLockEnabled.value
+        updateLockStatus()
+        _userMessage.value = if (_cutoffLockEnabled.value) "Cut-off timer lock ON" else "Cut-off timer lock OFF — you can edit past the cut-off"
+    }
+
+    /** Safely clears the currently-selected day's entries (and unlocks it). */
+    fun revertDay() {
+        val flock = _activeFlock.value ?: return
+        val day = _selectedDay.value
+        viewModelScope.launch {
+            val res = repository.revertDay(_selectedSpreadsheetId.value, flock.flockId, day, authState.value.email)
+            _userMessage.value = if (res.isSuccess) "Day $day reverted — you can re-enter it" else (res.exceptionOrNull()?.message ?: "Could not revert")
         }
     }
 

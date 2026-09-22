@@ -48,9 +48,7 @@ import com.example.flock.data.FarmEntity
 import com.example.flock.data.FeedStockSummary
 import com.example.flock.data.FlockEntity
 import com.example.flock.engine.PhysiologicalEngine
-import com.example.flock.ui.components.ChickGrowthInfographic
 import com.example.flock.ui.components.FanVisualizer
-import com.example.flock.ui.components.GodownStockInfographic
 import com.example.flock.ui.components.HouseFloorPlan
 import com.example.ui.theme.BrandEmerald
 import com.example.ui.theme.DomainFeed
@@ -182,69 +180,12 @@ fun OutputScreen(
             )
         }
 
-        // 0b. IDEAL TARGETS — pure reference from the breed/industry curves, shown for
-        // every parameter whether or not you have measured/computed data for it today.
-        OutputCard(title = "Ideal targets today (Day $day)") {
-            val idBw = PhysiologicalEngine.bwFromDay(day.toDouble(), breed)
-            val idFeed = PhysiologicalEngine.dailyFeedFromDay(max(1.0, day.toDouble()), breed)
-            val idSetTemp = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_TEMP_BY_BW, idBw)
-            val idRh = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_RH_BY_AGE, day.toDouble())
-            val idAir = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_AIRSPEED_BY_AGE, day.toDouble())
-            val idCfm = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MINVENT_BY_AGE, day.toDouble())
-            val idLight = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_LIGHT_BY_AGE, day.toDouble())
-            val idMaxMort = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MAXMORT_BY_AGE, day.toDouble())
-            val idDrinkPress = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_WATERLINE_BY_AGE, day.toDouble())
-            val idDrinkHt = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_DRINKERHT_BY_AGE, day.toDouble())
-            val idFcr = PhysiologicalEngine.stdFcrFromDay(day.toDouble(), breed)
-            IdealRow("Ideal body weight", "${String.format("%.0f", idBw)} g")
-            IdealRow("Feed / bird", "${String.format("%.0f", idFeed)} g/day")
-            IdealRow("Water : feed", "1.8 : 1 (+6%/°C >20°C)")
-            IdealRow("Std FCR", String.format("%.2f", idFcr))
-            IdealRow("cFCR", "(2 − avg kg) × 0.25 + FCR")
-            IdealRow("Uniformity CV%", "< 10 %")
-            IdealRow("Set-point temp", "${String.format("%.1f", idSetTemp)} °C")
-            IdealRow("Humidity", "${String.format("%.0f", idRh)} % (50–70)")
-            IdealRow("Air speed (bird)", "${idAir.toInt()} ft/min")
-            IdealRow("Min-vent air", "${String.format("%.2f", idCfm)} cfm/bird")
-            IdealRow("Static pressure", "25 Pa (15–35)")
-            IdealRow("CO₂ / NH₃ / O₂", "≤3000 / ≤10 ppm / 20.9 %")
-            IdealRow("Light", "${idLight.toInt()} h/day")
-            IdealRow("Drinker pressure / height", "${idDrinkPress.toInt()} / ${idDrinkHt.toInt()} in")
-            IdealRow("Water pH / temp", "6.0–6.8 / < 25 °C")
-            IdealRow("Max mortality (cum)", "≤ ${String.format("%.1f", idMaxMort)} %")
-        }
+        // ============================ VENTILATION & THERMODYNAMICS ============================
+        VentThermoCard(entry = entry, farm = farm, vk = vk)
+        FanVisualizer(entry = entry, farm = farm)
 
-        // PROJECTED NOTICE TAG
-        if (isProjected) {
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "PROJECTED",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = StatusProjected
-                        )
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "No weight sample entered today. Targets driven by growth curve extrapolation.",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    )
-                }
-            }
-        }
-
-        // 1. GROWTH & CONVERSION
-        OutputCard(title = "Growth & Conversion") {
+        // ================================= BIRDS =================================
+        OutputCard(title = "Birds — Growth & Conversion") {
             val avgG = entry.avgWeight ?: PhysiologicalEngine.bwFromDay(weightAge, breed)
             val idealBw = PhysiologicalEngine.bwFromDay(day.toDouble(), breed)
             val bwDiffPct = if (idealBw > 0) ((avgG - idealBw) / idealBw) * 100.0 else 0.0
@@ -318,11 +259,92 @@ fun OutputScreen(
         // 1b. BIRD SIZE & UNIFORMITY — population distribution from today's 5-spot sample
         PopulationDistributionCard(entry = entry)
 
-        // 1c. Growth stages + density (chick → broiler; birds per ft² sized by CV%)
-        ChickGrowthInfographic(entry = entry, flock = flock)
+        // Brooding barricade / floor-plan (updates daily)
+        HouseFloorPlan(entry = entry, farm = farm)
 
-        // 2. FEED & STOCK ON HAND
-        OutputCard(title = "Feed plan & stock") {
+        OutputCard(title = "Birds — Space & Density") {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    val density = entry.densityKgM2
+                    BigMetric(
+                        label = "Stocking Density",
+                        value = density?.let { String.format("%.2f", kgPerFt2(it)) } ?: "—",
+                        unit = "kg/ft²",
+                        toleranceText = "Safe cap: ≤ ${String.format("%.2f", kgPerFt2(farm.densityCapDefault))} kg/ft²",
+                        statusTag = if (density != null && density > farm.densityCapDefault) "▲ over cap" else "ok",
+                        kind = vk
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    BigMetric(
+                        label = "Floor Space",
+                        value = String.format("%.2f", entry.ftPerBird),
+                        unit = "ft²/bird",
+                        toleranceText = "Minimum recommended: ≥ ${String.format("%.2f", entry.minFtPerBird)} ft²",
+                        statusTag = if (entry.ftPerBird < entry.minFtPerBird) "▼ crowded" else "ok",
+                        kind = vk
+                    )
+                }
+            }
+            if (entry.barricadeFt > 0) {
+                BigMetric(
+                    label = "Brooding Barricade",
+                    value = "${entry.barricadeFt}",
+                    unit = "ft",
+                    toleranceText = "Occupied floor area: ${String.format("%.0f", entry.occupiedFt2)} ft²",
+                    statusTag = "brooding",
+                    kind = vk
+                )
+            }
+        }
+
+        OutputCard(title = "Birds — Health & Mortality") {
+            val avgKgH = (entry.avgWeight ?: entry.idealWeight) / 1000.0
+            val totalFarmKg = entry.liveBirds * avgKgH
+            BigMetric(
+                label = "Balance Birds (alive in shed)",
+                value = "${entry.liveBirds}",
+                unit = "birds",
+                toleranceText = "Placed ${flock?.birdsPlaced ?: 0} − reception − mortality (${entry.cumMort}) − lifted − culls",
+                statusTag = "live",
+                isHero = true,
+                kind = ValueKind.PRESENT
+            )
+            BigMetric(
+                label = "Total live weight in farm",
+                value = String.format("%,.0f", totalFarmKg),
+                unit = "kg",
+                toleranceText = "${entry.liveBirds} birds × ${String.format("%.3f", avgKgH)} kg avg",
+                statusTag = "total",
+                kind = vk
+            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    val cMort = entry.cumMortPct
+                    BigMetric(
+                        label = "Cumulative Mortality",
+                        value = cMort?.let { String.format("%.2f", it) } ?: "—",
+                        unit = "%",
+                        toleranceText = "Ceiling: ≤ ${String.format("%.1f", entry.maxMortPct)}% · Total: ${entry.cumMort} dead",
+                        statusTag = if (cMort != null && cMort > entry.maxMortPct) "▲ crit" else "ok",
+                        kind = ValueKind.PRESENT
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    BigMetric(
+                        label = "Flock Livability",
+                        value = entry.livability?.let { String.format("%.1f", it) } ?: "—",
+                        unit = "%",
+                        toleranceText = "Live birds in shed: ${entry.liveBirds}",
+                        statusTag = "live",
+                        kind = ValueKind.PRESENT
+                    )
+                }
+            }
+        }
+
+        // ================================= FEED =================================
+        OutputCard(title = "Feed") {
             val reqToDateBags = dailyRows.filter { it.dayNumber <= day }.sumOf { it.feedBags }
             val fullCycleBags = dailyRows.sumOf { it.feedBags }
             val consumedBags = feedStockSummary.totalUsedBags
@@ -414,13 +436,13 @@ fun OutputScreen(
                     }
                 }
             }
+
+            IdealRow("Ideal godown (store) temp", "< 25 °C, cool & shaded")
+            IdealRow("Ideal godown humidity", "< 60 % RH, dry & off the floor")
         }
 
-        // 2b. FEED GODOWN — bags of each type in store + ideal storage conditions
-        GodownStockInfographic(stock = feedStockSummary)
-
-        // 3. WATER MANAGEMENT
-        OutputCard(title = "Water Requirements") {
+        // ================================= WATER =================================
+        OutputCard(title = "Water") {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(modifier = Modifier.weight(1f)) {
                     BigMetric(
@@ -474,6 +496,64 @@ fun OutputScreen(
                 statusTag = "range",
                 kind = vk
             )
+
+            val tankL = if (farm.drinkTankL > 0) farm.drinkTankL else 2000.0
+            val refillsLow = kotlin.math.ceil(entry.waterLowL / tankL).toInt()
+            val refillsHigh = kotlin.math.ceil(entry.waterHighL / tankL).toInt()
+            val waterPerBirdMax = if (entry.liveBirds > 0) entry.waterHighL / entry.liveBirds * 1000.0 else 0.0
+            val drinkerHt = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_DRINKERHT_BY_AGE, day.toDouble())
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    BigMetric(
+                        label = "Water / bird (hot-day max)",
+                        value = String.format("%.0f", waterPerBirdMax),
+                        unit = "mL",
+                        toleranceText = "On a +3 °C day",
+                        statusTag = "max",
+                        kind = vk
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    BigMetric(
+                        label = "Refills today (min–max)",
+                        value = "$refillsLow–$refillsHigh",
+                        unit = "fills",
+                        toleranceText = "${tankL.toInt()} L tank · plan for the high end",
+                        statusTag = "range",
+                        kind = vk
+                    )
+                }
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    BigMetric(
+                        label = "Drinker height",
+                        value = "${drinkerHt.toInt()}",
+                        unit = "in",
+                        toleranceText = "Nipple at bird eye level for the day",
+                        statusTag = "age",
+                        kind = ValueKind.IDEAL
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    BigMetric(
+                        label = "Water pH",
+                        value = "6.0–6.8",
+                        unit = "",
+                        toleranceText = "Ideal drinking-water pH",
+                        statusTag = "ideal",
+                        kind = ValueKind.IDEAL
+                    )
+                }
+            }
+            BigMetric(
+                label = "Nipple flow (target)",
+                value = "60–90",
+                unit = "mL/min",
+                toleranceText = "Per nipple, adjusted up with age/heat",
+                statusTag = "ideal",
+                kind = ValueKind.IDEAL
+            )
             Text(
                 text = "Drinker Line Check: ~12 birds/nipple, flush lines before midday heat.",
                 style = MaterialTheme.typography.bodySmall,
@@ -481,182 +561,11 @@ fun OutputScreen(
             )
         }
 
-        // Animated fan bank (spins only the running fans)
-        FanVisualizer(entry = entry, farm = farm)
-
-        // 4. VENTILATION & CYCLING
-        OutputCard(title = "Ventilation & Climate Targets") {
-            BigMetric(
-                label = "Ventilation Mode",
-                value = entry.ventText,
-                unit = "",
-                toleranceText = "Cycle: ${entry.cycleText} · Fans to run: ${entry.fansToRun} of ${farm.fanCount}",
-                statusTag = if (entry.ventMode == 2) "tunnel" else "min-vent",
-                kind = vk
-            )
-
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Column(modifier = Modifier.weight(1f)) {
-                    BigMetric(
-                        label = "Target Airflow",
-                        value = String.format("%.2f", entry.cfmPerBird),
-                        unit = "CFM/bird",
-                        toleranceText = "NPTC minimum ventilation standard",
-                        statusTag = "ok",
-                        kind = ValueKind.IDEAL
-                    )
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    BigMetric(
-                        label = "Air Speed",
-                        value = "${entry.airspeed.toInt()}",
-                        unit = "ft/min",
-                        toleranceText = "Tunnel wind chill delta: ~${String.format("%.1f", 0.0114 * entry.airspeed)}°C",
-                        statusTag = "nominal",
-                        kind = ValueKind.IDEAL
-                    )
-                }
-            }
-
-            Divider(modifier = Modifier.padding(vertical = 4.dp))
-
-            // Temperature & RH min/ideal/max
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Column(modifier = Modifier.weight(1f)) {
-                    BigMetric(
-                        label = "House Set Temp",
-                        value = String.format("%.1f", entry.tempIdeal),
-                        unit = "°C",
-                        toleranceText = "Safe min: ${String.format("%.1f", entry.tempMin)} · Ideal: ${String.format("%.1f", entry.tempIdeal)} · Max: ${String.format("%.1f", entry.tempMax)}°C",
-                        statusTag = "±1.5°C band",
-                        kind = ValueKind.IDEAL
-                    )
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    BigMetric(
-                        label = "Target RH",
-                        value = String.format("%.0f", entry.rhIdeal),
-                        unit = "%",
-                        toleranceText = "Safe min: ${entry.rhMin.toInt()}% · Ideal: ${entry.rhIdeal.toInt()}% · Max: ${entry.rhMax.toInt()}%",
-                        statusTag = "ok",
-                        kind = ValueKind.IDEAL
-                    )
-                }
-            }
-
-            // Felt Temp if house temp logged
-            if (entry.windChill != null) {
-                BigMetric(
-                    label = "Wind-Chill / Felt Temp",
-                    value = String.format("%.1f", entry.windChill),
-                    unit = "°C",
-                    toleranceText = "Measured ${entry.outTemp}°C minus wind chill (${String.format("%.1f", 0.0114 * entry.airspeed)}°C)",
-                    statusTag = "felt"
-                )
-            }
-
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Column(modifier = Modifier.weight(1f)) {
-                    BigMetric(
-                        label = "Air Quality Limits",
-                        value = "CO₂ ≤ ${entry.co2Max.toInt()}",
-                        unit = "ppm",
-                        toleranceText = "NH₃ critical ceiling: ≤ ${entry.nh3Max.toInt()} ppm",
-                        statusTag = "max",
-                        kind = ValueKind.IDEAL
-                    )
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    BigMetric(
-                        label = "Lighting Schedule",
-                        value = String.format("%.1f", entry.lightHours),
-                        unit = "hours",
-                        toleranceText = "Dark period: ${String.format("%.1f", 24.0 - entry.lightHours)} hours",
-                        statusTag = "light",
-                        kind = ValueKind.IDEAL
-                    )
-                }
-            }
-        }
-
-        // Brooding barricade / floor-plan diagram
-        HouseFloorPlan(entry = entry, farm = farm)
-
-        // 5. SPACE & DENSITY
-        OutputCard(title = "Space & Density") {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Column(modifier = Modifier.weight(1f)) {
-                    val density = entry.densityKgM2
-                    BigMetric(
-                        label = "Stocking Density",
-                        value = density?.let { String.format("%.2f", kgPerFt2(it)) } ?: "—",
-                        unit = "kg/ft²",
-                        toleranceText = "Safe cap: ≤ ${String.format("%.2f", kgPerFt2(farm.densityCapDefault))} kg/ft²",
-                        statusTag = if (density != null && density > farm.densityCapDefault) "▲ over cap" else "ok",
-                        kind = vk
-                    )
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    BigMetric(
-                        label = "Floor Space",
-                        value = String.format("%.2f", entry.ftPerBird),
-                        unit = "ft²/bird",
-                        toleranceText = "Minimum recommended: ≥ ${String.format("%.2f", entry.minFtPerBird)} ft²",
-                        statusTag = if (entry.ftPerBird < entry.minFtPerBird) "▼ crowded" else "ok",
-                        kind = vk
-                    )
-                }
-            }
-
-            if (entry.barricadeFt > 0) {
-                BigMetric(
-                    label = "Brooding Barricade",
-                    value = "${entry.barricadeFt}",
-                    unit = "ft",
-                    toleranceText = "Occupied floor area: ${String.format("%.0f", entry.occupiedFt2)} ft²",
-                    statusTag = "brooding",
-                    kind = vk
-                )
-            }
-        }
-
-        // 6. FLOCK HEALTH & MORTALITY
-        OutputCard(title = "Flock Health & Mortality") {
-            BigMetric(
-                label = "Balance Birds (alive in shed)",
-                value = "${entry.liveBirds}",
-                unit = "birds",
-                toleranceText = "Placed ${flock?.birdsPlaced ?: 0} − reception − mortality (${entry.cumMort}) − lifted − culls",
-                statusTag = "live",
-                isHero = true
-            )
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Column(modifier = Modifier.weight(1f)) {
-                    val cMort = entry.cumMortPct
-                    BigMetric(
-                        label = "Cumulative Mortality",
-                        value = cMort?.let { String.format("%.2f", it) } ?: "—",
-                        unit = "%",
-                        toleranceText = "Ceiling: ≤ ${String.format("%.1f", entry.maxMortPct)}% · Total: ${entry.cumMort} dead",
-                        statusTag = if (cMort != null && cMort > entry.maxMortPct) "▲ crit" else "ok"
-                    )
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    BigMetric(
-                        label = "Flock Livability",
-                        value = entry.livability?.let { String.format("%.1f", it) } ?: "—",
-                        unit = "%",
-                        toleranceText = "Live birds in shed: ${entry.liveBirds}",
-                        statusTag = "live"
-                    )
-                }
-            }
-        }
-
-        // 7. GRAPHS WITH THRESHOLD LINES
-        OutputCard(title = "Performance Curves & Critical Lines") {
+        // ============================ PERFORMANCE GRAPHS ============================
+        OutputCard(title = "Performance curves (present vs ideal)") {
+            GraphLegend()
             Text(
-                text = "Growth Curve & ±5% Tolerance Band",
+                text = "Body weight vs breed standard (±5% band)",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
             )
             GrowthCurveCanvas(dailyRows = dailyRows, breed = breed, markerDay = day)
@@ -664,7 +573,7 @@ fun OutputScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "FCR vs Standard with Critical Limit (x1.15)",
+                text = "FCR vs standard (critical = ×1.15)",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
             )
             FcrCurveCanvas(dailyRows = dailyRows, breed = breed, markerDay = day)
@@ -672,7 +581,15 @@ fun OutputScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Cumulative Mortality vs Ceiling Limit",
+                text = "cFCR (corrected to 2.0 kg)",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+            )
+            CfcrCurveCanvas(dailyRows = dailyRows, breed = breed, markerDay = day)
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "Cumulative mortality vs ceiling",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
             )
             MortalityCurveCanvas(dailyRows = dailyRows, markerDay = day)
@@ -1227,6 +1144,164 @@ fun MortalityCurveCanvas(dailyRows: List<DailyDataEntity>, markerDay: Int = -1) 
             }
             pts.forEach { drawCircle(presentC, 3.5f, it) }
         }
+
+        if (markerDay in 0..42) {
+            val x = px(markerDay.toFloat())
+            drawLine(markerC.copy(alpha = 0.6f), Offset(x, 0f), Offset(x, gh), strokeWidth = 1.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f)))
+        }
+    }
+}
+
+/** Ventilation & thermodynamics topic card. Thermo figures are metabolic estimates. */
+@Composable
+fun VentThermoCard(entry: DailyDataEntity, farm: FarmEntity, vk: ValueKind) {
+    OutputCard(title = "Ventilation & Thermodynamics") {
+        val liveBirds = entry.liveBirds
+        val avgKg = (entry.avgWeight ?: entry.idealWeight) / 1000.0
+        val minCfmPerBird = entry.cfmPerBird
+        val minCfmTotal = minCfmPerBird * liveBirds
+        val effFanCfm = farm.fanRatedCfm * (1.0 - farm.fanDerate)
+        val maxCoolCfm = farm.fanCount * effFanCfm
+        val houseVolFt3 = farm.usableLengthFt * farm.usableWidthFt * farm.heightFt
+        val achMin = if (houseVolFt3 > 0) minCfmTotal * 60.0 / houseVolFt3 else 0.0
+        val achMax = if (houseVolFt3 > 0) maxCoolCfm * 60.0 / houseVolFt3 else 0.0
+        val heatPerBirdW = 10.0 * Math.pow(avgKg.coerceAtLeast(0.04), 0.75)
+        val heatTotalKw = heatPerBirdW * liveBirds / 1000.0
+        val meanT = entry.tempIdeal
+        val sensibleFrac = (0.80 - 0.015 * (meanT - 20.0)).coerceIn(0.35, 0.80)
+
+        BigMetric(
+            label = "Ventilation mode",
+            value = entry.ventText,
+            unit = "",
+            toleranceText = "Cycle: ${entry.cycleText} · Fans ${entry.fansToRun} of ${farm.fanCount}",
+            statusTag = if (entry.ventMode == 2) "tunnel" else "min-vent",
+            kind = vk
+        )
+        TwoMetric(
+            BM("Min vent / bird", String.format("%.2f", minCfmPerBird), "CFM", "Air-quality floor", "ideal", ValueKind.IDEAL),
+            BM("Min vent total", String.format("%,.0f", minCfmTotal), "CFM", "$liveBirds birds", "total", vk)
+        )
+        TwoMetric(
+            BM("Max cooling airflow", String.format("%,.0f", maxCoolCfm), "CFM", "All ${farm.fanCount} fans (tunnel)", "cooling", ValueKind.IDEAL),
+            BM("Air changes", "${String.format("%.1f", achMin)}–${String.format("%.0f", achMax)}", "/hr", "min-vent → tunnel", "range", vk)
+        )
+        Divider(modifier = Modifier.padding(vertical = 4.dp))
+        TwoMetric(
+            BM("Set temp", String.format("%.1f", entry.tempIdeal), "°C", "min ${String.format("%.1f", entry.tempMin)} · max ${String.format("%.1f", entry.tempMax)}", "±band", ValueKind.IDEAL),
+            BM("Humidity", String.format("%.0f", entry.rhIdeal), "%", "min ${entry.rhMin.toInt()} · max ${entry.rhMax.toInt()}", "ideal", ValueKind.IDEAL)
+        )
+        TwoMetric(
+            BM("Wind speed", "0–${entry.airspeed.toInt()}", "ft/min", "still → tunnel target", "range", ValueKind.IDEAL),
+            BM("Static pressure", "25", "Pa", "Band 15–35 Pa", "ideal", ValueKind.IDEAL)
+        )
+        Divider(modifier = Modifier.padding(vertical = 4.dp))
+        TwoMetric(
+            BM("Heat / bird", String.format("%.1f", heatPerBirdW), "W", "Metabolic (estimate)", "heat", vk),
+            BM("Total house heat", String.format("%.1f", heatTotalKw), "kW", "$liveBirds birds", "heat", vk)
+        )
+        TwoMetric(
+            BM("Sensible heat", String.format("%.1f", heatPerBirdW * sensibleFrac), "W/bird", "Dry heat to remove", "sensible", vk),
+            BM("Latent heat", String.format("%.1f", heatPerBirdW * (1 - sensibleFrac)), "W/bird", "Moisture (water) load", "latent", vk)
+        )
+        Divider(modifier = Modifier.padding(vertical = 4.dp))
+        TwoMetric(
+            BM("CO₂ max", "${entry.co2Max.toInt()}", "ppm", "House ceiling", "ideal", ValueKind.IDEAL),
+            BM("NH₃ max", "${entry.nh3Max.toInt()}", "ppm", "Ammonia ceiling", "ideal", ValueKind.IDEAL)
+        )
+        TwoMetric(
+            BM("O₂", "20.9", "%", "Minimum 19.6 %", "ideal", ValueKind.IDEAL),
+            BM("Lighting", String.format("%.1f", entry.lightHours), "h", "Dark ${String.format("%.1f", 24.0 - entry.lightHours)} h", "ideal", ValueKind.IDEAL)
+        )
+        Text(
+            "Heat figures are metabolic estimates — cross-check the Aviagen environmental spec for your exact stocking.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/** Holder for a BigMetric's args so two can sit side-by-side neatly. */
+data class BM(
+    val label: String, val value: String, val unit: String,
+    val tol: String, val tag: String, val kind: ValueKind = ValueKind.PRESENT
+)
+
+@Composable
+fun TwoMetric(a: BM, b: BM) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(modifier = Modifier.weight(1f)) {
+            BigMetric(a.label, a.value, a.unit, a.tol, a.tag, kind = a.kind)
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            BigMetric(b.label, b.value, b.unit, b.tol, b.tag, kind = b.kind)
+        }
+    }
+}
+
+@Composable
+fun GraphLegend() {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        GraphDot(ValuePresent, "Present")
+        GraphDot(ValueIdeal, "Ideal")
+        GraphDot(StatusCrit, "Critical")
+    }
+}
+
+@Composable
+private fun GraphDot(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(modifier = Modifier.size(10.dp).background(color, RoundedCornerShape(3.dp)))
+        Spacer(modifier = Modifier.width(5.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = color))
+    }
+}
+
+@Composable
+fun CfcrCurveCanvas(dailyRows: List<DailyDataEntity>, breed: String = "Ross308", markerDay: Int = -1) {
+    val gridC = MaterialTheme.colorScheme.outlineVariant
+    val labelArgb = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
+    val idealC = ValueIdeal
+    val presentC = ValuePresent
+    val markerC = MaterialTheme.colorScheme.primary
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(150.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
+            .padding(10.dp)
+    ) {
+        val maxDays = 42f; val maxV = 2.2f; val minV = 0.9f; val range = maxV - minV
+        val padL = 32f; val padB = 16f
+        val gw = size.width - padL; val gh = size.height - padB
+        fun px(d: Float) = padL + (d / maxDays) * gw
+        fun py(v: Float) = gh - ((v - minV) / range) * gh
+        val lbl = Paint().apply { color = labelArgb; textSize = 20f; isAntiAlias = true }
+
+        for (fv in listOf(1.0f, 1.5f, 2.0f)) {
+            val y = py(fv)
+            drawLine(gridC, Offset(padL, y), Offset(padL + gw, y), strokeWidth = 1f)
+            drawContext.canvas.nativeCanvas.drawText(String.format("%.1f", fv), 0f, y + 6f, lbl)
+        }
+        for (d in listOf(0, 14, 28, 42)) drawContext.canvas.nativeCanvas.drawText("$d", px(d.toFloat()) - 5f, size.height, lbl)
+
+        // Ideal cFCR = (2 - idealKg) * 0.25 + stdFCR
+        val idealPath = Path()
+        for (d in 1..42) {
+            val idealKg = PhysiologicalEngine.bwFromDay(d.toDouble(), breed) / 1000.0
+            val stdFcr = PhysiologicalEngine.stdFcrFromDay(d.toDouble(), breed)
+            val v = ((2.0 - idealKg) * 0.25 + stdFcr).toFloat().coerceIn(minV, maxV)
+            val x = px(d.toFloat()); val y = py(v)
+            if (d == 1) idealPath.moveTo(x, y) else idealPath.lineTo(x, y)
+        }
+        drawPath(idealPath, color = idealC.copy(alpha = 0.9f), style = Stroke(width = 2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f))))
+
+        val pts = dailyRows.mapNotNull { r -> r.cFcr?.toFloat()?.let { if (it in minV..maxV) Offset(px(r.dayNumber.toFloat()), py(it)) else null } }
+        if (pts.size > 1) {
+            val line = Path().apply { moveTo(pts.first().x, pts.first().y); pts.drop(1).forEach { lineTo(it.x, it.y) } }
+            drawPath(line, color = presentC, style = Stroke(width = 2.5f))
+        }
+        pts.forEach { drawCircle(presentC, 4f, it) }
 
         if (markerDay in 0..42) {
             val x = px(markerDay.toFloat())

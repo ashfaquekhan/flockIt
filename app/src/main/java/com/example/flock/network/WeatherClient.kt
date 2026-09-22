@@ -13,7 +13,35 @@ import java.util.concurrent.TimeUnit
 data class OpenMeteoResponse(
     @Json(name = "latitude") val latitude: Double? = null,
     @Json(name = "longitude") val longitude: Double? = null,
-    @Json(name = "current") val current: CurrentWeather? = null
+    @Json(name = "current") val current: CurrentWeather? = null,
+    @Json(name = "daily") val daily: DailyBlock? = null
+)
+
+data class DailyBlock(
+    @Json(name = "time") val time: List<String>? = null,
+    @Json(name = "temperature_2m_max") val tMax: List<Double>? = null,
+    @Json(name = "temperature_2m_min") val tMin: List<Double>? = null,
+    @Json(name = "precipitation_probability_max") val precipProb: List<Int?>? = null,
+    @Json(name = "wind_speed_10m_max") val windMax: List<Double>? = null,
+    @Json(name = "relative_humidity_2m_max") val rhMax: List<Double>? = null
+)
+
+data class ForecastDay(
+    val date: String,
+    val tMaxC: Double?,
+    val tMinC: Double?,
+    val precipProbPct: Int?,
+    val windKmh: Double?,
+    val rhMaxPct: Double?,
+    val confidencePct: Int
+)
+
+data class ForecastResult(
+    val locationName: String,
+    val lat: Double,
+    val lon: Double,
+    val days: List<ForecastDay>,
+    val isLive: Boolean
 )
 
 data class CurrentWeather(
@@ -37,6 +65,15 @@ interface OpenMeteoApi {
         @Query("latitude") latitude: Double,
         @Query("longitude") longitude: Double,
         @Query("current") current: String = "temperature_2m,relative_humidity_2m,wind_speed_10m",
+        @Query("timezone") timezone: String = "auto"
+    ): OpenMeteoResponse
+
+    @GET("v1/forecast")
+    suspend fun getForecast(
+        @Query("latitude") latitude: Double,
+        @Query("longitude") longitude: Double,
+        @Query("daily") daily: String = "temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,relative_humidity_2m_max",
+        @Query("forecast_days") forecastDays: Int = 14,
         @Query("timezone") timezone: String = "auto"
     ): OpenMeteoResponse
 }
@@ -85,6 +122,32 @@ object WeatherClient {
                 locationName = locationName,
                 isLive = false
             )
+        }
+    }
+
+    /**
+     * 14-day daily forecast. "Confidence" is a modelled estimate that decays with lead time
+     * (weather APIs don't publish an accuracy figure), shown so users don't over-trust far-out days.
+     */
+    suspend fun fetchForecast(lat: Double, lon: Double, locationName: String): ForecastResult {
+        return try {
+            val res = api.getForecast(latitude = lat, longitude = lon)
+            val d = res.daily
+            val times = d?.time ?: emptyList()
+            val days = times.indices.map { i ->
+                ForecastDay(
+                    date = times[i],
+                    tMaxC = d?.tMax?.getOrNull(i),
+                    tMinC = d?.tMin?.getOrNull(i),
+                    precipProbPct = d?.precipProb?.getOrNull(i),
+                    windKmh = d?.windMax?.getOrNull(i),
+                    rhMaxPct = d?.rhMax?.getOrNull(i),
+                    confidencePct = (95 - i * 3).coerceAtLeast(45)
+                )
+            }
+            ForecastResult(locationName, lat, lon, days, isLive = days.isNotEmpty())
+        } catch (e: Exception) {
+            ForecastResult(locationName, lat, lon, emptyList(), isLive = false)
         }
     }
 

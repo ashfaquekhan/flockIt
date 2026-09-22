@@ -33,6 +33,8 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -87,7 +89,10 @@ fun EntriesScreen(
     yesterdayDate: String,
     feedTypes: List<FeedTypeEntity>,
     lockStatus: LockStatus,
+    cutoffLockEnabled: Boolean,
     onSave: (DailyInputs) -> Unit,
+    onToggleLockTimer: () -> Unit,
+    onRevertDay: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var w1 by remember { mutableStateOf("") }
@@ -362,11 +367,11 @@ fun EntriesScreen(
             )
         }
 
-        // SAVE — press & hold for 2.5s so it can't be tapped by accident (it locks after saving)
-        HoldToSaveButton(
+        // SAVE — press & hold ~1s so it can't be tapped by accident (it locks after saving)
+        HoldButton(
             label = if (committed) "Hold to update · Day $dayNumber" else "Hold to save · Day $dayNumber",
             enabled = !isHardLocked,
-            onSave = {
+            onComplete = {
                 val rows = feedUse.filter { (it.bags.toDoubleOrNull() ?: 0.0) > 0.0 }
                 val breakdown = rows.joinToString(";") { "${it.type}=${it.bags.toDoubleOrNull() ?: 0.0}" }
                 val feedSum = rows.sumOf { it.bags.toDoubleOrNull() ?: 0.0 }
@@ -397,6 +402,31 @@ fun EntriesScreen(
             }
         )
 
+        // Cut-off timer toggle + safe revert (both hold-to-confirm)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            HoldButton(
+                label = if (cutoffLockEnabled) "Disable cut-off lock" else "Enable cut-off lock",
+                onComplete = onToggleLockTimer,
+                container = Color(0xFF3E6E86),
+                icon = if (cutoffLockEnabled) Icons.Default.LockOpen else Icons.Default.Lock,
+                height = 46,
+                modifier = Modifier.weight(1f)
+            )
+            HoldButton(
+                label = "Revert day",
+                onComplete = onRevertDay,
+                container = StatusCrit,
+                icon = Icons.Default.Restore,
+                height = 46,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Text(
+            text = "Disable the cut-off lock to edit after the cut-off. Revert clears this day's entries so you can re-enter.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
         Spacer(modifier = Modifier.height(96.dp).navigationBarsPadding())
     }
 }
@@ -404,25 +434,28 @@ fun EntriesScreen(
 private fun Double.fmt(): String = if (this % 1.0 == 0.0) this.toInt().toString() else this.toString()
 
 /**
- * A full-width button that must be pressed and held for ~2.5s to fire, so it can't be
- * triggered by an accidental tap (the day locks once saved). A fill sweeps left→right
- * while held; releasing early cancels.
+ * A full-width button that must be pressed and held for [holdSeconds] to fire, so it can't be
+ * triggered by an accidental tap. A fill sweeps left→right while held; releasing early cancels.
  */
 @Composable
-fun HoldToSaveButton(
+fun HoldButton(
     label: String,
-    enabled: Boolean,
-    onSave: () -> Unit,
-    modifier: Modifier = Modifier
+    onComplete: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    holdSeconds: Float = 1.0f,
+    container: Color = BrandEmerald,
+    icon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Default.Check,
+    height: Int = 52
 ) {
-    val holdMs = 2500f
+    val holdMs = holdSeconds * 1000f
     var progress by remember { mutableStateOf(0f) }
-    val base = if (enabled) BrandEmerald else BrandEmerald.copy(alpha = 0.35f)
+    val base = if (enabled) container else container.copy(alpha = 0.35f)
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(54.dp)
+            .height(height.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(base)
             .then(
@@ -438,7 +471,7 @@ fun HoldToSaveButton(
                                     while (true) {
                                         val elapsed = (System.nanoTime() - t0) / 1_000_000f
                                         progress = (elapsed / holdMs).coerceIn(0f, 1f)
-                                        if (progress >= 1f) { fired = true; onSave(); break }
+                                        if (progress >= 1f) { fired = true; onComplete(); break }
                                         delay(16)
                                     }
                                 }
@@ -452,7 +485,6 @@ fun HoldToSaveButton(
             ),
         contentAlignment = Alignment.Center
     ) {
-        // progress sweep
         if (progress > 0f) {
             Box(
                 modifier = Modifier
@@ -462,12 +494,12 @@ fun HoldToSaveButton(
             )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Check, contentDescription = "Save", tint = Color.White, modifier = Modifier.size(20.dp))
+            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = if (progress in 0.001f..0.999f) "Keep holding…" else label,
                 color = Color.White,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
             )
         }
     }

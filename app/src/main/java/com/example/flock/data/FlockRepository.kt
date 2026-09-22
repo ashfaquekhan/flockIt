@@ -1,6 +1,7 @@
 package com.example.flock.data
 
 import com.example.flock.engine.PhysiologicalEngine
+import com.example.flock.network.ForecastResult
 import com.example.flock.network.WeatherClient
 import com.example.flock.network.WeatherResult
 import com.example.flock.sync.SheetsSyncManager
@@ -227,6 +228,34 @@ class FlockRepository(
         flockId
     }
 
+    /**
+     * Safely reverts a day: clears all of that day's inputs (samples, mortality, feed, deliveries,
+     * notes) and its committed lock, recomputes, and pushes the cleared row to the sheet.
+     */
+    suspend fun revertDay(spreadsheetId: String, flockId: String, dayNumber: Int, userEmail: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            val existing = dailyDataDao.getDayEntry(spreadsheetId, flockId, dayNumber)
+                ?: return@withContext Result.failure(Exception("Day entry not found"))
+            val cleared = existing.copy(
+                w1 = null, n1 = null, w2 = null, n2 = null, w3 = null, n3 = null,
+                w4 = null, n4 = null, w5 = null, n5 = null,
+                mortality = 0, feedBagsUsed = 0.0, feedUsedType = "B1", feedUsedBreakdown = "",
+                birdsLifted = 0, weightLifted = 0.0, lameSeparated = 0,
+                feedRecB1 = 0.0, feedRecB2 = 0.0, feedRecB3 = 0.0,
+                broodingLength = null, actualFans = null, actualFanTime = null, outTemp = null, outRH = null,
+                notes = "", waterTempC = null, waterPh = null, feedMoisturePct = null,
+                measuredCo2 = null, measuredNh3 = null, measuredO2 = null, measuredPressure = null,
+                measuredAirspeed = null, padWetMin = null, padDryMin = null, luxPerFt2 = null,
+                dieselCansUsed = 0.0,
+                sampleEntered = false, committed = false,
+                updatedAt = System.currentTimeMillis(), updatedBy = userEmail
+            )
+            dailyDataDao.insertOrUpdateDay(cleared)
+            recomputeFlock(spreadsheetId, flockId)
+            cloudPush("Day $dayNumber reverted") { it.pushDayEntry(spreadsheetId, cleared) }
+            Result.success(Unit)
+        }
+
     suspend fun closeFlock(spreadsheetId: String, flockId: String) = withContext(Dispatchers.IO) {
         val flock = flockDao.getFlockById(spreadsheetId, flockId) ?: return@withContext
         flockDao.updateFlock(flock.copy(status = "closed"))
@@ -289,6 +318,10 @@ class FlockRepository(
             locationName = farm.weatherName,
             season = farm.season
         )
+    }
+
+    suspend fun fetchForecast(farm: FarmEntity): ForecastResult = withContext(Dispatchers.IO) {
+        WeatherClient.fetchForecast(farm.weatherLat, farm.weatherLon, farm.weatherName)
     }
 
     /**
