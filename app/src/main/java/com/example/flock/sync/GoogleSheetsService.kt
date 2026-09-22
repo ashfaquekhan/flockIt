@@ -48,6 +48,13 @@ interface GoogleDriveApi {
         @Body request: CreateDriveFileRequest
     ): Response<DriveFile>
 
+    @POST("drive/v3/files/{fileId}/copy")
+    suspend fun copyFile(
+        @Header("Authorization") authHeader: String,
+        @Path("fileId") fileId: String,
+        @Body request: CopyFileRequest
+    ): Response<DriveFile>
+
     @PATCH("drive/v3/files/{fileId}")
     suspend fun moveFileToFolder(
         @Header("Authorization") authHeader: String,

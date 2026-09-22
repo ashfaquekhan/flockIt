@@ -73,7 +73,10 @@ data class FarmEntity(
     val weatherLon: Double = 84.08,
     val weatherName: String = "Jujomura, Odisha",
     val densityCapDefault: Double = 39.0,
-    val cutoffTime: String = "11:00"
+    val cutoffTime: String = "11:00",
+    // User-tunable multipliers (real values often differ from the ideal curve)
+    val waterRefillFactor: Double = 1.0,   // actual tank refills ≈ projected × this
+    val minVentFactor: Double = 1.0        // scales minimum-ventilation cfm/bird
 )
 
 @Entity(tableName = "config")

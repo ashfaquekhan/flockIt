@@ -554,7 +554,7 @@ class FlockRepository(
             val feedBags = ceil(totalFeedKg / bagKg).toInt()
             val waterPerBird = feedPerBird * config.wfRatio * waterUplift // mL
             val totalWaterL = (waterPerBird * live) / 1000.0
-            val tankRefills = if (farm.drinkTankL > 0) ceil(totalWaterL / farm.drinkTankL).toInt() else 1
+            val tankRefills = if (farm.drinkTankL > 0) ceil(totalWaterL / farm.drinkTankL * farm.waterRefillFactor).toInt() else 1
 
             // Approx daily gain (g/bird) from the growth curve at the current weight-age
             val gainPerBird = PhysiologicalEngine.bwFromDay(weightAge, flock.breed) -
@@ -573,7 +573,7 @@ class FlockRepository(
                 if (sampleRes.hasSample) sampleRes.flockAvgG else projWeight
             )
             val incoming = if (tempKnown) meanTemp else setTemp
-            val cfmPerBird = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MINVENT_BY_AGE, weightAge)
+            val cfmPerBird = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MINVENT_BY_AGE, weightAge) * farm.minVentFactor
 
             val ventPlan = PhysiologicalEngine.computeVentPlan(
                 fanCount = farm.fanCount,
@@ -586,7 +586,13 @@ class FlockRepository(
                 setTempC = setTemp,
                 liveBirds = live,
                 cfmPerBirdReq = cfmPerBird,
-                day = day
+                day = day,
+                // Wire the farm's configured timer/trigger settings (were being ignored).
+                cycleSec = config.cycleSec,
+                minOnSec = config.minOnSec,
+                tempBand = config.tempBand,
+                tunTrigBig = config.tunTrigBig,
+                tunTrigYoung = config.tunTrigYoung
             )
 
             // FCR & cFCR

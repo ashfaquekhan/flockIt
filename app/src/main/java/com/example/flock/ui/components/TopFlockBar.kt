@@ -16,9 +16,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -31,6 +30,11 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import kotlin.math.roundToInt
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -211,25 +215,14 @@ fun TopFlockBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Day Stepper
+                // Day chip + "Today" jump (no arrows — use the slider to scrub)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.testTag("day_stepper")
                 ) {
-                    IconButton(
-                        onClick = onPrevDay,
-                        enabled = selectedDay > 0,
-                        modifier = Modifier
-                            .size(34.dp)
-                            .testTag("prev_day_button")
-                    ) {
-                        Icon(Icons.Default.ChevronLeft, contentDescription = "Previous Day")
-                    }
-
                     Surface(
                         color = if (selectedDay == currentFlockDay) BrandEmerald else MaterialTheme.colorScheme.primaryContainer,
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.padding(horizontal = 4.dp)
+                        shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
                             text = "Day $selectedDay",
@@ -238,16 +231,19 @@ fun TopFlockBar(
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                         )
                     }
-
-                    IconButton(
-                        onClick = onNextDay,
-                        // Can view future days (ideal projections) up to harvest age
-                        enabled = selectedDay < harvestAge,
-                        modifier = Modifier
-                            .size(34.dp)
-                            .testTag("next_day_button")
-                    ) {
-                        Icon(Icons.Default.ChevronRight, contentDescription = "Next Day")
+                    if (selectedDay != currentFlockDay) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            color = BrandEmerald.copy(alpha = 0.16f),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onSelectDay(currentFlockDay) }.testTag("today_button")
+                        ) {
+                            Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Today, contentDescription = "Go to today", tint = BrandEmerald, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Today", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = BrandEmerald))
+                            }
+                        }
                     }
                 }
 
@@ -302,9 +298,15 @@ fun TopFlockBar(
                     style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                // Local drag state so the thumb tracks the finger smoothly (no round-trip jitter).
+                var sliderPos by remember { mutableFloatStateOf(selectedDay.toFloat()) }
+                LaunchedEffect(selectedDay) { sliderPos = selectedDay.toFloat() }
                 Slider(
-                    value = selectedDay.toFloat().coerceIn(0f, harvestAge.toFloat()),
-                    onValueChange = { onSelectDay(it.roundToInt().coerceIn(0, harvestAge)) },
+                    value = sliderPos.coerceIn(0f, harvestAge.toFloat()),
+                    onValueChange = {
+                        sliderPos = it
+                        onSelectDay(it.roundToInt().coerceIn(0, harvestAge))
+                    },
                     valueRange = 0f..harvestAge.toFloat(),
                     colors = SliderDefaults.colors(
                         thumbColor = BrandEmerald,

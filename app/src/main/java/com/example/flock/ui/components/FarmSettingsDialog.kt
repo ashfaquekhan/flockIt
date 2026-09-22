@@ -91,6 +91,9 @@ fun FarmSettingsDialog(
     var pansPerFeederLine by remember { mutableStateOf(farm.pansPerFeederLine.toString()) }
     var dieselCanL by remember { mutableStateOf(farm.dieselCanL.toString()) }
 
+    var waterRefillFactor by remember { mutableStateOf(farm.waterRefillFactor.toString()) }
+    var minVentFactor by remember { mutableStateOf(farm.minVentFactor.toString()) }
+
     var tempBand by remember { mutableStateOf(config.tempBand.toString()) }
     var rhMin by remember { mutableStateOf(config.rhMin.toString()) }
     var rhMax by remember { mutableStateOf(config.rhMax.toString()) }
@@ -298,6 +301,19 @@ fun FarmSettingsDialog(
 
                         Divider(modifier = Modifier.padding(vertical = 4.dp))
 
+                        Text("Calibration (tune to your farm)", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(waterRefillFactor, { waterRefillFactor = it }, label = { Text("Water refill ×") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
+                            OutlinedTextField(minVentFactor, { minVentFactor = it }, label = { Text("Min-vent ×") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
+                        }
+                        Text(
+                            "e.g. water refill × 1.5 if you actually refill ~50% more than projected; min-vent × to scale the airflow curve.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Divider(modifier = Modifier.padding(vertical = 4.dp))
+
                         Text("Target Comfort Bands", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -494,7 +510,9 @@ fun FarmSettingsDialog(
                                 feederLineBags = feederLineBags.toIntOrNull() ?: farm.feederLineBags,
                                 feederMoveMin = feederMoveMin.toDoubleOrNull() ?: farm.feederMoveMin,
                                 pansPerFeederLine = pansPerFeederLine.toIntOrNull() ?: farm.pansPerFeederLine,
-                                dieselCanL = dieselCanL.toDoubleOrNull() ?: farm.dieselCanL
+                                dieselCanL = dieselCanL.toDoubleOrNull() ?: farm.dieselCanL,
+                                waterRefillFactor = waterRefillFactor.toDoubleOrNull() ?: farm.waterRefillFactor,
+                                minVentFactor = minVentFactor.toDoubleOrNull() ?: farm.minVentFactor
                             )
                             val updatedConfig = config.copy(
                                 tempBand = tempBand.toDoubleOrNull() ?: config.tempBand,

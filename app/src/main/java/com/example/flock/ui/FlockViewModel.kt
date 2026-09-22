@@ -437,6 +437,18 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closeWeatherForecast() { _showForecast.value = false }
 
+    /** Backs up the farm's spreadsheet then rewrites it to the current schema (for old sheets). */
+    fun repairFarmSheet(spreadsheetId: String) {
+        viewModelScope.launch {
+            _syncStatus.value = "syncing"
+            _userMessage.value = "Backing up & repairing the sheet…"
+            val res = syncManager.backupAndRepairFarm(spreadsheetId)
+            _syncStatus.value = if (res.isSuccess) "synced" else "offline"
+            _userMessage.value = if (res.isSuccess) "Sheet repaired ✓ (backup: ${res.getOrNull()})"
+                else "Repair failed: ${res.exceptionOrNull()?.message ?: "unknown"}"
+        }
+    }
+
     /** Enable/disable the daily cut-off timer lock for entering data. */
     fun toggleCutoffLock() {
         _cutoffLockEnabled.value = !_cutoffLockEnabled.value

@@ -135,6 +135,7 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
                     onOpenSharedFarm = { viewModel.openSharedFarm(it) },
                     onShareFarm = { sharingFarm = it },
                     onOpenSettings = { viewModel.selectFarm(it.spreadsheetId); showSettings = true },
+                    onRepairSheet = { viewModel.repairFarmSheet(it.spreadsheetId) },
                     onDeleteFarm = { viewModel.deleteFarm(it.spreadsheetId) },
                     onToggleLock = { viewModel.toggleFarmLock(it.spreadsheetId, !it.locked) },
                     onOpenAccount = { showAccount = true },

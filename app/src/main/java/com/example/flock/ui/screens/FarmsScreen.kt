@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Agriculture
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
@@ -67,6 +68,7 @@ fun FarmsScreen(
     onOpenSharedFarm: (String) -> Unit,
     onShareFarm: (FarmRegistryEntity) -> Unit,
     onOpenSettings: (FarmRegistryEntity) -> Unit,
+    onRepairSheet: (FarmRegistryEntity) -> Unit,
     onDeleteFarm: (FarmRegistryEntity) -> Unit,
     onToggleLock: (FarmRegistryEntity) -> Unit,
     onOpenAccount: () -> Unit,
@@ -142,6 +144,7 @@ fun FarmsScreen(
                                 onOpen = { onOpenFarm(farm.spreadsheetId) },
                                 onShare = { onShareFarm(farm) },
                                 onOpenSettings = { onOpenSettings(farm) },
+                                onRepairSheet = { onRepairSheet(farm) },
                                 onDelete = { deletingFarm = farm },
                                 onToggleLock = { onToggleLock(farm) }
                             )
@@ -207,6 +210,7 @@ private fun FarmCard(
     onOpen: () -> Unit,
     onShare: () -> Unit,
     onOpenSettings: () -> Unit,
+    onRepairSheet: () -> Unit,
     onDelete: () -> Unit,
     onToggleLock: () -> Unit
 ) {
@@ -253,6 +257,13 @@ private fun FarmCard(
                         leadingIcon = { Icon(Icons.Default.Tune, contentDescription = null) },
                         onClick = { menuOpen = false; onOpenSettings() }
                     )
+                    if (farm.isOwner) {
+                        DropdownMenuItem(
+                            text = { Text("Back up & repair sheet") },
+                            leadingIcon = { Icon(Icons.Default.CloudSync, contentDescription = null) },
+                            onClick = { menuOpen = false; onRepairSheet() }
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text(if (farm.locked) "Unlock (allow edits)" else "Lock (read-only)") },
                         leadingIcon = { Icon(if (farm.locked) Icons.Default.LockOpen else Icons.Default.Lock, contentDescription = null) },

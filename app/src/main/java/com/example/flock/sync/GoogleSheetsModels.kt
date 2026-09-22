@@ -125,6 +125,11 @@ data class CreateDriveFileRequest(
     val parents: List<String>? = null
 )
 
+@JsonClass(generateAdapter = true)
+data class CopyFileRequest(
+    val name: String
+)
+
 data class ActivityLogItem(
     val timestamp: String,
     val userEmail: String,

@@ -502,8 +502,8 @@ fun OutputScreen(
             )
 
             val tankL = if (farm.drinkTankL > 0) farm.drinkTankL else 2000.0
-            val refillsLow = kotlin.math.ceil(entry.waterLowL / tankL).toInt()
-            val refillsHigh = kotlin.math.ceil(entry.waterHighL / tankL).toInt()
+            val refillsLow = kotlin.math.ceil(entry.waterLowL / tankL * farm.waterRefillFactor).toInt()
+            val refillsHigh = kotlin.math.ceil(entry.waterHighL / tankL * farm.waterRefillFactor).toInt()
             val waterPerBirdMax = if (entry.liveBirds > 0) entry.waterHighL / entry.liveBirds * 1000.0 else 0.0
             val drinkerHt = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_DRINKERHT_BY_AGE, day.toDouble())
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {

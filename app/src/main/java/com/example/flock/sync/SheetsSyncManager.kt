@@ -351,7 +351,8 @@ class SheetsSyncManager(
         listOf("feedDistNight", sv(farm.feedDistNight)), listOf("season", farm.season),
         listOf("weatherLat", sv(farm.weatherLat)), listOf("weatherLon", sv(farm.weatherLon)),
         listOf("weatherName", farm.weatherName), listOf("densityCapDefault", sv(farm.densityCapDefault)),
-        listOf("cutoffTime", farm.cutoffTime)
+        listOf("cutoffTime", farm.cutoffTime),
+        listOf("waterRefillFactor", sv(farm.waterRefillFactor)), listOf("minVentFactor", sv(farm.minVentFactor))
     )
     private fun kvToFarm(spreadsheetId: String, rows: List<List<Any>>, base: FarmEntity): FarmEntity {
         val m = HashMap<String, String>()
@@ -381,7 +382,8 @@ class SheetsSyncManager(
             feedDistNight = it2("feedDistNight", base.feedDistNight), season = st("season", base.season),
             weatherLat = db("weatherLat", base.weatherLat), weatherLon = db("weatherLon", base.weatherLon),
             weatherName = st("weatherName", base.weatherName), densityCapDefault = db("densityCapDefault", base.densityCapDefault),
-            cutoffTime = st("cutoffTime", base.cutoffTime)
+            cutoffTime = st("cutoffTime", base.cutoffTime),
+            waterRefillFactor = db("waterRefillFactor", base.waterRefillFactor), minVentFactor = db("minVentFactor", base.minVentFactor)
         )
     }
 
@@ -519,6 +521,66 @@ class SheetsSyncManager(
             if (ok) { logActivity(spreadsheetId, "UPDATE_FARM", "Updated farm settings"); Result.success(Unit) }
             else Result.failure(Exception("_Farm write failed"))
         } catch (e: Exception) { Result.failure(e) }
+    }
+
+    private fun configToKV(c: ConfigEntity): List<List<String>> = listOf(
+        listOf("Key", "Value"),
+        listOf("tempBand", sv(c.tempBand)), listOf("rhMin", sv(c.rhMin)), listOf("rhMax", sv(c.rhMax)),
+        listOf("nh3Warn", sv(c.nh3Warn)), listOf("nh3Crit", sv(c.nh3Crit)), listOf("co2Warn", sv(c.co2Warn)),
+        listOf("co2Crit", sv(c.co2Crit)), listOf("cvWarn", sv(c.cvWarn)), listOf("cvCrit", sv(c.cvCrit)),
+        listOf("wfRatio", sv(c.wfRatio)), listOf("feedHeatK", sv(c.feedHeatK)), listOf("waterHeatK", sv(c.waterHeatK)),
+        listOf("cFcrDivisor", sv(c.cFcrDivisor)), listOf("cycleSec", sv(c.cycleSec)), listOf("minOnSec", sv(c.minOnSec)),
+        listOf("tunTrigYoung", sv(c.tunTrigYoung)), listOf("tunTrigBig", sv(c.tunTrigBig))
+    )
+
+    /**
+     * Backs up the farm's spreadsheet (a Drive copy) then rewrites every tab to the CURRENT schema
+     * from the local Room data — so a sheet made by an older app version gains any new columns and
+     * is refilled correctly. Returns the backup file's name.
+     */
+    suspend fun backupAndRepairFarm(spreadsheetId: String): Result<String> = withContext(Dispatchers.IO) {
+        val authHeader = authManager.getAuthHeader()
+            ?: return@withContext Result.failure(Exception("Sign in with Google to repair the sheet."))
+        try {
+            val farm = db.farmDao().getFarm(spreadsheetId) ?: FarmEntity(spreadsheetId = spreadsheetId)
+            val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
+            val backupName = "FlockIt backup — ${farm.farmName} — $stamp"
+
+            // 1) Backup (Drive copy). Don't abort the repair if the copy fails.
+            val backupOk = try {
+                GoogleApiClientProvider.driveApi.copyFile(authHeader, spreadsheetId, CopyFileRequest(backupName)).isSuccessful
+            } catch (e: Exception) { Log.w(TAG, "Backup copy failed: ${e.message}"); false }
+
+            // 2) Repair: rewrite each tab from Room to the current schema.
+            putBlock(authHeader, spreadsheetId, "_Meta", listOf(
+                listOf("Key", "Value"), listOf("app", "FlockIt"), listOf("schemaVersion", "2"),
+                listOf("repairedAt", System.currentTimeMillis().toString()), listOf("farmId", farm.farmId)
+            ))
+            putBlock(authHeader, spreadsheetId, "_Farm", farmToKV(farm))
+            db.configDao().getConfig(spreadsheetId)?.let { putBlock(authHeader, spreadsheetId, "_Config", configToKV(it)) }
+            val feedBlock = mutableListOf<List<String>>(listOf("code", "name", "bagKg", "phase", "sortOrder"))
+            db.feedTypeDao().getFeedTypes(spreadsheetId).forEach { feedBlock.add(listOf(it.code, it.name, sv(it.bagKg), it.phase, sv(it.sortOrder))) }
+            putBlock(authHeader, spreadsheetId, "_FeedTypes", feedBlock)
+
+            val flocks = db.flockDao().getAllFlocksList(spreadsheetId)
+            val flockBlock = mutableListOf<List<String>>(FLOCK_HEADERS)
+            flocks.forEach { flockBlock.add(flockToRow(it)) }
+            putBlock(authHeader, spreadsheetId, "Flocks", flockBlock)
+
+            val dayBlock = mutableListOf<List<String>>(DAILY_HEADERS)
+            for (f in flocks) db.dailyDataDao().getDailyDataList(spreadsheetId, f.flockId).sortedBy { it.dayNumber }.forEach { dayBlock.add(dayToRow(it)) }
+            putBlock(authHeader, spreadsheetId, "DailyData", dayBlock)
+
+            val taskBlock = mutableListOf<List<String>>(TASK_HEADERS)
+            for (f in flocks) db.taskDao().getTasksList(spreadsheetId, f.flockId).forEach { taskBlock.add(taskToRow(it)) }
+            putBlock(authHeader, spreadsheetId, "Tasks", taskBlock)
+
+            logActivity(spreadsheetId, "REPAIR", "Rewrote sheet to current schema (backup: $backupName)")
+            Result.success(if (backupOk) backupName else "$backupName (backup copy failed — repair still applied)")
+        } catch (e: Exception) {
+            Log.e(TAG, "Repair failed", e)
+            Result.failure(e)
+        }
     }
 
     /**
