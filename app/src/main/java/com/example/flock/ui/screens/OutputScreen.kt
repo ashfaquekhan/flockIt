@@ -313,6 +313,14 @@ fun OutputScreen(
                     kind = vk
                 )
             }
+            BigMetric(
+                label = "Litter moisture",
+                value = "20–25",
+                unit = "%",
+                toleranceText = "Over 30 % = wet litter → ammonia, foot-pad lesions · rake every 2 days",
+                statusTag = "ideal",
+                kind = ValueKind.IDEAL
+            )
         }
 
         OutputCard(title = "Birds — Health & Mortality") {
@@ -359,6 +367,17 @@ fun OutputScreen(
                     )
                 }
             }
+            // European Production Efficiency Factor — the integrator's one-number flock score.
+            val epef = if (day >= 7 && entry.fcr != null && entry.fcr > 0 && entry.livability != null)
+                entry.livability * avgKgH * 100.0 / (day * entry.fcr) else null
+            BigMetric(
+                label = "EPEF (efficiency factor)",
+                value = epef?.let { String.format("%.0f", it) } ?: "—",
+                unit = "",
+                toleranceText = "Livability % × kg × 100 ÷ (age × FCR) · good ≥ 350 at lifting",
+                statusTag = if (epef == null) (if (day < 7) "settling" else "needs FCR") else if (day >= 28 && epef < 300) "▼ low" else "ok",
+                kind = if (entry.projected) ValueKind.PREDICTED else ValueKind.PRESENT
+            )
         }
 
         // ================================= FEED =================================
@@ -582,6 +601,14 @@ fun OutputScreen(
                 value = "60–90",
                 unit = "mL/min",
                 toleranceText = "Per nipple, adjusted up with age/heat",
+                statusTag = "ideal",
+                kind = ValueKind.IDEAL
+            )
+            BigMetric(
+                label = "Water temperature",
+                value = "10–25",
+                unit = "°C",
+                toleranceText = "Ideal ~20 °C · warm water cuts intake; flush lines in heat",
                 statusTag = "ideal",
                 kind = ValueKind.IDEAL
             )
