@@ -69,14 +69,14 @@ fun TargetsScreen(
     val calBw = PhysiologicalEngine.bwFromDay(calDay.toDouble(), breed)
     val calTemp = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_TEMP_BY_BW, calBw)
     val calFeed = PhysiologicalEngine.dailyFeedFromDay(calDay.toDouble(), breed)
-    val calVent = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MINVENT_BY_AGE, calDay.toDouble())
+    val calVent = PhysiologicalEngine.designMinVentCfmPerBird(calBw / 1000.0)
     val calFcr = PhysiologicalEngine.stdFcrFromDay(calDay.toDouble(), breed)
 
     // 2. Weight-Age targets (Ground Data)
     val wtBw = entry?.avgWeight ?: PhysiologicalEngine.bwFromDay(weightAge, breed)
     val wtTemp = entry?.setTemp ?: PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_TEMP_BY_BW, wtBw)
     val wtFeed = entry?.feedPerBird ?: PhysiologicalEngine.dailyFeedFromDay(weightAge, breed)
-    val wtVent = entry?.cfmPerBird ?: PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MINVENT_BY_AGE, weightAge)
+    val wtVent = entry?.cfmPerBird ?: PhysiologicalEngine.designMinVentCfmPerBird(wtBw / 1000.0)
     val wtFcr = PhysiologicalEngine.stdFcrFromDay(weightAge, breed)
 
     val rows = listOf(

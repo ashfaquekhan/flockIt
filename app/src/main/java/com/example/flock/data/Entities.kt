@@ -96,7 +96,7 @@ data class ConfigEntity(
     val waterHeatK: Double = 0.06,
     val cFcrDivisor: Double = 0.25,
     val cycleSec: Int = 300,
-    val minOnSec: Int = 30,
+    val minOnSec: Int = 50,
     val tunTrigYoung: Double = 4.5,
     val tunTrigBig: Double = 3.0
 )

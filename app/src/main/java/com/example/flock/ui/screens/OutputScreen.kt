@@ -166,7 +166,7 @@ fun OutputScreen(
                 GistItem("Stock", String.format("%.0f", feedStockSummary.totalOnHandBags), "bags left", ValueKind.PRESENT)
             )
             GistRow(
-                GistItem("Fans", "${entry.fansToRun}/${farm.fanCount}", entry.cycleText, vk),
+                GistItem("Min-vent", "${entry.fansToRun} fan", entry.cycleText, vk),
                 GistItem("Density", entry.densityKgM2?.let { String.format("%.2f", kgPerFt2(it)) } ?: "—", "≤ ${String.format("%.2f", kgPerFt2(farm.densityCapDefault))} kg/ft²", vk),
                 GistItem("Set °C", String.format("%.1f", entry.tempIdeal), "${String.format("%.1f", entry.tempMin)}–${String.format("%.1f", entry.tempMax)}", ValueKind.IDEAL)
             )
@@ -257,6 +257,20 @@ fun OutputScreen(
                 statusTag = "curve",
                 kind = vk
             )
+            // Brooding quality check: day-7 weight should be at least 4.5× the chick weight.
+            val w7 = dailyRows.firstOrNull { it.dayNumber == 7 }?.avgWeight
+            if (day >= 7 && w7 != null) {
+                val w0 = dailyRows.firstOrNull { it.dayNumber == 0 }?.avgWeight ?: PhysiologicalEngine.bwFromDay(0.0, breed)
+                val mult = if (w0 > 0) w7 / w0 else 0.0
+                BigMetric(
+                    label = "7-day weight multiple",
+                    value = String.format("%.1f", mult),
+                    unit = "×",
+                    toleranceText = "Day 7 ${String.format("%.0f", w7)} g ÷ chick ${String.format("%.0f", w0)} g · target ≥ 4.5×",
+                    statusTag = if (mult < 4.0) "▼ low" else if (mult < 4.5) "watch" else "ok",
+                    kind = ValueKind.PRESENT
+                )
+            }
         }
 
         // 1b. BIRD SIZE & UNIFORMITY — population distribution from today's 5-spot sample
@@ -387,6 +401,19 @@ fun OutputScreen(
                         (if (entry.feedPerBird < idealFeedPerBird * 0.98) " · trimmed for heat" else ""),
                 statusTag = if (entry.feedPerBird < idealFeedPerBird * 0.9) "heat-reduced" else "on curve",
                 kind = vk
+            )
+            val (phase, nextPhase) = when {
+                day <= 11 -> "B1 · Starter" to "B2 from day 12"
+                day <= 23 -> "B2 · Grower" to "B3 from day 24"
+                else -> "B3 · Finisher" to "until lifting"
+            }
+            BigMetric(
+                label = "Feed phase",
+                value = phase,
+                unit = "",
+                toleranceText = "$nextPhase · Ross: starter ≤ 10, grower 11–24, finisher 25+",
+                statusTag = "by age",
+                kind = ValueKind.IDEAL
             )
 
             Divider(modifier = Modifier.padding(vertical = 4.dp))
@@ -1164,45 +1191,95 @@ fun MortalityCurveCanvas(dailyRows: List<DailyDataEntity>, markerDay: Int = -1) 
 @Composable
 fun VentThermoCard(entry: DailyDataEntity, farm: FarmEntity, vk: ValueKind) {
     OutputCard(title = "Ventilation & Thermodynamics") {
+        val day = entry.dayNumber
         val liveBirds = entry.liveBirds
         val avgKg = (entry.avgWeight ?: entry.idealWeight) / 1000.0
-        val minCfmPerBird = entry.cfmPerBird
-        val minCfmTotal = minCfmPerBird * liveBirds
         val effFanCfm = farm.fanRatedCfm * (1.0 - farm.fanDerate)
+        val crossFt2 = farm.usableWidthFt * farm.heightFt
+        val ladder = PhysiologicalEngine.controllerLadder(
+            day, entry.setTemp, entry.fansToRun, entry.fanOnSec, entry.fanOffSec,
+            farm.fanCount, effFanCfm, crossFt2
+        )
+        val rossPerBird = PhysiologicalEngine.rossMinVentCfmPerBird(avgKg)
+        val designPerBird = entry.cfmPerBird
+        val designTotal = designPerBird * liveBirds
+        val cycle = entry.fanOnSec + entry.fanOffSec
+        val duty = if (cycle > 0 && entry.fanOffSec > 0) entry.fanOnSec.toDouble() / cycle else 1.0
+        val timerCfm = entry.fansToRun * effFanCfm * duty
         val maxCoolCfm = farm.fanCount * effFanCfm
         val houseVolFt3 = farm.usableLengthFt * farm.usableWidthFt * farm.heightFt
-        val achMin = if (houseVolFt3 > 0) minCfmTotal * 60.0 / houseVolFt3 else 0.0
+        val achMin = if (houseVolFt3 > 0) timerCfm * 60.0 / houseVolFt3 else 0.0
         val achMax = if (houseVolFt3 > 0) maxCoolCfm * 60.0 / houseVolFt3 else 0.0
         val heatPerBirdW = 10.0 * Math.pow(avgKg.coerceAtLeast(0.04), 0.75)
         val heatTotalKw = heatPerBirdW * liveBirds / 1000.0
-        val meanT = entry.tempIdeal
-        val sensibleFrac = (0.80 - 0.015 * (meanT - 20.0)).coerceIn(0.35, 0.80)
+        val sensibleFrac = (0.80 - 0.015 * (entry.tempIdeal - 20.0)).coerceIn(0.35, 0.80)
+        val f1 = { v: Double -> String.format("%.1f", v) }
 
+        // Level 1: the minimum-ventilation timer — set daily, runs whatever the weather.
         BigMetric(
-            label = "Ventilation mode",
-            value = entry.ventText,
-            unit = "",
-            toleranceText = "Cycle: ${entry.cycleText} · Fans ${entry.fansToRun} of ${farm.fanCount}",
-            statusTag = if (entry.ventMode == 2) "tunnel" else "min-vent",
+            label = "Level 1 · min-vent timer",
+            value = if (entry.fanOffSec > 0) "${entry.fanOnSec} / ${entry.fanOffSec}" else "Continuous",
+            unit = if (entry.fanOffSec > 0) "s on/off" else "",
+            toleranceText = "${entry.fansToRun} fan${if (entry.fansToRun > 1) "s" else ""} · ${cycle}s cycle · never ON < ${PhysiologicalEngine.MIN_ON_FLOOR_SEC}s",
+            statusTag = "daily",
             kind = vk
         )
         TwoMetric(
-            BM("Min vent / bird", String.format("%.2f", minCfmPerBird), "CFM", "Air-quality floor", "ideal", ValueKind.IDEAL),
-            BM("Min vent total", String.format("%,.0f", minCfmTotal), "CFM", "$liveBirds birds", "total", vk)
+            BM("Min vent / bird", String.format("%.2f", designPerBird), "CFM", "Ross ${String.format("%.2f", rossPerBird)} + 30 %", "design", vk),
+            BM("Min vent total", String.format("%,.0f", designTotal), "CFM", "Timer gives ${String.format("%,.0f", timerCfm)}", "total", vk)
+        )
+        if (designTotal > 0 && timerCfm > designTotal * 1.5) {
+            Text(
+                "One fan is bigger than the chicks need, so the timer over-ventilates ${String.format("%.1f", timerCfm / designTotal)}× — heaters absorb it. Watch RH (keep 60–70 %), not CO₂.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Divider(modifier = Modifier.padding(vertical = 4.dp))
+        // Temperature ladder: heaters below set-point, fans added one by one above it.
+        TwoMetric(
+            BM("Heat ON below", f1(ladder.heatOnC), "°C", "Set-point − ${f1(entry.setTemp - ladder.heatOnC)}", "heater", ValueKind.IDEAL),
+            BM("Set-point", f1(entry.setTemp), "°C", "Band ${f1(entry.tempMin)}–${f1(entry.tempMax)}", "target", ValueKind.IDEAL)
         )
         TwoMetric(
-            BM("Max cooling airflow", String.format("%,.0f", maxCoolCfm), "CFM", "All ${farm.fanCount} fans (tunnel)", "cooling", ValueKind.IDEAL),
-            BM("Air changes", "${String.format("%.1f", achMin)}–${String.format("%.0f", achMax)}", "/hr", "min-vent → tunnel", "range", vk)
+            BM("Fans start", f1(ladder.fansStartC), "°C", "Set-point + ${f1(ladder.fansStartC - entry.setTemp)}", "level 2", ValueKind.IDEAL),
+            BM("All ${ladder.maxFans} fans by", f1(ladder.allFansC), "°C", "+${PhysiologicalEngine.LADDER_STEP_C} °C per fan", "age cap", ValueKind.IDEAL)
         )
+        TwoMetric(
+            BM("High-temp alarm", f1(ladder.alarmHighC), "°C", "Set-point + 3.5", "alarm", ValueKind.IDEAL),
+            BM("Low-temp alarm", f1(ladder.alarmLowC), "°C", "Set-point − 2.0", "alarm", ValueKind.IDEAL)
+        )
+        if (entry.outTemp != null) {
+            BigMetric(
+                label = "Expected today",
+                value = entry.ventText,
+                unit = "",
+                toleranceText = "Outside ${String.format("%.0f", entry.outTemp)} °C vs set-point ${f1(entry.setTemp)} °C",
+                statusTag = when (entry.ventMode) { 2 -> "tunnel"; 1 -> "transitional"; else -> "min-vent" },
+                kind = ValueKind.PREDICTED
+            )
+        }
+
         Divider(modifier = Modifier.padding(vertical = 4.dp))
         TwoMetric(
-            BM("Set temp", String.format("%.1f", entry.tempIdeal), "°C", "min ${String.format("%.1f", entry.tempMin)} · max ${String.format("%.1f", entry.tempMax)}", "±band", ValueKind.IDEAL),
-            BM("Humidity", String.format("%.0f", entry.rhIdeal), "%", "min ${entry.rhMin.toInt()} · max ${entry.rhMax.toInt()}", "ideal", ValueKind.IDEAL)
+            BM("Max cooling airflow", String.format("%,.0f", maxCoolCfm), "CFM", "All ${farm.fanCount} fans (tunnel)", "cooling", ValueKind.IDEAL),
+            BM("Air changes", "${f1(achMin)}–${String.format("%.0f", achMax)}", "/hr", "timer → all fans", "range", vk)
         )
         TwoMetric(
-            BM("Wind speed", "0–${entry.airspeed.toInt()}", "ft/min", "still → tunnel target", "range", ValueKind.IDEAL),
-            BM("Static pressure", "25", "Pa", "Band 15–35 Pa", "ideal", ValueKind.IDEAL)
+            BM("Air speed at birds", "${entry.airspeed.toInt()}", "ft/min", "Age cap ${ladder.maxAirSpeedFpm.toInt()} ft/min", "target", ValueKind.IDEAL),
+            BM("Humidity", String.format("%.0f", entry.rhIdeal), "%", if (day <= 10) "60–70 % while brooding" else "50–60 % after brooding", "ideal", ValueKind.IDEAL)
         )
+        TwoMetric(
+            BM("Static · min-vent", "20–25", "Pa", "0.08–0.10 in w.c.", "levels 1–6", ValueKind.IDEAL),
+            BM("Static · tunnel", "30–37", "Pa", "Alarm < 15 or > 45 Pa", "tunnel", ValueKind.IDEAL)
+        )
+        Text(
+            "Pads: only after all ${ladder.maxFans} fans run and the house is still above ${f1(ladder.allFansC)} °C. Stop pads when RH passes 80–85 %.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
         Divider(modifier = Modifier.padding(vertical = 4.dp))
         TwoMetric(
             BM("Heat / bird", String.format("%.1f", heatPerBirdW), "W", "Metabolic (estimate)", "heat", vk),
@@ -1212,17 +1289,22 @@ fun VentThermoCard(entry: DailyDataEntity, farm: FarmEntity, vk: ValueKind) {
             BM("Sensible heat", String.format("%.1f", heatPerBirdW * sensibleFrac), "W/bird", "Dry heat to remove", "sensible", vk),
             BM("Latent heat", String.format("%.1f", heatPerBirdW * (1 - sensibleFrac)), "W/bird", "Moisture (water) load", "latent", vk)
         )
+
         Divider(modifier = Modifier.padding(vertical = 4.dp))
         TwoMetric(
-            BM("CO₂ max", "${entry.co2Max.toInt()}", "ppm", "House ceiling", "ideal", ValueKind.IDEAL),
-            BM("NH₃ max", "${entry.nh3Max.toInt()}", "ppm", "Ammonia ceiling", "ideal", ValueKind.IDEAL)
+            BM("CO₂", "< 3,000", "ppm", "Critical ${entry.co2Max.toInt()}", "ideal", ValueKind.IDEAL),
+            BM("NH₃", "< 10", "ppm", "Critical ${entry.nh3Max.toInt()}", "ideal", ValueKind.IDEAL)
+        )
+        TwoMetric(
+            BM("CO", "< 10", "ppm", "Heater exhaust", "ideal", ValueKind.IDEAL),
+            BM("Dust", "< 5", "mg/m³", "Dry house = more dust", "ideal", ValueKind.IDEAL)
         )
         TwoMetric(
             BM("O₂", "20.9", "%", "Minimum 19.6 %", "ideal", ValueKind.IDEAL),
             BM("Lighting", String.format("%.1f", entry.lightHours), "h", "Dark ${String.format("%.1f", 24.0 - entry.lightHours)} h", "ideal", ValueKind.IDEAL)
         )
         Text(
-            "Heat figures are metabolic estimates — cross-check the Aviagen environmental spec for your exact stocking.",
+            "Heat figures are metabolic estimates. Air-quality limits: Aviagen.",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

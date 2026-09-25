@@ -573,7 +573,8 @@ class FlockRepository(
                 if (sampleRes.hasSample) sampleRes.flockAvgG else projWeight
             )
             val incoming = if (tempKnown) meanTemp else setTemp
-            val cfmPerBird = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MINVENT_BY_AGE, weightAge) * farm.minVentFactor
+            // Weight-based Ross floor × 1.3 air-quality margin × farm calibration.
+            val cfmPerBird = PhysiologicalEngine.designMinVentCfmPerBird(avgKg, farm.minVentFactor)
 
             val ventPlan = PhysiologicalEngine.computeVentPlan(
                 fanCount = farm.fanCount,
@@ -635,6 +636,7 @@ class FlockRepository(
                 else -> "Minimum Ventilation"
             }
 
+            // Level-1 min-vent timer — set on the controller every day, whatever the weather.
             val cycleText = if (ventPlan.offSec <= 0) "Continuous" else "${ventPlan.onSec}s on / ${ventPlan.offSec}s off"
 
             // Alerts

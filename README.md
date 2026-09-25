@@ -260,7 +260,7 @@ Drive folder, with these tabs:
 ### Breed standards & curves
 - `STANDARDS` — Ross 308 (AP 2022, as-hatched) and Cobb 500 day 0–49: body weight,
   daily feed, cumulative feed and standard FCR.
-- Age/BW lookup curves: `CURVE_TEMP_BY_BW`, `CURVE_MINVENT_BY_AGE`, `CURVE_RH_BY_AGE`,
+- Age/BW lookup curves: `CURVE_TEMP_BY_BW`, `CURVE_MINVENT_BY_KG` (Ross, cfm/bird by body weight), `CURVE_RH_BY_AGE`,
   `CURVE_AIRSPEED_BY_AGE`, `CURVE_LIGHT_BY_AGE`, `CURVE_MAXMORT_BY_AGE`,
   `CURVE_WATERLINE_BY_AGE`, `CURVE_DRINKERHT_BY_AGE`.
 - `interpolate(table, x)` — piecewise-linear, clamped at both ends. Underlies every
@@ -284,21 +284,37 @@ Drive folder, with these tabs:
 | Wet-bulb (opt.) | `wetBulb(T, RH)` | Stull (2011) approximation |
 | Live birds | — | `placed − transit − Σmortality − Σlifted − Σlame` |
 | Density | `computeAreaAndDensity()` | `kg/m² = live·avgKg / usableM²`; barricade & ft²/bird from brood density + cap |
-| Ventilation plan | `computeVentPlan()` | min-vent CFM vs tunnel CFM → Min-vent / Transitional / Tunnel; fans + on/off cycle |
+| Min-vent rate | `designMinVentCfmPerBird(kg)` | `Ross(kg) × 1.3 air-quality margin × farm minVentFactor` |
+| Ventilation plan | `computeVentPlan()` | Level-1 timer (fans + ON/OFF) + expected mode today |
+| Controller ladder | `controllerLadder()` | heat-on, fans-start, one fan per +0.3 °C to the age cap, alarms |
 | Targets table | `buildTargetComparisons()` | assembles ideal-vs-ground rows per group with good/warn/crit status |
 
-### Ventilation decision (simplified)
+### Ventilation — how the fan controller is modelled
 
-```mermaid
-flowchart TD
-    A[overTemp = incoming − setPoint] --> B{overTemp > trigger<br/>AND avg ≥ 1000 g?}
-    B -- yes --> T[Tunnel cool<br/>fans sized to airspeed×cross-section]
-    B -- no --> C{overTemp > tempBand?}
-    C -- yes --> R[Transitional<br/>~40% of tunnel fans]
-    C -- no --> M[Min-vent cycling<br/>on/off from required CFM]
-```
-`trigger` = 3.0 °C for birds ≥ 1.5 kg else 4.5 °C. Delivered CFM/bird accounts for the
-fan duty cycle and de-rate.
+**Level 1 = minimum ventilation (timer).** Runs whenever the house is at or below set-point,
+every day, whatever the weather. Its job is air quality (moisture, CO₂, NH₃), not heat.
+
+- need (cfm) = live birds × Ross cfm/bird for the current body weight × 1.3 × `minVentFactor`
+- fans = 1 until one fan would run > 80 % of the cycle, then 2, …
+- ON = need ÷ (fans × effective cfm) × 300 s, never below **50 s** (shorter and the inlet jet
+  never reaches the ceiling apex, so cold air drops on the birds)
+- if ON would be < 50 s, ON stays 50 s and the OFF time is stretched — cycle capped at
+  600 s (days 0–3), 500 s (4–6), 450 s (7+)
+
+**Levels 2+ = temperature fans (continuous).** Added one at a time as the house warms:
+
+| | Formula |
+|---|---|
+| Heat ON below | set-point − 0.5 / 0.8 / 1.0 / 1.5 / 2.0 °C (d0–7 / 8–14 / 15–21 / 22–28 / 29+) |
+| Fans start (Level 2) | set-point + 1.5 / 1.2 / 0.9 / 0.6 / 0.3 °C (same age bands) |
+| Each further fan | +0.3 °C, until the age cap |
+| Max fans by age | round(max air speed × cross-section ÷ effective cfm); max speed 133 → 667 ft/min from d0–7 to d35+ |
+| Alarms | high = set-point + 3.5 °C, low = set-point − 2.0 °C |
+| Static pressure | 20–25 Pa min/transitional, 30–37 Pa tunnel; alarm < 15 or > 45 Pa |
+| Switch-on order | middle odd fan first, odd fans outward, then evens (10 fans → 5,3,7,1,9,2,4,6,8,10) |
+
+"Expected today" (min-vent / transitional / tunnel) compares the outside temperature with the
+set-point (`trigger` 3.0 °C for birds ≥ 1.5 kg, else 4.5 °C). It never replaces the Level-1 timer.
 
 ---
 
@@ -314,7 +330,7 @@ lat/lon/name & season; density cap; daily cut-off time.
 ### Config thresholds (`ConfigEntity`)
 `tempBand` ±1.5 °C · RH 50–70% · NH₃ warn/crit 10/20 ppm · CO₂ warn/crit 3000/3500 ·
 CV warn/crit 10/12% · `wfRatio` 1.8 · `feedHeatK` 0.012 · `waterHeatK` 0.06 ·
-`cFcrDivisor` 0.25 · vent cycle 300 s / min-on 30 s · tunnel triggers 4.5 (young)/3.0 (big).
+`cFcrDivisor` 0.25 · vent cycle 300 s / min-on 50 s (floor) · tunnel triggers 4.5 (young)/3.0 (big).
 
 ### Daily inputs (`DailyDataEntity`, entered by the farmer)
 5-point weight samples (weight g + count each), mortality, feed bags used + type, birds

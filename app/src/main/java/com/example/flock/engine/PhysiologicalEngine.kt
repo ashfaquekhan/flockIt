@@ -91,13 +91,26 @@ object PhysiologicalEngine {
         9999.0 to 20.0
     )
 
-    val CURVE_MINVENT_BY_AGE = listOf(
-        7.0 to 0.10, 14.0 to 0.25, 21.0 to 0.35, 28.0 to 0.50, 35.0 to 0.65,
-        42.0 to 0.70, 49.0 to 0.80, 56.0 to 0.90
+    // Ross minimum-ventilation rate by BODY WEIGHT (kg → cfm/bird). This is the theoretical
+    // air-quality floor; it scales with metabolic weight (≈ 0.51 × kg^0.75), so it is keyed on
+    // weight, not age. (The old age-keyed curve under-ventilated by ~35–40 % from day 21.)
+    val CURVE_MINVENT_BY_KG = listOf(
+        0.05 to 0.047, 0.10 to 0.083, 0.20 to 0.152, 0.30 to 0.206, 0.50 to 0.303,
+        0.75 to 0.410, 1.00 to 0.509, 1.50 to 0.689, 2.00 to 0.855, 2.40 to 0.981,
+        3.00 to 1.159, 3.40 to 1.273, 4.00 to 1.438, 4.40 to 1.545
     )
 
+    /** Real houses need more than the theoretical floor to hold RH and NH₃ down. */
+    const val AIR_QUALITY_MARGIN = 1.30
+
+    /** Below this the inlet jet never reaches the ceiling apex and cold air drops on birds. */
+    const val MIN_ON_FLOOR_SEC = 50
+
+    /** Temperature step between successive fans on the controller ladder. */
+    const val LADDER_STEP_C = 0.3
+
     val CURVE_RH_BY_AGE = listOf(
-        0.0 to 65.0, 3.0 to 65.0, 7.0 to 60.0, 14.0 to 55.0, 28.0 to 55.0, 42.0 to 60.0
+        0.0 to 65.0, 3.0 to 65.0, 7.0 to 60.0, 14.0 to 55.0, 28.0 to 55.0, 42.0 to 55.0
     )
 
     val CURVE_AIRSPEED_BY_AGE = listOf(
@@ -261,16 +274,156 @@ object PhysiologicalEngine {
         )
     }
 
-    data class VentPlan(
-        val fansToRun: Int,
+    /** Ross theoretical min-vent floor for a bird of [avgKg] (cfm/bird). */
+    fun rossMinVentCfmPerBird(avgKg: Double): Double = interpolate(CURVE_MINVENT_BY_KG, avgKg)
+
+    /** Min-vent design rate: Ross floor × air-quality margin × farm calibration (cfm/bird). */
+    fun designMinVentCfmPerBird(avgKg: Double, farmFactor: Double = 1.0): Double =
+        rossMinVentCfmPerBird(avgKg) * AIR_QUALITY_MARGIN * farmFactor
+
+    /**
+     * Longest cycle allowed when the ON time is pinned at the floor. Young chicks need so little
+     * air that even 50 s of one big fan is too much, so the OFF time is stretched instead — but
+     * not beyond this, or RH/CO₂ build up and the house swings.
+     */
+    fun maxCycleSec(day: Int): Int = when {
+        day <= 3 -> 600
+        day <= 6 -> 500
+        else -> 450
+    }
+
+    /** Gap between set-point and the first continuous fan: wide for chicks, tight for finishers. */
+    fun fanStartDiffC(day: Int): Double = when {
+        day <= 7 -> 1.5
+        day <= 14 -> 1.2
+        day <= 21 -> 0.9
+        day <= 28 -> 0.6
+        else -> 0.3
+    }
+
+    /** How far below set-point the heaters switch on. */
+    fun heatOnOffsetC(day: Int): Double = when {
+        day <= 7 -> 0.5
+        day <= 14 -> 0.8
+        day <= 21 -> 1.0
+        day <= 28 -> 1.5
+        else -> 2.0
+    }
+
+    /** Highest tunnel air speed allowed at this age (ft/min); caps how many fans may run. */
+    fun maxAirSpeedFpm(day: Int): Double = when {
+        day <= 7 -> 133.0
+        day <= 14 -> 200.0
+        day <= 17 -> 267.0
+        day <= 21 -> 333.0
+        day <= 24 -> 400.0
+        day <= 28 -> 467.0
+        day <= 31 -> 533.0
+        day <= 34 -> 600.0
+        else -> 667.0
+    }
+
+    /**
+     * Fan switch-on order: middle odd fan first, then odd fans spreading outward, then the even
+     * fans — keeps airflow symmetric across the bank (10 fans → 5,3,7,1,9,2,4,6,8,10).
+     */
+    fun fanSequence(fanCount: Int): List<Int> {
+        if (fanCount <= 0) return emptyList()
+        val odds = (1..fanCount).filter { it % 2 == 1 }
+        val evens = (1..fanCount).filter { it % 2 == 0 }
+        val mid = (odds.size - 1) / 2
+        val seq = mutableListOf(odds[mid])
+        var lo = mid - 1
+        var hi = mid + 1
+        while (lo >= 0 || hi < odds.size) {
+            if (lo >= 0) seq.add(odds[lo--])
+            if (hi < odds.size) seq.add(odds[hi++])
+        }
+        return seq + evens
+    }
+
+    data class LadderLevel(
+        val level: Int,
+        val startC: Double,
+        val fans: Int,
         val onSec: Int,
-        val offSec: Int,
-        val mode: Int, // 0 = Min-vent (cycling), 1 = Transitional, 2 = Tunnel cool
-        val modeName: String,
-        val airspeedFtMin: Int,
-        val cfmDeliveredPerBird: Double
+        val offSec: Int // 0 = continuous
     )
 
+    data class ControllerLadder(
+        val maxFans: Int,            // tunnel cap for this age
+        val maxAirSpeedFpm: Double,
+        val setPointC: Double,
+        val heatOnC: Double,
+        val fansStartC: Double,
+        val allFansC: Double,
+        val alarmHighC: Double,
+        val alarmLowC: Double,
+        val levels: List<LadderLevel>
+    )
+
+    /**
+     * Controller level table for one day. Level 1 = min-vent timer at set-point; Level 2 = the
+     * same fans running continuously at set-point + age gap; each further level adds one fan
+     * [LADDER_STEP_C] warmer, up to the age cap.
+     */
+    fun controllerLadder(
+        day: Int,
+        setTempC: Double,
+        minVentFans: Int,
+        onSec: Int,
+        offSec: Int,
+        fanCount: Int,
+        effFanCfm: Double,
+        crossSectionFt2: Double
+    ): ControllerLadder {
+        val fanCountSafe = max(1, fanCount)
+        val l1Fans = minVentFans.coerceIn(1, fanCountSafe)
+        val byAge = if (effFanCfm > 0) (maxAirSpeedFpm(day) * crossSectionFt2 / effFanCfm).roundToInt() else fanCountSafe
+        val maxFans = min(fanCountSafe, max(l1Fans, byAge.coerceAtLeast(1)))
+        val fansStart = setTempC + fanStartDiffC(day)
+        val levels = mutableListOf(LadderLevel(1, setTempC, l1Fans, onSec, offSec))
+        var lvl = 2
+        for (n in l1Fans..maxFans) {
+            levels.add(LadderLevel(lvl, fansStart + LADDER_STEP_C * (n - l1Fans), n, 0, 0))
+            lvl++
+        }
+        return ControllerLadder(
+            maxFans = maxFans,
+            maxAirSpeedFpm = maxAirSpeedFpm(day),
+            setPointC = setTempC,
+            heatOnC = setTempC - heatOnOffsetC(day),
+            fansStartC = fansStart,
+            allFansC = levels.last().startC,
+            alarmHighC = setTempC + 3.5,
+            alarmLowC = setTempC - 2.0,
+            levels = levels
+        )
+    }
+
+    data class VentPlan(
+        val fansToRun: Int,          // Level-1 min-vent fans (timer)
+        val onSec: Int,              // Level-1 ON
+        val offSec: Int,             // Level-1 OFF
+        val cycleSec: Int,           // ON + OFF (stretched for chicks)
+        val mode: Int,               // today's expected mode: 0 min-vent, 1 transitional, 2 tunnel
+        val modeName: String,
+        val airspeedFtMin: Int,      // comfort target at bird level
+        val cfmDeliveredPerBird: Double,
+        val rossCfmPerBird: Double,  // theoretical floor
+        val designCfmPerBird: Double,// floor × margin × calibration
+        val designCfmTotal: Double,
+        val ladder: ControllerLadder
+    )
+
+    /**
+     * Daily fan-controller plan.
+     *
+     * Level 1 is the minimum-ventilation TIMER — it runs whenever the house is at or below
+     * set-point, every day, regardless of weather. Levels above it are temperature fans that
+     * run continuously and are added one at a time as the house warms. The weather only
+     * changes which level the house is expected to reach, never the Level-1 timer.
+     */
     fun computeVentPlan(
         fanCount: Int,
         fanRatedCfm: Double,
@@ -284,7 +437,7 @@ object PhysiologicalEngine {
         cfmPerBirdReq: Double,
         day: Int,
         cycleSec: Int = 300,
-        minOnSec: Int = 30,
+        minOnSec: Int = MIN_ON_FLOOR_SEC,
         tempBand: Double = 1.5,
         tunTrigBig: Double = 3.0,
         tunTrigYoung: Double = 4.5
@@ -293,60 +446,57 @@ object PhysiologicalEngine {
         val crossSection = usableWidthFt * usableHeightFt
         val targetAirspeed = interpolate(CURVE_AIRSPEED_BY_AGE, day.toDouble())
         val totalMinVentCfm = cfmPerBirdReq * liveBirds
-        val minVentFans = min(fanCount, max(1, ceil(totalMinVentCfm / (effFanCfm * 0.8)).toInt()))
-        val tunnelCfm = targetAirspeed * crossSection
-        val tunnelFans = min(fanCount, max(minVentFans, ceil(tunnelCfm / effFanCfm).toInt()))
+        val fanCountSafe = max(1, fanCount)
 
+        // Level 1 — one fan until it would run more than ~80 % of the cycle, then add fans.
+        val minVentFans = min(fanCountSafe, max(1, ceil(totalMinVentCfm / (effFanCfm * 0.8)).toInt()))
+        val onFloor = max(minOnSec, MIN_ON_FLOOR_SEC).toDouble()
+        val baseCycle = cycleSec.coerceAtLeast(60).toDouble()
+        val capacity = minVentFans * effFanCfm
+        var cycle = baseCycle
+        var on = if (capacity > 0) totalMinVentCfm / capacity * baseCycle else baseCycle
+        if (on < onFloor) {
+            // Too little air needed: hold ON at the floor and stretch the OFF time.
+            on = onFloor
+            val needCycle = if (totalMinVentCfm > 0) onFloor * capacity / totalMinVentCfm else maxCycleSec(day).toDouble()
+            cycle = needCycle.coerceIn(baseCycle, max(baseCycle, maxCycleSec(day).toDouble()))
+        }
+        val onSec = on.coerceAtMost(cycle).roundToInt()
+        val cyc = cycle.roundToInt()
+        val offSec = (cyc - onSec).coerceAtLeast(0)
+
+        val ladder = controllerLadder(day, setTempC, minVentFans, onSec, offSec, fanCountSafe, effFanCfm, crossSection)
+
+        // Today's expected mode from the outside temperature
         val overTemp = incomingTempC - setTempC
         val trigger = if (avgKg * 1000.0 >= 1500.0) tunTrigBig else tunTrigYoung
-
         val mode: Int = when {
-            overTemp > trigger && (avgKg * 1000.0 >= 1000.0) -> 2 // Tunnel
-            overTemp > tempBand -> 1 // Transitional
-            else -> 0 // Min-vent
+            overTemp > trigger && (avgKg * 1000.0 >= 1000.0) -> 2
+            overTemp > tempBand -> 1
+            else -> 0
         }
-
-        val fans: Int
-        val onSec: Int
-        val offSec: Int
-
-        when (mode) {
-            2 -> {
-                fans = tunnelFans
-                onSec = cycleSec
-                offSec = 0
-            }
-            1 -> {
-                fans = min(fanCount, max(minVentFans + 1, ceil(tunnelFans * 0.4).toInt()))
-                onSec = cycleSec
-                offSec = 0
-            }
-            else -> {
-                fans = minVentFans
-                val rawOn = (totalMinVentCfm / (fans * effFanCfm)) * cycleSec
-                val clampedOn = rawOn.coerceIn(minOnSec.toDouble(), cycleSec.toDouble()).roundToInt()
-                onSec = clampedOn
-                offSec = cycleSec - clampedOn
-            }
-        }
-
-        val dutyFraction = if (onSec + offSec > 0) onSec.toDouble() / (onSec + offSec) else 1.0
-        val deliveredCfmPerBird = if (liveBirds > 0) (fans * effFanCfm * dutyFraction) / liveBirds else 0.0
-
         val modeName = when (mode) {
             2 -> "Tunnel cool"
             1 -> "Transitional"
             else -> "Min-vent (cycling)"
         }
 
+        val duty = if (cyc > 0) onSec.toDouble() / cyc else 1.0
+        val deliveredCfmPerBird = if (liveBirds > 0) (minVentFans * effFanCfm * duty) / liveBirds else 0.0
+
         return VentPlan(
-            fansToRun = fans,
+            fansToRun = minVentFans,
             onSec = onSec,
             offSec = offSec,
+            cycleSec = cyc,
             mode = mode,
             modeName = modeName,
             airspeedFtMin = targetAirspeed.roundToInt(),
-            cfmDeliveredPerBird = deliveredCfmPerBird
+            cfmDeliveredPerBird = deliveredCfmPerBird,
+            rossCfmPerBird = rossMinVentCfmPerBird(avgKg),
+            designCfmPerBird = cfmPerBirdReq,
+            designCfmTotal = totalMinVentCfm,
+            ladder = ladder
         )
     }
 
@@ -569,22 +719,24 @@ object PhysiologicalEngine {
                 status = ""
             )
         )
-        val minVentCal = interpolate(CURVE_MINVENT_BY_AGE, day.toDouble())
-        val minVentGround = interpolate(CURVE_MINVENT_BY_AGE, weightAge)
+        val minVentCal = designMinVentCfmPerBird(bwDate / 1000.0)
+        val minVentGround = designMinVentCfmPerBird(bwGround / 1000.0)
         climateRows.add(
             TargetRow(
                 parameter = "Min-vent air",
                 unit = "cfm/bird",
                 calendarValue = String.format("%.2f", minVentCal),
                 groundValue = String.format("%.2f", minVentGround),
-                provenance = "NPTC age",
+                provenance = "Ross kg +30%",
                 readDelta = "air-quality floor",
                 status = ""
             )
         )
-        climateRows.add(TargetRow("CO₂ max", "ppm", "3,500", "= same", "fixed", "house limit", ""))
-        climateRows.add(TargetRow("NH₃ max", "ppm", "20", "= same", "fixed", "ammonia ceiling", ""))
-        climateRows.add(TargetRow("Static pressure", "Pa", "25", "= same", "fixed", "±10 Pa band", ""))
+        climateRows.add(TargetRow("CO₂", "ppm", "< 3,000", "= same", "Aviagen", "crit 3,500", ""))
+        climateRows.add(TargetRow("NH₃", "ppm", "< 10", "= same", "Aviagen", "crit 20", ""))
+        climateRows.add(TargetRow("CO", "ppm", "< 10", "= same", "Aviagen", "heater exhaust", ""))
+        climateRows.add(TargetRow("Dust", "mg/m³", "< 5", "= same", "Aviagen", "dry-house risk", ""))
+        climateRows.add(TargetRow("Static pressure", "Pa", "20–25", "= same", "min-vent", "tunnel 30–37", ""))
         groups.add(TargetGroup("Climate & Air", 0xFF2E7DA6, climateRows))
 
         // 3. Feed
