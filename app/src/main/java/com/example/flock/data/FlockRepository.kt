@@ -1,5 +1,6 @@
 package com.example.flock.data
 
+import com.example.flock.engine.IbController
 import com.example.flock.engine.PhysiologicalEngine
 import com.example.flock.network.ForecastResult
 import com.example.flock.network.WeatherClient
@@ -247,7 +248,7 @@ class FlockRepository(
                 measuredCo2 = null, measuredNh3 = null, measuredO2 = null, measuredPressure = null,
                 measuredAirspeed = null, padWetMin = null, padDryMin = null, luxPerFt2 = null,
                 dieselCansUsed = 0.0,
-                sampleEntered = false, committed = false,
+                sampleEntered = false, committed = false, savedFields = "",
                 updatedAt = System.currentTimeMillis(), updatedBy = userEmail
             )
             dailyDataDao.insertOrUpdateDay(cleared)
@@ -395,6 +396,7 @@ class FlockRepository(
         flockId: String,
         dayNumber: Int,
         userEmail: String,
+        entered: Set<String> = emptySet(),
         updateAction: (DailyDataEntity) -> DailyDataEntity
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val flock = flockDao.getFlockById(spreadsheetId, flockId)
@@ -410,20 +412,29 @@ class FlockRepository(
 
         val modified = updateAction(existing)
 
-        // Enforce hard-lock if hard fields were modified
-        val hardFieldsChanged = modified.w1 != existing.w1 || modified.n1 != existing.n1 ||
+        // Per-field locking: a group (W weights, M mortality, F feed used) locks once it has been
+        // entered and saved. Groups never entered stay open — even after the cut-off or on a past
+        // day — so a late mortality count or feed figure can still be added. Future days: no.
+        val curDay = calculateCurrentDay(flock.startDate, getFarm(spreadsheetId).timeZone)
+        val saved = existing.savedGroups()
+        val weightsChanged = modified.w1 != existing.w1 || modified.n1 != existing.n1 ||
                 modified.w2 != existing.w2 || modified.n2 != existing.n2 ||
                 modified.w3 != existing.w3 || modified.n3 != existing.n3 ||
                 modified.w4 != existing.w4 || modified.n4 != existing.n4 ||
-                modified.w5 != existing.w5 || modified.n5 != existing.n5 ||
-                modified.mortality != existing.mortality ||
-                modified.feedBagsUsed != existing.feedBagsUsed
-
-        if (hardFieldsChanged) {
-            val (locked, reason) = isDayHardLocked(spreadsheetId, flock, dayNumber)
-            if (locked) {
-                return@withContext Result.failure(IllegalStateException(reason))
-            }
+                modified.w5 != existing.w5 || modified.n5 != existing.n5
+        val mortChanged = modified.mortality != existing.mortality
+        val feedChanged = modified.feedBagsUsed != existing.feedBagsUsed || modified.feedUsedBreakdown != existing.feedUsedBreakdown
+        if ((weightsChanged || mortChanged || feedChanged) && dayNumber > curDay) {
+            return@withContext Result.failure(IllegalStateException("Cannot enter data for future days."))
+        }
+        val blocked = listOfNotNull(
+            "weights".takeIf { weightsChanged && "W" in saved },
+            "mortality".takeIf { mortChanged && "M" in saved },
+            "feed used".takeIf { feedChanged && "F" in saved }
+        )
+        if (blocked.isNotEmpty()) {
+            return@withContext Result.failure(IllegalStateException(
+                "Day $dayNumber ${blocked.joinToString(", ")} already saved and locked. Use Revert day to change them."))
         }
 
         // Bug 4 Fix: sampleEntered is ONLY true when at least one location has BOTH weight > 0 AND count > 0
@@ -433,12 +444,14 @@ class FlockRepository(
                 ((modified.w4 ?: 0.0) > 0 && (modified.n4 ?: 0) > 0) ||
                 ((modified.w5 ?: 0.0) > 0 && (modified.n5 ?: 0) > 0)
 
-        // Once the day is saved with any of the important fields (a weight sample, mortality,
-        // or feed used) it is "committed" — those fields become read-only in the entry screen.
-        val hasImportant = hasSample || modified.mortality > 0 || modified.feedBagsUsed > 0.0
+        val newSaved = saved.toMutableSet()
+        if (hasSample) newSaved += "W"
+        if ("M" in entered) newSaved += "M"
+        if ("F" in entered || dayNumber == 0) newSaved += "F"
         val toSave = modified.copy(
             sampleEntered = hasSample,
-            committed = modified.committed || hasImportant,
+            savedFields = listOf("W", "M", "F").filter { it in newSaved }.joinToString(","),
+            committed = newSaved.containsAll(listOf("W", "M", "F")),
             updatedAt = System.currentTimeMillis(),
             updatedBy = userEmail
         )
@@ -636,8 +649,10 @@ class FlockRepository(
                 else -> "Minimum Ventilation"
             }
 
-            // Level-1 min-vent timer — set on the controller every day, whatever the weather.
-            val cycleText = if (ventPlan.offSec <= 0) "Continuous" else "${ventPlan.onSec}s on / ${ventPlan.offSec}s off"
+            // Minimum ventilation = the MIN level of the controller ladder for today's birds.
+            val ibPlan = IbController.dayPlan(day, if (sampleRes.hasSample) sampleRes.flockAvgG else projWeight, live, farm)
+            val minLv = ibPlan.minLv
+            val cycleText = if (minLv.isTimer) "${minLv.on}s on / ${minLv.off}s off" else "${minLv.fansOn} fan${if (minLv.fansOn > 1) "s" else ""} non-stop"
 
             // Alerts
             val alertMsgs = mutableListOf<String>()
@@ -704,9 +719,9 @@ class FlockRepository(
                     totalWaterL = totalWaterL,
                     tankRefills = tankRefills,
                     cfmPerBird = cfmPerBird,
-                    fansToRun = ventPlan.fansToRun,
-                    fanOnSec = ventPlan.onSec,
-                    fanOffSec = ventPlan.offSec,
+                    fansToRun = minLv.fansOn,
+                    fanOnSec = if (minLv.isTimer) minLv.on else 300,
+                    fanOffSec = if (minLv.isTimer) minLv.off else 0,
                     ventMode = ventPlan.mode,
                     fcr = fcr,
                     cFcr = cFcr,

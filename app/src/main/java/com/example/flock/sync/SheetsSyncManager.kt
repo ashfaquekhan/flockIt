@@ -272,7 +272,7 @@ class SheetsSyncManager(
         "BroodingLength", "ActualFans", "ActualFanTime", "OutTemp", "OutRH", "Notes",
         "WaterTempC", "WaterPh", "FeedMoisturePct", "MeasuredCo2", "MeasuredNh3", "MeasuredO2",
         "MeasuredPressure", "MeasuredAirspeed", "PadWetMin", "PadDryMin", "LuxPerFt2", "DieselCansUsed",
-        "UpdatedAt", "UpdatedBy", "Committed", "FeedUsedBreakdown"
+        "UpdatedAt", "UpdatedBy", "Committed", "FeedUsedBreakdown", "SavedFields"
     )
     private fun dayToRow(d: DailyDataEntity): List<String> = listOf(
         d.flockId, sv(d.dayNumber), d.date, sv(d.locked), sv(d.sampleEntered),
@@ -282,7 +282,7 @@ class SheetsSyncManager(
         sv(d.broodingLength), sv(d.actualFans), sv(d.actualFanTime), sv(d.outTemp), sv(d.outRH), d.notes,
         sv(d.waterTempC), sv(d.waterPh), sv(d.feedMoisturePct), sv(d.measuredCo2), sv(d.measuredNh3), sv(d.measuredO2),
         sv(d.measuredPressure), sv(d.measuredAirspeed), sv(d.padWetMin), sv(d.padDryMin), sv(d.luxPerFt2), sv(d.dieselCansUsed),
-        sv(d.updatedAt), d.updatedBy, sv(d.committed), d.feedUsedBreakdown
+        sv(d.updatedAt), d.updatedBy, sv(d.committed), d.feedUsedBreakdown, d.savedFields
     )
     private fun rowToDay(spreadsheetId: String, r: List<Any>): DailyDataEntity? {
         val fId = r.s(0); if (fId.isBlank()) return null
@@ -305,7 +305,7 @@ class SheetsSyncManager(
             padWetMin = r.d(41), padDryMin = r.d(42), luxPerFt2 = r.d(43),
             dieselCansUsed = r.d(44) ?: 0.0,
             updatedAt = r.l(45) ?: System.currentTimeMillis(), updatedBy = r.s(46),
-            committed = r.b(47), feedUsedBreakdown = r.s(48)
+            committed = r.b(47), feedUsedBreakdown = r.s(48), savedFields = r.s(49)
         )
     }
 
@@ -533,54 +533,242 @@ class SheetsSyncManager(
         listOf("tunTrigYoung", sv(c.tunTrigYoung)), listOf("tunTrigBig", sv(c.tunTrigBig))
     )
 
+    // ---------------------------------------------------------------------
+    // Backups — tagged with appProperties so discovery never imports them as farms.
+    // ---------------------------------------------------------------------
+    private val BACKUP_KEY = "flockitBackupOf"
+    private val BACKUP_PREFIX = "FlockIt backup"
+    private val SNAPSHOT_PREFIX = "FlockIt pre-repair"
+
+    /** True for any file this app made as a backup or safety snapshot (new tag or legacy name). */
+    private fun isBackupFile(f: DriveFile): Boolean =
+        f.appProperties?.containsKey(BACKUP_KEY) == true ||
+            f.name.startsWith(BACKUP_PREFIX) || f.name.startsWith(SNAPSHOT_PREFIX)
+
+    private suspend fun listBackupFiles(authHeader: String): List<DriveFile> {
+        val q = "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false and " +
+            "(name contains '$BACKUP_PREFIX' or name contains '$SNAPSHOT_PREFIX')"
+        val res = GoogleApiClientProvider.driveApi.listFiles(
+            authHeader = authHeader, query = q,
+            fields = "files(id, name, modifiedTime, appProperties)"
+        )
+        return res.body()?.files.orEmpty().filter { isBackupFile(it) }
+    }
+
+    private suspend fun readMeta(authHeader: String, spreadsheetId: String): Map<String, String> = try {
+        GoogleApiClientProvider.sheetsApi.batchGet(authHeader, spreadsheetId, listOf(a1("_Meta", "A1:B20")))
+            .body()?.valueRanges?.getOrNull(0)?.values.orEmpty()
+            .associate { it.s(0) to it.s(1) }
+    } catch (e: Exception) { emptyMap() }
+
+    /** Backups belonging to one farm: tagged for it, or legacy-named copies carrying its farmId. */
+    private suspend fun findBackupsOf(authHeader: String, spreadsheetId: String, farm: FarmEntity): List<DriveFile> =
+        listBackupFiles(authHeader).filter { f ->
+            if (f.id == spreadsheetId) return@filter false
+            val tag = f.appProperties?.get(BACKUP_KEY)
+            when {
+                tag != null -> tag == spreadsheetId
+                farm.farmId.isNotBlank() -> readMeta(authHeader, f.id)["farmId"] == farm.farmId
+                else -> f.name.contains(farm.farmName)
+            }
+        }
+
+    /** Grows tabs so a full rewrite never fails with "exceeds grid limits". needs: tab -> (rows, cols). */
+    private suspend fun ensureGrid(authHeader: String, spreadsheetId: String, needs: Map<String, Pair<Int, Int>>) {
+        try {
+            val sheets = GoogleApiClientProvider.sheetsApi.getSpreadsheet(authHeader, spreadsheetId).body()?.sheets.orEmpty()
+            val reqs = mutableListOf<SheetRequest>()
+            for (sh in sheets) {
+                val p = sh.properties
+                val id = p.sheetId ?: continue
+                val need = needs[p.title] ?: continue
+                val curRows = p.gridProperties?.rowCount ?: 0
+                val curCols = p.gridProperties?.columnCount ?: 0
+                if (curRows < need.first) reqs.add(SheetRequest(AppendDimensionRequest(id, "ROWS", need.first - curRows + 100)))
+                if (curCols < need.second) reqs.add(SheetRequest(AppendDimensionRequest(id, "COLUMNS", need.second - curCols + 5)))
+            }
+            if (reqs.isNotEmpty()) {
+                val r = GoogleApiClientProvider.sheetsApi.batchUpdateSpreadsheet(authHeader, spreadsheetId, BatchUpdateSpreadsheetRequest(reqs))
+                if (!r.isSuccessful) Log.w(TAG, "ensureGrid -> ${r.code()} ${r.errorBody()?.string()}")
+            }
+        } catch (e: Exception) { Log.w(TAG, "ensureGrid failed: ${e.message}") }
+    }
+
     /**
-     * Backs up the farm's spreadsheet (a Drive copy) then rewrites every tab to the CURRENT schema
-     * from the local Room data — so a sheet made by an older app version gains any new columns and
-     * is refilled correctly. Returns the backup file's name.
+     * Merges an older copy (backup) of a farm into the local cache of the live farm:
+     * day rows by last-write-wins (UpdatedAt), and flocks only if they are missing locally.
+     * Returns the number of day rows that were newer in the copy.
+     */
+    private suspend fun mergeFromCopy(authHeader: String, sourceId: String, targetId: String): Int {
+        val res = GoogleApiClientProvider.sheetsApi.batchGet(
+            authHeader, sourceId, listOf(appendRange("Flocks", "A1:N1000"), appendRange("DailyData", "A1:AX5000"))
+        )
+        val vr = res.body()?.valueRanges ?: return 0
+        val flockRows = vr.getOrNull(0)?.values.orEmpty()
+        for (i in 1 until flockRows.size) {
+            val f = rowToFlock(targetId, flockRows[i]) ?: continue
+            if (db.flockDao().getFlockById(targetId, f.flockId) == null) db.flockDao().insertFlock(f)
+        }
+        var newer = 0
+        val dayRows = vr.getOrNull(1)?.values.orEmpty()
+        for (i in 1 until dayRows.size) {
+            val pulled = rowToDay(targetId, dayRows[i]) ?: continue
+            val local = db.dailyDataDao().getDayEntry(targetId, pulled.flockId, pulled.dayNumber)
+            if (local == null || pulled.updatedAt > local.updatedAt) {
+                db.dailyDataDao().insertOrUpdateDay(pulled)
+                newer++
+            }
+        }
+        return newer
+    }
+
+    private suspend fun copyAsBackup(authHeader: String, spreadsheetId: String, name: String, kind: String): String? = try {
+        val r = GoogleApiClientProvider.driveApi.copyFile(
+            authHeader, spreadsheetId,
+            CopyFileRequest(name, mapOf(BACKUP_KEY to spreadsheetId, "flockitKind" to kind, "flockitSchema" to "3"))
+        )
+        val id = r.body()?.id
+        if (r.isSuccessful && id != null) {
+            // Mark inside the file too, so even a copy without Drive tags is recognisable.
+            putBlock(authHeader, id, "_Meta", listOf(listOf("Key", "Value"), listOf("app", "FlockIt"),
+                listOf("role", kind), listOf("backupOf", spreadsheetId), listOf("createdAt", System.currentTimeMillis().toString())))
+            id
+        } else {
+            Log.w(TAG, "copyAsBackup -> ${r.code()}")
+            null
+        }
+    } catch (e: Exception) { Log.w(TAG, "copyAsBackup failed: ${e.message}"); null }
+
+    private suspend fun trashFile(authHeader: String, fileId: String): Boolean = try {
+        GoogleApiClientProvider.driveApi.updateFile(authHeader, fileId, DriveFileUpdate(trashed = true)).isSuccessful
+    } catch (e: Exception) { false }
+
+    /**
+     * Back up & repair, keeping ONE current backup:
+     *  1. find this farm's existing backups and merge any newer day rows from them (plus the live
+     *     sheet itself) into the local cache — newest data wins, row by row;
+     *  2. take a safety snapshot of the live sheet;
+     *  3. rewrite every tab of the live sheet (same file, so sharing links keep working) to the
+     *     current schema, growing tabs first so nothing overflows;
+     *  4. read it back to verify, then make a fresh backup of the repaired sheet;
+     *  5. move the old backups and the snapshot to the Drive trash (recoverable for 30 days).
+     * If verification fails, nothing is trashed.
      */
     suspend fun backupAndRepairFarm(spreadsheetId: String): Result<String> = withContext(Dispatchers.IO) {
         val authHeader = authManager.getAuthHeader()
             ?: return@withContext Result.failure(Exception("Sign in with Google to repair the sheet."))
         try {
-            val farm = db.farmDao().getFarm(spreadsheetId) ?: FarmEntity(spreadsheetId = spreadsheetId)
             val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
-            val backupName = "FlockIt backup — ${farm.farmName} — $stamp"
+            var farm = db.farmDao().getFarm(spreadsheetId) ?: FarmEntity(spreadsheetId = spreadsheetId)
 
-            // 1) Backup (Drive copy). Don't abort the repair if the copy fails.
-            val backupOk = try {
-                GoogleApiClientProvider.driveApi.copyFile(authHeader, spreadsheetId, CopyFileRequest(backupName)).isSuccessful
-            } catch (e: Exception) { Log.w(TAG, "Backup copy failed: ${e.message}"); false }
+            // 1) Merge: old backups (oldest first), then the live sheet (wins ties on settings).
+            val backups = findBackupsOf(authHeader, spreadsheetId, farm).sortedBy { it.modifiedTime ?: "" }
+            var recovered = 0
+            for (b in backups) recovered += runCatching { mergeFromCopy(authHeader, b.id, spreadsheetId) }.getOrDefault(0)
+            pullFarmData(spreadsheetId)
+            farm = db.farmDao().getFarm(spreadsheetId) ?: farm
 
-            // 2) Repair: rewrite each tab from Room to the current schema.
-            putBlock(authHeader, spreadsheetId, "_Meta", listOf(
-                listOf("Key", "Value"), listOf("app", "FlockIt"), listOf("schemaVersion", "2"),
-                listOf("repairedAt", System.currentTimeMillis().toString()), listOf("farmId", farm.farmId)
-            ))
-            putBlock(authHeader, spreadsheetId, "_Farm", farmToKV(farm))
-            db.configDao().getConfig(spreadsheetId)?.let { putBlock(authHeader, spreadsheetId, "_Config", configToKV(it)) }
-            val feedBlock = mutableListOf<List<String>>(listOf("code", "name", "bagKg", "phase", "sortOrder"))
-            db.feedTypeDao().getFeedTypes(spreadsheetId).forEach { feedBlock.add(listOf(it.code, it.name, sv(it.bagKg), it.phase, sv(it.sortOrder))) }
-            putBlock(authHeader, spreadsheetId, "_FeedTypes", feedBlock)
+            // 2) Safety snapshot of the live sheet before touching it.
+            val snapshotId = copyAsBackup(authHeader, spreadsheetId, "$SNAPSHOT_PREFIX — ${farm.farmName} — $stamp", "snapshot")
 
+            // 3) Rewrite every tab to the current schema.
             val flocks = db.flockDao().getAllFlocksList(spreadsheetId)
-            val flockBlock = mutableListOf<List<String>>(FLOCK_HEADERS)
-            flocks.forEach { flockBlock.add(flockToRow(it)) }
-            putBlock(authHeader, spreadsheetId, "Flocks", flockBlock)
-
             val dayBlock = mutableListOf<List<String>>(DAILY_HEADERS)
             for (f in flocks) db.dailyDataDao().getDailyDataList(spreadsheetId, f.flockId).sortedBy { it.dayNumber }.forEach { dayBlock.add(dayToRow(it)) }
-            putBlock(authHeader, spreadsheetId, "DailyData", dayBlock)
-
             val taskBlock = mutableListOf<List<String>>(TASK_HEADERS)
             for (f in flocks) db.taskDao().getTasksList(spreadsheetId, f.flockId).forEach { taskBlock.add(taskToRow(it)) }
-            putBlock(authHeader, spreadsheetId, "Tasks", taskBlock)
+            val flockBlock = mutableListOf<List<String>>(FLOCK_HEADERS)
+            flocks.forEach { flockBlock.add(flockToRow(it)) }
+            val farmBlock = farmToKV(farm)
+            ensureGrid(authHeader, spreadsheetId, mapOf(
+                "_Meta" to (10 to 2), "_Farm" to (farmBlock.size + 5 to 2), "_Config" to (40 to 2),
+                "Flocks" to (flockBlock.size + 5 to FLOCK_HEADERS.size), "DailyData" to (dayBlock.size + 5 to DAILY_HEADERS.size),
+                "Tasks" to (taskBlock.size + 5 to TASK_HEADERS.size)
+            ))
+            val ok = mutableListOf<Boolean>()
+            ok += putBlock(authHeader, spreadsheetId, "_Meta", listOf(
+                listOf("Key", "Value"), listOf("app", "FlockIt"), listOf("schemaVersion", "3"), listOf("role", "primary"),
+                listOf("repairedAt", System.currentTimeMillis().toString()), listOf("farmId", farm.farmId)
+            ))
+            ok += putBlock(authHeader, spreadsheetId, "_Farm", farmBlock)
+            db.configDao().getConfig(spreadsheetId)?.let { ok += putBlock(authHeader, spreadsheetId, "_Config", configToKV(it)) }
+            val feedBlock = mutableListOf<List<String>>(listOf("code", "name", "bagKg", "phase", "sortOrder"))
+            db.feedTypeDao().getFeedTypes(spreadsheetId).forEach { feedBlock.add(listOf(it.code, it.name, sv(it.bagKg), it.phase, sv(it.sortOrder))) }
+            ok += putBlock(authHeader, spreadsheetId, "_FeedTypes", feedBlock)
+            ok += putBlock(authHeader, spreadsheetId, "Flocks", flockBlock)
+            ok += putBlock(authHeader, spreadsheetId, "DailyData", dayBlock)
+            ok += putBlock(authHeader, spreadsheetId, "Tasks", taskBlock)
 
-            logActivity(spreadsheetId, "REPAIR", "Rewrote sheet to current schema (backup: $backupName)")
-            Result.success(if (backupOk) backupName else "$backupName (backup copy failed — repair still applied)")
+            // 4) Verify by reading the day rows back.
+            val back = GoogleApiClientProvider.sheetsApi.batchGet(authHeader, spreadsheetId, listOf(appendRange("DailyData", "A2:B")))
+                .body()?.valueRanges?.getOrNull(0)?.values.orEmpty().count { it.s(0).isNotBlank() }
+            val verified = ok.all { it } && back >= dayBlock.size - 1
+            if (!verified) {
+                logActivity(spreadsheetId, "REPAIR_FAILED", "Rewrite not verified ($back of ${dayBlock.size - 1} day rows); backups kept")
+                return@withContext Result.failure(Exception(
+                    "The sheet could not be fully rewritten ($back of ${dayBlock.size - 1} day rows). " +
+                        "Nothing was deleted: the old backups and a fresh snapshot are still in your Drive."))
+            }
+
+            // 5) One fresh backup of the repaired sheet; trash the old ones and the snapshot.
+            val newBackup = copyAsBackup(authHeader, spreadsheetId, "$BACKUP_PREFIX — ${farm.farmName} — $stamp", "backup")
+            var trashed = 0
+            if (newBackup != null) {
+                for (b in backups) if (trashFile(authHeader, b.id)) trashed++
+                if (snapshotId != null && trashFile(authHeader, snapshotId)) trashed++
+            }
+            logActivity(spreadsheetId, "REPAIR",
+                "Rewrote to schema 3 · ${dayBlock.size - 1} day rows · $recovered newer rows recovered from ${backups.size} old backup(s) · $trashed file(s) moved to trash")
+            Result.success(buildString {
+                append("${dayBlock.size - 1} day rows written")
+                if (recovered > 0) append(", $recovered newer rows recovered from old backups")
+                append(if (newBackup != null) ", 1 fresh backup kept" else ", fresh backup failed (old backups kept)")
+                if (trashed > 0) append(", $trashed old file(s) moved to Drive trash")
+            })
         } catch (e: Exception) {
             Log.e(TAG, "Repair failed", e)
             Result.failure(e)
         }
+    }
+
+    /**
+     * Removes backup/snapshot spreadsheets that earlier builds imported as if they were farms
+     * (the "duplicate farm" bug): drops them from the local cache and from the farm index.
+     * Returns how many were removed.
+     */
+    suspend fun cleanupBackupFarms(): Int = withContext(Dispatchers.IO) {
+        val authHeader = authManager.getAuthHeader() ?: return@withContext 0
+        try {
+            val backupIds = listBackupFiles(authHeader).map { it.id }.toMutableSet()
+            // Also catch copies that lost their name/tag but say so in their _Meta.
+            for (reg in db.farmRegistryDao().getAllFarmsOnce()) {
+                if (reg.spreadsheetId in backupIds) continue
+                val role = readMeta(authHeader, reg.spreadsheetId)["role"]
+                if (role == "backup" || role == "snapshot") backupIds.add(reg.spreadsheetId)
+            }
+            var removed = 0
+            for (id in backupIds) {
+                if (db.farmRegistryDao().getFarm(id) != null) {
+                    purgeLocalFarm(id)
+                    removed++
+                }
+            }
+            val index = loadIndex()
+            if (index != null && index.farms.any { it.spreadsheetId in backupIds }) {
+                saveIndex(index.copy(farms = index.farms.filterNot { it.spreadsheetId in backupIds }))
+            }
+            removed
+        } catch (e: Exception) { Log.w(TAG, "cleanupBackupFarms failed: ${e.message}"); 0 }
+    }
+
+    private suspend fun purgeLocalFarm(spreadsheetId: String) {
+        db.taskDao().deleteAllTasks(spreadsheetId)
+        db.dailyDataDao().deleteAllDailyData(spreadsheetId)
+        db.flockDao().deleteAllFlocks(spreadsheetId)
+        db.feedTypeDao().deleteAllFeedTypes(spreadsheetId)
+        db.configDao().deleteConfig(spreadsheetId)
+        db.farmDao().deleteFarm(spreadsheetId)
+        db.farmRegistryDao().deleteFarm(spreadsheetId)
     }
 
     /**
@@ -894,7 +1082,7 @@ class SheetsSyncManager(
             val res = GoogleApiClientProvider.driveApi.listFiles(
                 authHeader = authHeader,
                 query = "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
-                fields = "files(id, name, mimeType, modifiedTime, owners)"
+                fields = "files(id, name, mimeType, modifiedTime, owners, appProperties)"
             )
             if (!res.isSuccessful || res.body()?.files == null) {
                 return@withContext Result.failure(Exception("Failed to query Drive: ${res.code()}"))
@@ -904,6 +1092,7 @@ class SheetsSyncManager(
             val userEmail = authManager.authState.value.email
 
             for (file in files) {
+                if (isBackupFile(file)) continue // backups are never farms
                 val valResult = validateCompatibility(file.id)
                 if (valResult.isSuccess && valResult.getOrNull() == true) {
                     val existing = db.farmRegistryDao().getFarm(file.id)
@@ -953,7 +1142,7 @@ class SheetsSyncManager(
             val ranges = listOf(
                 a1("_Farm", "A1:B80"),
                 appendRange("Flocks", "A1:N1000"),
-                appendRange("DailyData", "A1:AW5000"),
+                appendRange("DailyData", "A1:AX5000"),
                 appendRange("Tasks", "A1:O2000")
             )
             val res = GoogleApiClientProvider.sheetsApi.batchGet(authHeader, spreadsheetId, ranges)

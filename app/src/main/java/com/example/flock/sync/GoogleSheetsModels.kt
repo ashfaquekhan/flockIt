@@ -79,7 +79,8 @@ data class DriveFile(
     val name: String,
     val mimeType: String? = null,
     val modifiedTime: String? = null,
-    val owners: List<DriveUser>? = null
+    val owners: List<DriveUser>? = null,
+    val appProperties: Map<String, String>? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -127,7 +128,33 @@ data class CreateDriveFileRequest(
 
 @JsonClass(generateAdapter = true)
 data class CopyFileRequest(
-    val name: String
+    val name: String,
+    // Tags a copy as a FlockIt backup of a given farm so discovery never imports it as a farm.
+    val appProperties: Map<String, String>? = null
+)
+
+/** Drive metadata PATCH body (only non-null fields are sent). */
+@JsonClass(generateAdapter = true)
+data class DriveFileUpdate(
+    val trashed: Boolean? = null
+)
+
+/** spreadsheets.batchUpdate — structural requests (only grid growth is used). */
+@JsonClass(generateAdapter = true)
+data class BatchUpdateSpreadsheetRequest(
+    val requests: List<SheetRequest>
+)
+
+@JsonClass(generateAdapter = true)
+data class SheetRequest(
+    val appendDimension: AppendDimensionRequest? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class AppendDimensionRequest(
+    val sheetId: Int,
+    val dimension: String, // "ROWS" | "COLUMNS"
+    val length: Int
 )
 
 data class ActivityLogItem(

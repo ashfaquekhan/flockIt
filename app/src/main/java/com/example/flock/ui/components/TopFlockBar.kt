@@ -163,7 +163,8 @@ fun TopFlockBar(
                             tint = Color(0xFFE5A93C)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        val tempStr = weather?.let { String.format("%.1f°C", it.tempC) } ?: "28°C"
+                        // Outside temperature and humidity side by side (humidity changes how hot birds feel).
+                        val tempStr = weather?.let { String.format("%.1f°C · %.0f%%", it.tempC, it.rhPercent) } ?: "—"
                         Text(
                             text = tempStr,
                             style = MaterialTheme.typography.labelMedium.copy(

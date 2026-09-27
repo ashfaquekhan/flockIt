@@ -14,8 +14,21 @@ data class OpenMeteoResponse(
     @Json(name = "latitude") val latitude: Double? = null,
     @Json(name = "longitude") val longitude: Double? = null,
     @Json(name = "current") val current: CurrentWeather? = null,
-    @Json(name = "daily") val daily: DailyBlock? = null
+    @Json(name = "daily") val daily: DailyBlock? = null,
+    @Json(name = "hourly") val hourly: HourlyBlock? = null
 )
+
+data class HourlyBlock(
+    @Json(name = "time") val time: List<String>? = null,
+    @Json(name = "temperature_2m") val temp: List<Double?>? = null,
+    @Json(name = "relative_humidity_2m") val rh: List<Double?>? = null
+)
+
+/** One forecast hour at the farm: local time "yyyy-MM-ddTHH:mm", °C, %RH. */
+data class HourPoint(val time: String, val tempC: Double, val rhPct: Double) {
+    val hour: Int get() = time.substringAfter('T').take(2).toIntOrNull() ?: 0
+    val date: String get() = time.substringBefore('T')
+}
 
 data class DailyBlock(
     @Json(name = "time") val time: List<String>? = null,
@@ -74,6 +87,15 @@ interface OpenMeteoApi {
         @Query("longitude") longitude: Double,
         @Query("daily") daily: String = "temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,relative_humidity_2m_max",
         @Query("forecast_days") forecastDays: Int = 14,
+        @Query("timezone") timezone: String = "auto"
+    ): OpenMeteoResponse
+
+    @GET("v1/forecast")
+    suspend fun getHourly(
+        @Query("latitude") latitude: Double,
+        @Query("longitude") longitude: Double,
+        @Query("hourly") hourly: String = "temperature_2m,relative_humidity_2m",
+        @Query("forecast_days") forecastDays: Int = 2,
         @Query("timezone") timezone: String = "auto"
     ): OpenMeteoResponse
 }
@@ -150,6 +172,17 @@ object WeatherClient {
             ForecastResult(locationName, lat, lon, emptyList(), isLive = false)
         }
     }
+
+    /** Next ~48 hours, hourly, in the farm's local time. Empty when offline. */
+    suspend fun fetchHourly(lat: Double, lon: Double): List<HourPoint> = try {
+        val h = api.getHourly(latitude = lat, longitude = lon).hourly
+        val t = h?.time.orEmpty()
+        t.indices.mapNotNull { i ->
+            val tc = h?.temp?.getOrNull(i) ?: return@mapNotNull null
+            val rh = h.rh?.getOrNull(i) ?: return@mapNotNull null
+            HourPoint(t[i], tc, rh)
+        }
+    } catch (e: Exception) { emptyList() }
 
     fun defaultTempForSeason(season: String): Double = when (season.lowercase()) {
         "summer" -> 33.0

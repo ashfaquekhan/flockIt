@@ -14,6 +14,9 @@ import com.example.flock.data.FlockEntity
 import com.example.flock.data.FlockRepository
 import com.example.flock.data.TaskEntity
 import com.example.flock.network.ForecastResult
+import com.example.flock.data.savedGroups
+import com.example.flock.network.HourPoint
+import com.example.flock.network.WeatherClient
 import com.example.flock.network.WeatherResult
 import com.example.flock.notify.TaskNotify
 import com.example.flock.sync.AuthUserState
@@ -51,7 +54,7 @@ enum class AppScreen { FARMS, FLOCKS, DASHBOARD }
 data class DailyInputs(
     val w1: Double?, val n1: Int?, val w2: Double?, val n2: Int?, val w3: Double?, val n3: Int?,
     val w4: Double?, val n4: Int?, val w5: Double?, val n5: Int?,
-    val mortality: Int, val feedBagsUsed: Double, val feedUsedType: String,
+    val mortality: Int?, val feedBagsUsed: Double, val feedUsedType: String,
     val feedUsedBreakdown: String = "",
     val birdsLifted: Int, val weightLifted: Double, val lameSeparated: Int,
     val feedRecB1: Double, val feedTypeB1: String,
@@ -63,7 +66,9 @@ data class DailyInputs(
     val measuredCo2: Double? = null, val measuredNh3: Double? = null, val measuredO2: Double? = null,
     val measuredPressure: Double? = null, val measuredAirspeed: Double? = null,
     val padWetMin: Double? = null, val padDryMin: Double? = null, val luxPerFt2: Double? = null,
-    val dieselCansUsed: Double = 0.0
+    val dieselCansUsed: Double = 0.0,
+    // Important groups the user actually filled in this time: "W" weights, "M" mortality, "F" feed used.
+    val entered: Set<String> = emptySet()
 )
 
 class FlockViewModel(application: Application) : AndroidViewModel(application) {
@@ -112,6 +117,10 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         FeedStockSummary(0.0, 0.0, 0.0, emptyMap())
     )
     val feedStockSummary: StateFlow<FeedStockSummary> = _feedStockSummary.asStateFlow()
+
+    private val _hourly = MutableStateFlow<List<HourPoint>>(emptyList())
+    /** Hourly outside temperature/RH for the next ~48 h (drives the ventilation day plan). */
+    val hourly: StateFlow<List<HourPoint>> = _hourly.asStateFlow()
 
     private val _weather = MutableStateFlow<WeatherResult?>(null)
     val weather: StateFlow<WeatherResult?> = _weather.asStateFlow()
@@ -184,6 +193,9 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
      */
     private suspend fun runFullSync(): Int {
         var imported = 0
+        // Backup copies were once imported as farms (duplicates) — drop them before anything else.
+        val removed = syncManager.cleanupBackupFarms()
+        if (removed > 0) _userMessage.value = "Removed $removed duplicate farm(s) that were backup copies"
         val fromIndex = syncManager.syncFromIndex()
         if (fromIndex.isSuccess) imported += fromIndex.getOrNull() ?: 0
         val legacy = syncManager.syncUserFarmsFromDrive()
@@ -420,6 +432,9 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val w = repository.fetchWeather(farm)
             _weather.value = w
+            if (!(farm.weatherLat == 0.0 && farm.weatherLon == 0.0)) {
+                _hourly.value = WeatherClient.fetchHourly(farm.weatherLat, farm.weatherLon)
+            }
         }
     }
 
@@ -444,7 +459,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
             _userMessage.value = "Backing up & repairing the sheet…"
             val res = syncManager.backupAndRepairFarm(spreadsheetId)
             _syncStatus.value = if (res.isSuccess) "synced" else "offline"
-            _userMessage.value = if (res.isSuccess) "Sheet repaired ✓ (backup: ${res.getOrNull()})"
+            _userMessage.value = if (res.isSuccess) "Sheet repaired ✓ ${res.getOrNull()}"
                 else "Repair failed: ${res.exceptionOrNull()?.message ?: "unknown"}"
         }
     }
@@ -476,22 +491,28 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         val userEmail = authState.value.email
 
         viewModelScope.launch {
+            val sid = _selectedSpreadsheetId.value
             val result = repository.saveDayEntry(
-                spreadsheetId = _selectedSpreadsheetId.value,
+                spreadsheetId = sid,
                 flockId = flock.flockId,
                 dayNumber = day,
-                userEmail = userEmail
+                userEmail = userEmail,
+                entered = inputs.entered
             ) { existing ->
+                val locked = existing.savedGroups()
+                // Groups already saved keep their saved values; groups not entered keep what's there.
+                val keepW = "W" in locked
+                val keepF = "F" in locked || "F" !in inputs.entered
                 existing.copy(
-                    w1 = inputs.w1, n1 = inputs.n1,
-                    w2 = inputs.w2, n2 = inputs.n2,
-                    w3 = inputs.w3, n3 = inputs.n3,
-                    w4 = inputs.w4, n4 = inputs.n4,
-                    w5 = inputs.w5, n5 = inputs.n5,
-                    mortality = inputs.mortality,
-                    feedBagsUsed = if (day == 0) 0.0 else inputs.feedBagsUsed,
-                    feedUsedType = inputs.feedUsedType,
-                    feedUsedBreakdown = if (day == 0) "" else inputs.feedUsedBreakdown,
+                    w1 = if (keepW) existing.w1 else inputs.w1, n1 = if (keepW) existing.n1 else inputs.n1,
+                    w2 = if (keepW) existing.w2 else inputs.w2, n2 = if (keepW) existing.n2 else inputs.n2,
+                    w3 = if (keepW) existing.w3 else inputs.w3, n3 = if (keepW) existing.n3 else inputs.n3,
+                    w4 = if (keepW) existing.w4 else inputs.w4, n4 = if (keepW) existing.n4 else inputs.n4,
+                    w5 = if (keepW) existing.w5 else inputs.w5, n5 = if (keepW) existing.n5 else inputs.n5,
+                    mortality = if ("M" in locked) existing.mortality else (inputs.mortality ?: existing.mortality),
+                    feedBagsUsed = if (day == 0) 0.0 else if (keepF) existing.feedBagsUsed else inputs.feedBagsUsed,
+                    feedUsedType = if (keepF) existing.feedUsedType else inputs.feedUsedType,
+                    feedUsedBreakdown = if (day == 0) "" else if (keepF) existing.feedUsedBreakdown else inputs.feedUsedBreakdown,
                     birdsLifted = inputs.birdsLifted,
                     weightLifted = inputs.weightLifted,
                     lameSeparated = inputs.lameSeparated,
@@ -523,6 +544,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             result.onSuccess {
+                EntryDrafts.clear(getApplication(), EntryDrafts.key(sid, flock.flockId, day))
                 _userMessage.value = "Saved Day $day"
                 onSuccess()
             }.onFailure { err ->

@@ -39,15 +39,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.flock.data.DailyDataEntity
 import com.example.flock.data.FarmEntity
+import com.example.flock.engine.IbController
 import com.example.flock.engine.PhysiologicalEngine
+import com.example.flock.ui.Fmt
 import com.example.ui.theme.DomainVent
 import com.example.ui.theme.DomainVentWash
 import kotlin.math.min
 
 /**
- * Fan controller card: which fan does what, and the level table to enter on the controller.
- * Level 1 = min-vent timer fans; every level above adds one continuous fan, 0.3 °C warmer,
- * in the symmetric switch-on order (middle odd fan first).
+ * Controller ladder card: the fixed level table to enter once, with today's MIN (minimum
+ * ventilation) and MAX (age cap) marked, start temperatures for today's SET, and which level
+ * each physical fan first joins.
  */
 @Composable
 fun FanVisualizer(
@@ -57,24 +59,12 @@ fun FanVisualizer(
 ) {
     val totalFans = farm.fanCount
     val day = entry?.dayNumber ?: 0
-    val l1Fans = entry?.fansToRun ?: 1
-    val onSec = entry?.fanOnSec ?: 300
-    val offSec = entry?.fanOffSec ?: 0
-    val effFanCfm = farm.fanRatedCfm * (1.0 - farm.fanDerate)
-    val ladder = PhysiologicalEngine.controllerLadder(
-        day, entry?.setTemp ?: 20.0, l1Fans, onSec, offSec,
-        totalFans, effFanCfm, farm.usableWidthFt * farm.heightFt
-    )
-    val sequence = PhysiologicalEngine.fanSequence(totalFans)
-    // Level at which each physical fan first switches on (null = locked out at this age).
-    val joinLevel = HashMap<Int, Int?>()
-    sequence.forEachIndexed { i, fan ->
-        joinLevel[fan] = when {
-            i < ladder.levels.first().fans -> 1
-            i < ladder.maxFans -> i - ladder.levels.first().fans + 3
-            else -> null
-        }
-    }
+    val bw = entry?.avgWeight ?: PhysiologicalEngine.bwFromDay(entry?.weightAge ?: day.toDouble(), "Ross308")
+    val plan = IbController.dayPlan(day, bw, entry?.liveBirds ?: 0, farm)
+    val minLv = plan.minLv
+    // Level at which each physical fan first runs.
+    val joinLevel = HashMap<Int, Int>()
+    plan.levels.forEachIndexed { i, l -> (l.cont + l.cyc).forEach { f -> if (!joinLevel.containsKey(f)) joinLevel[f] = i + 1 } }
 
     val infiniteTransition = rememberInfiniteTransition(label = "fanSpin")
     val rotationAngle by infiniteTransition.animateFloat(
@@ -103,12 +93,12 @@ fun FanVisualizer(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Fan Controller Levels",
+                    text = "Level ladder (enter once)",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                 )
                 Surface(color = DomainVentWash, shape = RoundedCornerShape(8.dp)) {
                     Text(
-                        text = "Day $day",
+                        text = "Day $day · MIN L${plan.minLevel} · MAX L${plan.maxLevel}",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = DomainVent),
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                     )
@@ -117,23 +107,19 @@ fun FanVisualizer(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Physical fan bank; label under each fan = level it joins.
+            // Physical fan bank; label under each fan = level it first joins. Spinning = runs at MIN.
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (fanIdx in 1..totalFans) {
                     val lvl = joinLevel[fanIdx]
+                    val atMin = fanIdx in minLv.cont || fanIdx in minLv.cyc
+                    val allowed = lvl != null && lvl <= plan.maxLevel
                     Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        FanItem(
-                            fanNumber = fanIdx,
-                            isRunning = lvl == 1,
-                            locked = lvl == null,
-                            rotation = if (lvl == 1) rotationAngle else 0f
-                        )
+                        FanItem(fanNumber = fanIdx, isRunning = atMin, locked = !allowed, rotation = if (atMin) rotationAngle else 0f)
                         Text(
                             text = lvl?.let { "L$it" } ?: "—",
                             style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 9.sp,
-                                fontFamily = FontFamily.Monospace,
-                                color = if (lvl == 1) DomainVent else MaterialTheme.colorScheme.onSurfaceVariant
+                                fontSize = 9.sp, fontFamily = FontFamily.Monospace,
+                                color = if (atMin) DomainVent else MaterialTheme.colorScheme.onSurfaceVariant
                             ),
                             textAlign = TextAlign.Center
                         )
@@ -142,26 +128,26 @@ fun FanVisualizer(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            MetaRow(label = "Switch-on order", value = sequence.take(ladder.maxFans).joinToString("→"))
-            Spacer(modifier = Modifier.height(8.dp))
             Divider(color = MaterialTheme.colorScheme.outlineVariant)
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Level table — what to enter on the controller today.
             LevelRow("Lv", "Start °C", "Fans", "Run / Stop", header = true)
-            ladder.levels.forEach { lv ->
+            plan.levels.forEachIndexed { i, lv ->
+                val n = i + 1
+                val tag = when (n) { plan.minLevel -> " MIN"; plan.maxLevel -> " MAX"; else -> "" }
                 LevelRow(
-                    lv = "${lv.level}",
-                    start = String.format("%.1f", lv.startC),
-                    fans = "${lv.fans}",
-                    runStop = if (lv.offSec > 0) "${lv.onSec} / ${lv.offSec} s" else "continuous",
-                    highlight = lv.level == 1
+                    lv = "$n$tag",
+                    start = Fmt.n(plan.start(n), 1),
+                    fans = if (lv.cyc.isEmpty()) lv.cont.joinToString(",") else if (lv.cont.isEmpty()) lv.cyc.joinToString(",") + "⏱" else lv.cont.joinToString(",") + "+" + lv.cyc.joinToString(",") + "⏱",
+                    runStop = if (lv.isTimer) "${lv.on} / ${lv.off} s" else "120 / 0",
+                    highlight = n == plan.minLevel,
+                    dim = n < plan.minLevel || n > plan.maxLevel
                 )
             }
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                "Level 1 is the min-vent timer (air quality). Every level above adds one continuous fan to remove heat. " +
-                    "Fans marked — stay off at this age (max ${ladder.maxFans}, ≈${ladder.maxAirSpeedFpm.toInt()} ft/min).",
+                "Diffs: 0.1, then 0.2 per timer level, then 0.6 → 0.3 °C as fans are added (each gap = the chill of that fan). " +
+                    "Levels below MIN never run; levels above MAX stay off at this age. Fans marked — are above the cap.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -176,7 +162,8 @@ private fun LevelRow(
     fans: String,
     runStop: String,
     header: Boolean = false,
-    highlight: Boolean = false
+    highlight: Boolean = false,
+    dim: Boolean = false
 ) {
     val style = if (header) {
         MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -184,7 +171,7 @@ private fun LevelRow(
         MaterialTheme.typography.bodySmall.copy(
             fontFamily = FontFamily.Monospace,
             fontWeight = if (highlight) FontWeight.Bold else FontWeight.Normal,
-            color = if (highlight) DomainVent else MaterialTheme.colorScheme.onSurface
+            color = if (highlight) DomainVent else if (dim) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f) else MaterialTheme.colorScheme.onSurface
         )
     }
     Row(

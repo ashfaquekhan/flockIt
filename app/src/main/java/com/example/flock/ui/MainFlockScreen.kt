@@ -75,6 +75,14 @@ fun MainFlockScreen(
     val syncStatus by viewModel.syncStatus.collectAsState()
     val showForecast by viewModel.showForecast.collectAsState()
     val forecast by viewModel.forecast.collectAsState()
+    val hourly by viewModel.hourly.collectAsState()
+    val spreadsheetId by viewModel.selectedSpreadsheetId.collectAsState()
+    // Location bird counts from the most recent earlier weighing (carried forward as defaults).
+    val previousCounts = remember(dailyRows, selectedDay) {
+        dailyRows.filter { it.dayNumber < selectedDay && listOf(it.n1, it.n2, it.n3, it.n4, it.n5).any { n -> n != null } }
+            .maxByOrNull { it.dayNumber }
+            ?.let { listOf(it.n1, it.n2, it.n3, it.n4, it.n5) } ?: List(5) { null }
+    }
 
     val (dayDateStr, yesterdayDateStr) = remember(activeFlock, selectedDay, farm.timeZone) {
         try {
@@ -170,6 +178,8 @@ fun MainFlockScreen(
                     feedTypes = feedTypes,
                     lockStatus = lockStatus,
                     cutoffLockEnabled = cutoffLockEnabled,
+                    draftKey = EntryDrafts.key(spreadsheetId, activeFlock?.flockId ?: "", selectedDay),
+                    previousCounts = previousCounts,
                     onSave = { inputs -> viewModel.saveDayEntry(inputs) },
                     onToggleLockTimer = { viewModel.toggleCutoffLock() },
                     onRevertDay = { viewModel.revertDay() }
@@ -179,7 +189,11 @@ fun MainFlockScreen(
                     farm = farm,
                     entry = currentDayEntry,
                     dailyRows = dailyRows,
-                    feedStockSummary = feedStockSummary
+                    feedStockSummary = feedStockSummary,
+                    feedTypes = feedTypes,
+                    weather = weather,
+                    hourly = hourly,
+                    isToday = selectedDay == currentFlockDay
                 )
                 FlockNavTab.TASKS -> TasksScreen(
                     allTasks = tasks,

@@ -152,6 +152,9 @@ data class DailyDataEntity(
     // Set true once the day's important fields (samples, mortality, feed) are saved;
     // those fields then become read-only (display only).
     val committed: Boolean = false,
+    // Which important fields have been saved (and are therefore locked): "W" weights, "M" mortality,
+    // "F" feed used. Empty + committed=true means a legacy day where everything is locked.
+    val savedFields: String = "",
 
     // 5 location weight samples (total weight g + chicks counted)
     val w1: Double? = null,
@@ -311,3 +314,17 @@ data class TaskEntity(
         return copy(completedDays = set.sorted().joinToString(","))
     }
 }
+
+/**
+ * Saved (locked) important-field groups: "W" weights, "M" mortality, "F" feed used.
+ * Days saved by older versions have no record, so infer it from what they actually contain —
+ * an empty field stays open.
+ */
+fun DailyDataEntity.savedGroups(): Set<String> =
+    if (savedFields.isNotBlank()) savedFields.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+    else if (committed) buildSet {
+        if (sampleEntered) add("W")
+        if (mortality > 0) add("M")
+        if (feedBagsUsed > 0.0 || dayNumber == 0) add("F")
+    }
+    else emptySet()

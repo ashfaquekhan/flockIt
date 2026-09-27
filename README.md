@@ -289,32 +289,35 @@ Drive folder, with these tabs:
 | Controller ladder | `controllerLadder()` | heat-on, fans-start, one fan per +0.3 °C to the age cap, alarms |
 | Targets table | `buildTargetComparisons()` | assembles ideal-vs-ground rows per group with good/warn/crit status |
 
-### Ventilation — how the fan controller is modelled
+### Ventilation — level controller model (`engine/IbController.kt`)
 
-**Level 1 = minimum ventilation (timer).** Runs whenever the house is at or below set-point,
-every day, whatever the weather. Its job is air quality (moisture, CO₂, NH₃), not heat.
+The app models a level-based controller (levels with diff / run / stop and a fan grid, plus
+per-day SET, HEAT, MIN, MAX and SAFE), the kind used in tunnel sheds.
 
-- need (cfm) = live birds × Ross cfm/bird for the current body weight × 1.3 × `minVentFactor`
-- fans = 1 until one fan would run > 80 % of the cycle, then 2, …
-- ON = need ÷ (fans × effective cfm) × 300 s, never below **50 s** (shorter and the inlet jet
-  never reaches the ceiling apex, so cold air drops on the birds)
-- if ON would be < 50 s, ON stays 50 s and the OFF time is stretched — cycle capped at
-  600 s (days 0–3), 500 s (4–6), 450 s (7+)
+**One fixed, cumulative ladder** (10 fans → 19 levels; switch-on order 5,3,7,1,9,2,4,6,8,10):
 
-**Levels 2+ = temperature fans (continuous).** Added one at a time as the house warms:
+| Levels | What runs | Diff |
+|---|---|---|
+| 1–8 | first fan on a timer: 50/550, 50/400, 50/250, 75/225, 105/195, 140/160, 180/120, 230/70 s | 0.1, then 0.2 |
+| 9 | first fan non-stop | 0.2 |
+| 10 | first fan non-stop + second fan 90/210 s | 0.2 |
+| 11–19 | 2 … 10 fans non-stop, one added per level | 0.6, 0.6, 0.5, 0.4, 0.4, 0.3, 0.3, 0.3, 0.3 |
 
-| | Formula |
-|---|---|
-| Heat ON below | set-point − 0.5 / 0.8 / 1.0 / 1.5 / 2.0 °C (d0–7 / 8–14 / 15–21 / 22–28 / 29+) |
-| Fans start (Level 2) | set-point + 1.5 / 1.2 / 0.9 / 0.6 / 0.3 °C (same age bands) |
-| Each further fan | +0.3 °C, until the age cap |
-| Max fans by age | round(max air speed × cross-section ÷ effective cfm); max speed 133 → 667 ft/min from d0–7 to d35+ |
-| Alarms | high = set-point + 3.5 °C, low = set-point − 2.0 °C |
-| Static pressure | 20–25 Pa min/transitional, 30–37 Pa tunnel; alarm < 15 or > 45 Pa |
-| Switch-on order | middle odd fan first, odd fans outward, then evens (10 fans → 5,3,7,1,9,2,4,6,8,10) |
+Each diff ≈ the extra wind-chill birds feel when that fan starts, so a step never overshoots.
+Level start = SET + accumulated diff.
 
-"Expected today" (min-vent / transitional / tunnel) compares the outside temperature with the
-set-point (`trigger` 3.0 °C for birds ≥ 1.5 kg, else 4.5 °C). It never replaces the Level-1 timer.
+**Per day** (`dayPlan`): MIN = first level whose average airflow ≥ need (Ross cfm/bird by weight ×
+1.3 × `minVentFactor` × live birds). MAX = age cap (max air speed × cross-section ÷ fan cfm).
+target = comfort (still air, 65 % RH) + chill at MIN; SET = target − accu(MIN);
+HEAT = min(target − heat offset, SET − 0.2); HIGH = max(target + 4, 33); LOW = HEAT − 2.
+
+**Felt temperature** = house °C + RH offset (+0.14 °C per % above 65, 0.20 °C per % below; from the
+Aviagen temperature-by-RH table) − wind-chill (k(age) × √(ft/min ÷ 100), fading as air nears 41 °C).
+
+**House balance** (`simulate`): bird heat 10.62 × kg^0.75 W (CIGR, sensible share falling with
+temperature), roof sun, wall/roof loss ≈ 0.176 W/K per ft², heaters capped at the farm's kW, pads
+only at MAX and off above 80 % RH, optional humidity compensation of SET. Used for "Ventilation now"
+(live weather) and the next-24 h table (Open-Meteo hourly forecast).
 
 ---
 
@@ -331,6 +334,18 @@ lat/lon/name & season; density cap; daily cut-off time.
 `tempBand` ±1.5 °C · RH 50–70% · NH₃ warn/crit 10/20 ppm · CO₂ warn/crit 3000/3500 ·
 CV warn/crit 10/12% · `wfRatio` 1.8 · `feedHeatK` 0.012 · `waterHeatK` 0.06 ·
 `cFcrDivisor` 0.25 · vent cycle 300 s / min-on 50 s (floor) · tunnel triggers 4.5 (young)/3.0 (big).
+
+### Day entry rules
+- Weights, mortality and feed used lock **one by one**, only once each is entered and saved
+  (`savedFields` = "W,M,F"). Anything not yet entered stays open, even after the cut-off.
+- Unsaved figures are kept on the phone (`EntryDrafts`) until the day is saved.
+- Location bird counts carry forward from the last weighing.
+
+### Backups
+Backups are Drive copies tagged `appProperties.flockitBackupOf` and named "FlockIt backup — …";
+discovery never imports them as farms. *Back up & repair* merges newer day rows from old backups,
+snapshots, rewrites the live sheet (grid grown first), verifies, keeps one fresh backup and moves
+the old ones to the Drive trash.
 
 ### Daily inputs (`DailyDataEntity`, entered by the farmer)
 5-point weight samples (weight g + count each), mortality, feed bags used + type, birds

@@ -55,6 +55,14 @@ interface GoogleDriveApi {
         @Body request: CopyFileRequest
     ): Response<DriveFile>
 
+    /** Metadata update — used to move old backups to the Drive trash (recoverable for 30 days). */
+    @PATCH("drive/v3/files/{fileId}")
+    suspend fun updateFile(
+        @Header("Authorization") authHeader: String,
+        @Path("fileId") fileId: String,
+        @Body request: DriveFileUpdate
+    ): Response<ResponseBody>
+
     @PATCH("drive/v3/files/{fileId}")
     suspend fun moveFileToFolder(
         @Header("Authorization") authHeader: String,
@@ -84,6 +92,14 @@ interface GoogleSheetsApi {
         @Header("Authorization") authHeader: String,
         @Path("spreadsheetId") spreadsheetId: String
     ): Response<SpreadsheetResponse>
+
+    /** Structural update (grow a tab's grid so big rewrites never hit "exceeds grid limits"). */
+    @POST("v4/spreadsheets/{spreadsheetId}:batchUpdate")
+    suspend fun batchUpdateSpreadsheet(
+        @Header("Authorization") authHeader: String,
+        @Path("spreadsheetId") spreadsheetId: String,
+        @Body request: BatchUpdateSpreadsheetRequest
+    ): Response<ResponseBody>
 
     @GET("v4/spreadsheets/{spreadsheetId}/values:batchGet")
     suspend fun batchGet(
