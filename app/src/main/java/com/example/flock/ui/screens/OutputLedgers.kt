@@ -32,6 +32,7 @@ import com.example.flock.data.FarmEntity
 import com.example.flock.data.FeedTypeEntity
 import com.example.flock.data.FlockEntity
 import com.example.flock.data.parseFeedBreakdown
+import com.example.flock.engine.CompanyStandard
 import com.example.flock.engine.IbController
 import com.example.flock.engine.PhysiologicalEngine
 import com.example.flock.network.HourPoint
@@ -103,8 +104,8 @@ private fun Note(text: String) {
 // ------------------------------- shared day maths -------------------------------
 
 /** Integrator's daily mortality standard (% of live birds per day). */
-fun stdDailyMortPct(day: Int): Double = if (day <= 12) 0.15 else if (day <= 28) 0.10 else 0.15
-fun stdCumMortPct(day: Int): Double = (1..day).sumOf { stdDailyMortPct(it) }
+fun stdDailyMortPct(day: Int): Double = CompanyStandard.dailyMortPct(day)
+fun stdCumMortPct(day: Int): Double = CompanyStandard.cumMortPct(day)
 
 private fun bagKgOf(code: String, feedTypes: List<FeedTypeEntity>, farm: FarmEntity) =
     feedTypes.firstOrNull { it.code == code }?.bagKg ?: farm.feedBagKg
@@ -163,40 +164,40 @@ fun BirdsLedgerCard(entry: DailyDataEntity, flock: FlockEntity?, dailyRows: List
 @Composable
 fun WeightLedgerCard(entry: DailyDataEntity, dailyRows: List<DailyDataEntity>, breed: String, vk: ValueKind) {
     val day = entry.dayNumber
-    val weightAge = entry.weightAge
-    val now = entry.avgWeight ?: PhysiologicalEngine.bwFromDay(weightAge, breed)
-    val ideal = PhysiologicalEngine.bwFromDay(day.toDouble(), breed)
-    val idealGain = ideal - PhysiologicalEngine.bwFromDay(max(0, day - 1).toDouble(), breed)
+    val now = entry.avgWeight ?: PhysiologicalEngine.bwFromDay(entry.weightAge, breed)
+    val ross = PhysiologicalEngine.bwFromDay(day.toDouble(), breed)
+    val rossGain = ross - PhysiologicalEngine.bwFromDay(max(0, day - 1).toDouble(), breed)
     val prev = dailyRows.filter { it.dayNumber < day && it.avgWeight != null }.maxByOrNull { it.dayNumber }
     val actualGain = if (entry.avgWeight != null && prev?.avgWeight != null)
         (entry.avgWeight - prev.avgWeight) / (day - prev.dayNumber) else null
     val live = entry.liveBirds
-    val stdFcr = PhysiologicalEngine.stdFcrFromDay(day.toDouble(), breed)
-    val stdCfcr = PhysiologicalEngine.computeCorrectedFcr(ideal / 1000.0, stdFcr)
+    val rossFcr = PhysiologicalEngine.stdFcrFromDay(day.toDouble(), breed)
+    val rossCfcr = PhysiologicalEngine.computeCorrectedFcr(ross / 1000.0, rossFcr)
     val w7 = dailyRows.firstOrNull { it.dayNumber == 7 }?.avgWeight
     val w0 = dailyRows.firstOrNull { it.dayNumber == 0 }?.avgWeight ?: PhysiologicalEngine.bwFromDay(0.0, breed)
     val epef = if (day >= 7 && entry.fcr != null && entry.fcr > 0 && entry.livability != null)
         entry.livability * (now / 1000.0) * 100.0 / (day * entry.fcr) else null
-    val I = ValueKind.IDEAL
+    val coBw = CompanyStandard.bw(day)
+    val I = ValueKind.IDEAL; val P = ValueKind.PRESENT
+    fun co(v: Double?, dec: Int) = LCell(Fmt.n(v, dec), ValueKind.NEUTRAL)
     OutputCard(title = "Weight & conversion") {
         LedgerTable(
-            headers = listOf("Now", "Ideal", "Diff"),
+            headers = listOf("Now", "Company", "Ross"),
             rows = listOfNotNull(
                 LRow("Average weight", if (entry.avgWeight != null) "g · sampled" else "g · projected",
-                    listOf(c(Fmt.n(now, 1), vk), c(Fmt.n(ideal, 1), I), c(Fmt.signed(now - ideal, 1) + " (" + Fmt.signed((now - ideal) / ideal * 100, 1) + "%)", vk)), strong = true),
-                LRow("Weight-age", "days", listOf(c(Fmt.n(weightAge, 2), vk), c(Fmt.i(day), I), c(Fmt.signed(weightAge - day, 2), vk))),
+                    listOf(c(Fmt.n(now, 1), vk), co(coBw, 0), c(Fmt.n(ross, 1), I)), strong = true),
+                LRow("vs Company", "difference", listOf(c(coBw?.let { Fmt.signed((now - it) / it * 100, 1) + "%" } ?: "—", vk), DASH, DASH)),
+                LRow("Weight-age", "days", listOf(c(Fmt.n(entry.weightAge, 2), vk), DASH, c(Fmt.i(day), I))),
                 LRow("Daily gain", if (actualGain != null) "g/day · between samples" else "g/day · curve",
-                    listOf(c(Fmt.n(actualGain ?: entry.gainPerBird, 1), if (actualGain != null) ValueKind.PRESENT else ValueKind.PREDICTED), c(Fmt.n(idealGain, 1), I),
-                        c(Fmt.signed((actualGain ?: entry.gainPerBird) - idealGain, 1), vk))),
-                LRow("Uniformity CV", "%", listOf(c(Fmt.n(entry.cv, 2), ValueKind.PRESENT), c("< 10", I), DASH)),
-                LRow("Total live weight", "kg in shed", listOf(c(Fmt.n(live * now / 1000.0, 1), vk), c(Fmt.n(live * ideal / 1000.0, 1), I), c(Fmt.signed(live * (now - ideal) / 1000.0, 1), vk))),
-                LRow("FCR", "kg feed / kg bird", listOf(c(Fmt.n(entry.fcr, 3), ValueKind.PRESENT), c(Fmt.n(stdFcr, 3), I), c(entry.fcr?.let { Fmt.signed(it - stdFcr, 3) } ?: "—", ValueKind.PRESENT))),
-                LRow("cFCR → 2 kg", "(2 − kg) × 0.25 + FCR", listOf(c(Fmt.n(entry.cFcr, 3), ValueKind.PRESENT), c(Fmt.n(stdCfcr, 3), I), c(entry.cFcr?.let { Fmt.signed(it - stdCfcr, 3) } ?: "—", ValueKind.PRESENT))),
-                LRow("EPEF", "efficiency factor", listOf(c(Fmt.n(epef, 1), ValueKind.PRESENT), c("≥ 350", I), DASH)),
-                if (day >= 7 && w7 != null) LRow("7-day weight ×", "day-7 ÷ chick", listOf(c(Fmt.n(w7 / w0, 2) + "×", ValueKind.PRESENT), c("≥ 4.5×", I), c(Fmt.signed(w7 / w0 - 4.5, 2), ValueKind.PRESENT))) else null
+                    listOf(c(Fmt.n(actualGain ?: entry.gainPerBird, 1), if (actualGain != null) P else ValueKind.PREDICTED), co(CompanyStandard.gain(day), 0), c(Fmt.n(rossGain, 1), I))),
+                LRow("Uniformity CV", "%", listOf(c(Fmt.n(entry.cv, 2), P), DASH, c("< 10", I))),
+                LRow("Total live weight", "kg in shed", listOf(c(Fmt.n(live * now / 1000.0, 1), vk), co(coBw?.let { live * it / 1000.0 }, 1), c(Fmt.n(live * ross / 1000.0, 1), I))),
+                LRow("FCR", "kg feed / kg bird", listOf(c(Fmt.n(entry.fcr, 3), P), co(CompanyStandard.fcr(day), 2), c(Fmt.n(rossFcr, 3), I))),
+                LRow("cFCR → 2 kg", "(2 − kg) × 0.25 + FCR", listOf(c(Fmt.n(entry.cFcr, 3), P), co(CompanyStandard.cfcr(day), 2), c(Fmt.n(rossCfcr, 3), I))),
+                LRow("EPEF", "efficiency factor", listOf(c(Fmt.n(epef, 1), P), DASH, c("≥ 350", I))),
+                if (day >= 7 && w7 != null) LRow("7-day weight ×", "day-7 ÷ chick", listOf(c(Fmt.n(w7 / w0, 2) + "×", P), DASH, c("≥ 4.5×", I))) else null
             )
         )
-        if (day < 7) Note("FCR, cFCR and EPEF settle after the first week.")
     }
 }
 
@@ -385,116 +386,3 @@ private fun levelMeaning(l: IbController.Level): String = when {
 }
 
 fun currentHour(farm: FarmEntity): Int = try { LocalTime.now(ZoneId.of(farm.timeZone)).hour } catch (e: Exception) { 12 }
-
-@Composable
-fun ControllerSettingsCard(entry: DailyDataEntity, farm: FarmEntity, weather: WeatherResult?, isToday: Boolean) {
-    val bw = entry.avgWeight ?: PhysiologicalEngine.bwFromDay(entry.weightAge, "Ross308")
-    val plan = IbController.dayPlan(entry.dayNumber, bw, entry.liveBirds, farm)
-    val I = ValueKind.IDEAL
-    val now = if (isToday && weather != null)
-        IbController.simulate(plan, weather.tempC, weather.rhPercent, currentHour(farm), entry.liveBirds, bw, farm, rhCompensation = false) else null
-    val rhShift = now?.let { (-IbController.rhOffsetC(it.houseRh)).coerceIn(if (entry.dayNumber <= 10) -2.0 else -3.5, 4.0) }
-    OutputCard(title = "Controller settings · Day ${entry.dayNumber}") {
-        LedgerTable(
-            headers = listOf("Enter", "Means"),
-            rows = listOf(
-                LRow("SET", "°C · Temp. Regulation", listOf(c(Fmt.n(plan.set, 1), I), c("L1 at ${Fmt.n(plan.vent, 1)}", I)), strong = true),
-                LRow("HEAT", "°C · heaters on below", listOf(c(Fmt.n(plan.heat, 1), I), c("house ${Fmt.n(plan.target, 1)}", I))),
-                LRow("HIGH / LOW alarm", "°C", listOf(c("${Fmt.n(plan.high, 1)} / ${Fmt.n(plan.low, 1)}", I), DASH)),
-                LRow("MIN level", "minimum ventilation", listOf(c("L${plan.minLevel}", I), c(levelMeaning(plan.minLv), I)), strong = true),
-                LRow("MAX level", "age cap", listOf(c("L${plan.maxLevel}", I), c("${plan.maxFans} fans · ${Fmt.n(PhysiologicalEngine.maxAirSpeedFpm(entry.dayNumber), 0)} ft/min", I))),
-                LRow("SAFE level", "if a sensor fails", listOf(c("L${plan.safeLevel}", I), c(levelMeaning(plan.levels[plan.safeLevel - 1]), I))),
-                LRow(if (plan.minLevel < 9) "1st fan non-stop" else "Next fan starts", "°C", listOf(c(Fmt.n(plan.start(minOf(plan.levels.size, max(plan.minLevel + 1, 9))), 1), I), DASH)),
-                LRow("All ${plan.maxFans} fans by", "°C", listOf(c(Fmt.n(plan.start(plan.maxLevel), 1), I), DASH))
-            )
-        )
-        if (rhShift != null && now != null) {
-            Note("Humidity: house ≈ ${Fmt.n(now.houseRh, 0)} % RH now. If your controller has RH compensation, it should shift SET by ${Fmt.signed(rhShift, 1)} °C (1.4 °C per 10 % above 65 %, 2 °C per 10 % below). If not, apply that shift by hand when it lasts all day.")
-        } else {
-            Note("SET and HEAT assume about 65 % RH. In humid weather lower them (1.4 °C per 10 % RH above 65 %); in dry weather raise them (2 °C per 10 % below).")
-        }
-    }
-}
-
-@Composable
-fun MinVentCard(entry: DailyDataEntity, farm: FarmEntity) {
-    val day = entry.dayNumber
-    val bw = entry.avgWeight ?: PhysiologicalEngine.bwFromDay(entry.weightAge, "Ross308")
-    val plan = IbController.dayPlan(day, bw, entry.liveBirds, farm)
-    val lv = plan.minLv
-    val eff = plan.fanCfm
-    val delivered = lv.avgCfm(eff)
-    val ross = PhysiologicalEngine.rossMinVentCfmPerBird(bw / 1000.0)
-    val live = entry.liveBirds.coerceAtLeast(1)
-    val vol = max(1.0, farm.usableLengthFt * farm.usableWidthFt * farm.heightFt)
-    val burst = IbController.chillC(lv.fansOn * eff / plan.crossFt2, day, plan.comfort)
-    val vk = if (entry.projected) ValueKind.PREDICTED else ValueKind.PRESENT
-    val I = ValueKind.IDEAL
-    OutputCard(title = "Minimum ventilation · Day $day") {
-        LedgerTable(
-            headers = listOf("Per bird", "House"),
-            rows = listOf(
-                LRow("Ross minimum", "cfm", listOf(c(Fmt.n(ross, 3), I), c(Fmt.n(ross * live, 0), I))),
-                LRow("Need (+30 % × ${Fmt.n(farm.minVentFactor, 2)})", "cfm · air quality", listOf(c(Fmt.n(plan.needCfm / live, 3), vk), c(Fmt.n(plan.needCfm, 0), vk)), strong = true),
-                LRow("MIN level L${plan.minLevel}", levelMeaning(lv), listOf(c(Fmt.n(delivered / live, 3), I), c(Fmt.n(delivered, 0), I)), strong = true),
-                LRow("Delivered ÷ need", "×", listOf(DASH, c(Fmt.n(delivered / max(1.0, plan.needCfm), 2) + "×", vk))),
-                LRow("Air changes", "per hour at MIN", listOf(DASH, c(Fmt.n(delivered * 60 / vol, 2), vk))),
-                LRow("Timer burst chill", "birds feel cooler during ON", listOf(DASH, c(if (lv.isTimer) "−" + Fmt.n(burst, 1) + " °C" else "—", vk)))
-            )
-        )
-        Note("Fan cfm used: ${Fmt.n(eff, 0)} (rated × (1 − derate)). The MIN level runs whatever the temperature; higher levels start from temperature.")
-    }
-}
-
-@Composable
-fun VentNowCard(entry: DailyDataEntity, farm: FarmEntity, weather: WeatherResult?, hourly: List<HourPoint>, isToday: Boolean) {
-    if (!isToday || weather == null) return
-    val day = entry.dayNumber
-    val bw = entry.avgWeight ?: PhysiologicalEngine.bwFromDay(entry.weightAge, "Ross308")
-    val plan = IbController.dayPlan(day, bw, entry.liveBirds, farm)
-    val hour = currentHour(farm)
-    val s = IbController.simulate(plan, weather.tempC, weather.rhPercent, hour, entry.liveBirds, bw, farm)
-    val P = ValueKind.PREDICTED; val I = ValueKind.IDEAL
-    val nextLv = plan.levels.getOrNull(s.level)
-    val nextChill = if (nextLv != null && s.level < plan.maxLevel)
-        IbController.levelChill(nextLv, day, s.houseC, plan.fanCfm, plan.crossFt2) - IbController.levelChill(plan.levels[s.level - 1], day, s.houseC, plan.fanCfm, plan.crossFt2)
-    else null
-    OutputCard(title = "Ventilation now · ${String.format("%02d:00", hour)}") {
-        LedgerTable(
-            headers = listOf("Estimate", "Target"),
-            rows = listOfNotNull(
-                LRow("Outside", "°C · RH", listOf(c("${Fmt.n(weather.tempC, 1)} · ${Fmt.n(weather.rhPercent, 0)}%", ValueKind.PRESENT), DASH)),
-                LRow("Controller level", "fans running", listOf(c("L${s.level}" + (if (s.frac > 0.02) "–${s.level + 1}" else "") + " · " + Fmt.n(s.fans, 1), P), c("L${plan.minLevel}–L${plan.maxLevel}", I))),
-                LRow("House air", "°C", listOf(c(Fmt.n(s.houseC, 1), P), c(Fmt.n(plan.target, 1), I)), strong = true),
-                LRow("House humidity", "% RH", listOf(c(Fmt.n(s.houseRh, 0), P), c(if (day <= 10) "60–70" else "50–60", I))),
-                LRow("Wind-chill from fans", "°C birds feel cooler", listOf(c("−" + Fmt.n(s.chillC, 1), P), DASH)),
-                LRow("Felt by birds", "°C after humidity & chill", listOf(c(Fmt.n(s.feltC, 1), P), c(Fmt.n(plan.comfort, 1) + " ±2", I)), strong = true),
-                if (nextChill != null) LRow("Next fan adds", "°C of chill", listOf(c("−" + Fmt.n(nextChill, 2), P), DASH)) else null,
-                if (s.heaterKw > 0.5) LRow("Heaters", "kW", listOf(c(Fmt.n(s.heaterKw, 1), P), DASH)) else null,
-                if (s.padEff > 0) LRow("Pads", "cooling share", listOf(c(Fmt.n(s.padEff * 100, 0) + "%", P), DASH)) else null
-            )
-        )
-        val felt = s.feltC - plan.comfort
-        Note(when {
-            felt > 2 -> "Birds feel ${Fmt.n(felt, 1)} °C warmer than comfortable. If fans are below the cap, the settings are holding them back; if all allowed fans run, it's the weather — keep air speed up, cool water, no handling."
-            felt < -2 -> "Birds feel ${Fmt.n(-felt, 1)} °C colder than comfortable — likely over-ventilated for this humidity. Raise SET a little and watch for huddling."
-            else -> "Within ±2 °C of comfortable."
-        })
-        // Next 24 hours from the forecast, every 3 h.
-        val today = hourly.filter { it.hour % 3 == 0 }.let { pts ->
-            val idx = pts.indexOfFirst { it.hour >= hour - (hour % 3) }
-            if (idx < 0) emptyList() else pts.drop(idx).take(8)
-        }
-        if (today.isNotEmpty()) {
-            Text("Next 24 hours", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-            val rows = today.map { h ->
-                val st = IbController.simulate(plan, h.tempC, h.rhPct, h.hour, entry.liveBirds, bw, farm)
-                LRow(String.format("%02d:00", h.hour), "${Fmt.n(h.tempC, 1)}° · ${Fmt.n(h.rhPct, 0)}%",
-                    listOf(c("L${st.level} · ${Fmt.n(st.fans, 1)}", P), c(Fmt.n(st.houseC, 1), P), c(Fmt.n(st.feltC, 1),
-                        if (st.feltC - plan.comfort > 2 || st.feltC - plan.comfort < -2) ValueKind.PREDICTED else ValueKind.PRESENT)))
-            }
-            LedgerTable(headers = listOf("Level · fans", "House °C", "Felt °C"), rows = rows)
-            Note("Estimates from the forecast with humidity compensation on. Comfort: ${Fmt.n(plan.comfort, 1)} °C.")
-        }
-    }
-}

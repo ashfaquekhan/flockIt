@@ -85,10 +85,14 @@ object PhysiologicalEngine {
     )
 
     // Standard curves
+    // Air temperature target by body weight (g → °C). Brooding is anchored to Aviagen's table at
+    // the dry (~50 % RH) air a heated house actually has: ~33 °C for a 42 g chick, easing to 20 °C at
+    // market weight. Lighter chicks sit higher on the curve, so a small delivery (weighed on day 0)
+    // is automatically brooded warmer. Humidity compensation lowers it when the air is humid.
     val CURVE_TEMP_BY_BW = listOf(
-        44.0 to 30.0, 100.0 to 28.0, 180.0 to 27.0, 290.0 to 26.0, 425.0 to 25.0,
-        590.0 to 24.0, 790.0 to 23.0, 1015.0 to 22.0, 1260.0 to 21.0, 1530.0 to 20.0,
-        9999.0 to 20.0
+        34.0 to 34.6, 42.0 to 33.0, 100.0 to 31.0, 180.0 to 30.0, 290.0 to 29.0, 425.0 to 27.5,
+        590.0 to 26.0, 790.0 to 25.0, 1015.0 to 24.0, 1260.0 to 23.0, 1530.0 to 22.0, 1900.0 to 21.0,
+        2400.0 to 20.0, 9999.0 to 20.0
     )
 
     // Ross minimum-ventilation rate by BODY WEIGHT (kg → cfm/bird). This is the theoretical

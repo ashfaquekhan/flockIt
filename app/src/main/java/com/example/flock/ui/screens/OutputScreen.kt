@@ -150,142 +150,66 @@ fun OutputScreen(
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Colour/position legend so the three kinds of numbers are never confused.
-        ValueLegend(isProjected = isProjected)
-
-        // 0. GIST — quick glance summary, then detailed topic cards below
-        OutputCard(title = "Today at a glance · Day $day") {
-            val gAvg = entry.avgWeight ?: PhysiologicalEngine.bwFromDay(weightAge, breed)
-            val gIdeal = PhysiologicalEngine.bwFromDay(day.toDouble(), breed)
-            val gStdFcr = PhysiologicalEngine.stdFcrFromDay(day.toDouble(), breed)
-            GistRow(
-                GistItem("Avg wt", "${Fmt.n(gAvg, 1)}g", "ideal ${Fmt.n(gIdeal, 1)}", vk),
-                GistItem("Wt-age", "${Fmt.n(weightAge, 2)}d", "cal. day $day", vk),
-                GistItem("CV%", Fmt.n(entry.cv, 2), "<10 ideal", if (entry.cv != null) ValueKind.PRESENT else ValueKind.NEUTRAL)
-            )
-            GistRow(
-                GistItem("FCR", Fmt.n(entry.fcr, 3), "std ${Fmt.n(gStdFcr, 3)}", if (entry.fcr != null) ValueKind.PRESENT else ValueKind.NEUTRAL),
-                GistItem("cFCR", Fmt.n(entry.cFcr, 3), "→ 2kg", if (entry.cFcr != null) ValueKind.PRESENT else ValueKind.NEUTRAL),
-                GistItem("Cum mort", Fmt.pct(entry.cumMortPct, 2), "std ${Fmt.pct(stdCumMortPct(day), 2)}", ValueKind.PRESENT)
-            )
-            GistRow(
-                GistItem("Feed", Fmt.n(entry.totalFeedKg / (if (farm.feedBagKg > 0) farm.feedBagKg else 50.0), 2), "bags · ${Fmt.n(entry.totalFeedKg, 1)} kg", vk),
-                GistItem("Water", "${Fmt.n(entry.totalWaterL, 1)}L", "${Fmt.n(entry.totalWaterL / (if (farm.drinkTankL > 0) farm.drinkTankL else 2000.0) * farm.waterRefillFactor, 2)} fills", vk),
-                GistItem("Stock", Fmt.n(feedStockSummary.totalOnHandBags, 2), "bags left", ValueKind.PRESENT)
-            )
-            GistRow(
-                GistItem("Min-vent", "${entry.fansToRun} fan", entry.cycleText, vk),
-                GistItem("Density", entry.densityKgM2?.let { Fmt.n(kgPerFt2(it), 3) } ?: "—", "≤ ${Fmt.n(kgPerFt2(farm.densityCapDefault), 3)} kg/ft²", vk),
-                GistItem("Comfort °C", Fmt.n(entry.tempIdeal, 1), "still air, 65% RH", ValueKind.IDEAL)
-            )
-            GistRow(
-                GistItem("Live birds", "${entry.liveBirds}", "of ${flock?.birdsPlaced ?: 0}", ValueKind.PRESENT),
-                GistItem("Feed/bird", "${Fmt.n(entry.feedPerBird, 1)}g", "per day", vk),
-                GistItem("Livability", Fmt.pct(entry.livability, 2), "alive", if (entry.livability != null) ValueKind.PRESENT else ValueKind.NEUTRAL)
-            )
-            Text(
-                "Detailed, topic-wise breakdown below ↓",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
-        // ============================ VENTILATION ============================
-        ControllerSettingsCard(entry, farm, weather, isToday)
-        VentNowCard(entry, farm, weather, hourly, isToday)
-        MinVentCard(entry, farm)
-        FanVisualizer(entry = entry, farm = farm)
-        VentThermoCard(entry = entry, farm = farm, vk = vk)
-
-        // ================================= BIRDS =================================
-        BirdsLedgerCard(entry, flock, dailyRows)
-        WeightLedgerCard(entry, dailyRows, breed, vk)
+        // Visual first: today's jobs, how the flock compares (Actual · Ross · Company), charts,
+        // then the pictures (ventilation, feed store, bird sizes, floor). Number tables last, folded.
+        TodayTiles(entry, farm, flock?.birdsPlaced ?: 0)
+        KpiScorecard(entry, dailyRows, breed, farm, feedTypes)
+        PerformanceCharts(dailyRows, breed, day, flock?.harvestAge ?: 42, farm, feedTypes)
+        VentSimpleCard(entry, farm, weather, hourly, isToday)
+        FeedStockCard(entry, farm, dailyRows, feedTypes)
         PopulationDistributionCard(entry = entry)
         HouseFloorPlan(entry = entry, farm = farm)
 
-        OutputCard(title = "Birds — Space & Density") {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Column(modifier = Modifier.weight(1f)) {
-                    val density = entry.densityKgM2
+        DetailsSection("Detailed tables") {
+            BirdsLedgerCard(entry, flock, dailyRows)
+            WeightLedgerCard(entry, dailyRows, breed, vk)
+            FeedLedgerCard(entry, farm, dailyRows, feedTypes, flock?.harvestAge ?: 42, breed)
+            WaterLedgerCard(entry, farm, dailyRows)
+            DieselLedgerCard(entry, farm, dailyRows)
+            OutputCard(title = "Birds — Space & Density") {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        val density = entry.densityKgM2
+                        BigMetric(
+                            label = "Stocking Density",
+                            value = density?.let { Fmt.n(kgPerFt2(it), 3) } ?: "—",
+                            unit = "kg/ft²",
+                            toleranceText = "Safe cap: ≤ ${Fmt.n(kgPerFt2(farm.densityCapDefault), 3)} kg/ft²",
+                            statusTag = if (density != null && density > farm.densityCapDefault) "▲ over cap" else "ok",
+                            kind = vk
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        BigMetric(
+                            label = "Floor Space",
+                            value = Fmt.n(entry.ftPerBird, 3),
+                            unit = "ft²/bird",
+                            toleranceText = "Minimum recommended: ≥ ${Fmt.n(entry.minFtPerBird, 3)} ft²",
+                            statusTag = if (entry.ftPerBird < entry.minFtPerBird) "▼ crowded" else "ok",
+                            kind = vk
+                        )
+                    }
+                }
+                if (entry.barricadeFt > 0) {
                     BigMetric(
-                        label = "Stocking Density",
-                        value = density?.let { Fmt.n(kgPerFt2(it), 3) } ?: "—",
-                        unit = "kg/ft²",
-                        toleranceText = "Safe cap: ≤ ${Fmt.n(kgPerFt2(farm.densityCapDefault), 3)} kg/ft²",
-                        statusTag = if (density != null && density > farm.densityCapDefault) "▲ over cap" else "ok",
+                        label = "Brooding Barricade",
+                        value = "${entry.barricadeFt}",
+                        unit = "ft",
+                        toleranceText = "Occupied floor area: ${Fmt.n(entry.occupiedFt2, 1)} ft²",
+                        statusTag = "brooding",
                         kind = vk
                     )
                 }
-                Column(modifier = Modifier.weight(1f)) {
-                    BigMetric(
-                        label = "Floor Space",
-                        value = Fmt.n(entry.ftPerBird, 3),
-                        unit = "ft²/bird",
-                        toleranceText = "Minimum recommended: ≥ ${Fmt.n(entry.minFtPerBird, 3)} ft²",
-                        statusTag = if (entry.ftPerBird < entry.minFtPerBird) "▼ crowded" else "ok",
-                        kind = vk
-                    )
-                }
-            }
-            if (entry.barricadeFt > 0) {
                 BigMetric(
-                    label = "Brooding Barricade",
-                    value = "${entry.barricadeFt}",
-                    unit = "ft",
-                    toleranceText = "Occupied floor area: ${Fmt.n(entry.occupiedFt2, 1)} ft²",
-                    statusTag = "brooding",
-                    kind = vk
+                    label = "Litter moisture",
+                    value = "20–25",
+                    unit = "%",
+                    toleranceText = "Over 30 % = wet litter → ammonia, foot-pad lesions · rake every 2 days",
+                    statusTag = "ideal",
+                    kind = ValueKind.IDEAL
                 )
             }
-            BigMetric(
-                label = "Litter moisture",
-                value = "20–25",
-                unit = "%",
-                toleranceText = "Over 30 % = wet litter → ammonia, foot-pad lesions · rake every 2 days",
-                statusTag = "ideal",
-                kind = ValueKind.IDEAL
-            )
-        }
-
-
-        // ============================ FEED · WATER · DIESEL ============================
-        FeedLedgerCard(entry, farm, dailyRows, feedTypes, flock?.harvestAge ?: 42, breed)
-        FeedStockCard(entry, farm, dailyRows, feedTypes)
-        WaterLedgerCard(entry, farm, dailyRows)
-        DieselLedgerCard(entry, farm, dailyRows)
-
-        // ============================ PERFORMANCE GRAPHS ============================
-        OutputCard(title = "Performance curves (present vs ideal)") {
-            GraphLegend()
-            Text(
-                text = "Body weight vs breed standard (±5% band)",
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-            )
-            GrowthCurveCanvas(dailyRows = dailyRows, breed = breed, markerDay = day)
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = "FCR vs standard (critical = ×1.15)",
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-            )
-            FcrCurveCanvas(dailyRows = dailyRows, breed = breed, markerDay = day)
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = "cFCR (corrected to 2.0 kg)",
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-            )
-            CfcrCurveCanvas(dailyRows = dailyRows, breed = breed, markerDay = day)
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = "Cumulative mortality vs ceiling",
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-            )
-            MortalityCurveCanvas(dailyRows = dailyRows, markerDay = day)
+            VentThermoCard(entry = entry, farm = farm, vk = vk)
         }
 
         Spacer(modifier = Modifier.height(32.dp))

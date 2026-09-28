@@ -3,6 +3,10 @@ package com.example.flock.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.material3.AssistChip
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -98,6 +102,7 @@ fun EntriesScreen(
     cutoffLockEnabled: Boolean,
     draftKey: String,
     previousCounts: List<Int?>,
+    recentNotes: List<String> = emptyList(),
     onSave: (DailyInputs) -> Unit,
     onToggleLockTimer: () -> Unit,
     onRevertDay: () -> Unit,
@@ -130,7 +135,17 @@ fun EntriesScreen(
     var feedRecB3 by remember { mutableStateOf("") }
     var feedTypeB3 by remember { mutableStateOf("") }
 
-    var notes by remember { mutableStateOf("") }
+    // Miscellaneous notes as separate bullet points (no duplicates within a day).
+    val noteItems = remember { mutableStateListOf<String>() }
+    var newNote by remember { mutableStateOf("") }
+    var noteMsg by remember { mutableStateOf<String?>(null) }
+    fun setNotes(raw: String) { noteItems.clear(); noteItems.addAll(parseNoteItems(raw)) }
+    fun addNote(text: String) {
+        val v = cleanNote(text)
+        if (v.isEmpty()) return
+        if (noteItems.any { noteKey(it) == noteKey(v) }) { noteMsg = "Already in today's notes"; return }
+        noteItems.add(v); newNote = ""; noteMsg = null
+    }
     var dieselCansUsed by remember { mutableStateOf("") }
 
     val context = LocalContext.current
@@ -143,7 +158,8 @@ fun EntriesScreen(
         "feed" to feedUse.joinToString(";") { "${it.type}=${it.bags}" },
         "lift" to birdsLifted, "liftKg" to weightLifted, "lame" to lameSeparated,
         "rec1" to feedRecB1, "rt1" to feedTypeB1, "rec2" to feedRecB2, "rt2" to feedTypeB2,
-        "rec3" to feedRecB3, "rt3" to feedTypeB3, "notes" to notes, "diesel" to dieselCansUsed
+        "rec3" to feedRecB3, "rt3" to feedTypeB3, "notes" to noteItems.joinToString("\n"), "noteNew" to newNote,
+        "diesel" to dieselCansUsed
     )
 
     // Load the saved day, overlay any unsaved draft typed earlier, then keep the draft updated.
@@ -177,7 +193,7 @@ fun EntriesScreen(
         feedRecB3 = entry?.feedRecB3?.let { if (it > 0) it.toString() else "" } ?: ""
         feedTypeB3 = entry?.feedTypeB3?.ifEmpty { "B3" } ?: (feedTypes.getOrNull(2)?.code ?: "B3")
 
-        notes = entry?.notes ?: ""
+        setNotes(entry?.notes ?: ""); newNote = ""; noteMsg = null
         dieselCansUsed = entry?.dieselCansUsed?.let { if (it > 0) it.toString() else "" } ?: ""
 
         // Unsaved draft typed earlier (only for fields that are still open).
@@ -200,7 +216,7 @@ fun EntriesScreen(
         d["rec1"]?.let { feedRecB1 = it }; d["rt1"]?.let { feedTypeB1 = it }
         d["rec2"]?.let { feedRecB2 = it }; d["rt2"]?.let { feedTypeB2 = it }
         d["rec3"]?.let { feedRecB3 = it }; d["rt3"]?.let { feedTypeB3 = it }
-        d["notes"]?.let { notes = it }; d["diesel"]?.let { dieselCansUsed = it }
+        d["notes"]?.let { setNotes(it) }; d["noteNew"]?.let { newNote = it }; d["diesel"]?.let { dieselCansUsed = it }
 
         snapshotFlow { currentValues() }.drop(1).collectLatest { values ->
             delay(300)
@@ -415,14 +431,40 @@ fun EntriesScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 enabled = !isHardLocked, modifier = Modifier.fillMaxWidth()
             )
-            OutlinedTextField(
-                value = notes, onValueChange = { notes = it },
-                label = { Text("Miscellaneous notes") },
-                placeholder = { Text("One point per line:\n- litter turned\n- bird activity normal") },
-                minLines = 3,
-                enabled = !isHardLocked,
-                modifier = Modifier.fillMaxWidth().testTag("notes_input")
-            )
+            Text("Notes — one point each", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            noteItems.forEachIndexed { idx, item ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("•", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 8.dp))
+                    Text(item, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    IconButton(onClick = { noteItems.removeAt(idx) }, enabled = !isHardLocked, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Remove note", modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+            if (!isHardLocked) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = newNote, onValueChange = { newNote = it; noteMsg = null },
+                        placeholder = { Text("Add a point, e.g. litter turned") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { addNote(newNote) }),
+                        isError = noteMsg != null,
+                        supportingText = noteMsg?.let { m -> { Text(m) } },
+                        modifier = Modifier.weight(1f).testTag("notes_input")
+                    )
+                    IconButton(onClick = { addNote(newNote) }, enabled = newNote.isNotBlank()) {
+                        Icon(Icons.Default.Add, contentDescription = "Add note")
+                    }
+                }
+                val reuse = recentNotes.filter { r -> noteItems.none { noteKey(it) == noteKey(r) } }.take(8)
+                if (reuse.isNotEmpty()) {
+                    Text("Tap to reuse from earlier days", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        reuse.forEach { r -> AssistChip(onClick = { addNote(r) }, label = { Text(r, maxLines = 1) }) }
+                    }
+                }
+            }
         }
 
         // SAVE — press & hold ~1s so it can't be tapped by accident (it locks after saving)
@@ -453,7 +495,8 @@ fun EntriesScreen(
                         feedRecB3 = feedRecB3.toDoubleOrNull() ?: 0.0, feedTypeB3 = feedTypeB3,
                         broodingLength = null, actualFans = null, actualFanTime = null,
                         outTemp = null, outRH = null,
-                        notes = notes,
+                        notes = (noteItems + listOfNotNull(cleanNote(newNote).takeIf { v -> v.isNotEmpty() && noteItems.none { noteKey(it) == noteKey(v) } }))
+                            .joinToString("\n") { "- $it" },
                         dieselCansUsed = dieselCansUsed.toDoubleOrNull() ?: 0.0,
                         entered = buildSet {
                             if (mortEnabled && mortality.trim().toIntOrNull() != null) add("M")
@@ -492,6 +535,16 @@ fun EntriesScreen(
         Spacer(modifier = Modifier.height(96.dp).navigationBarsPadding())
     }
 }
+
+/** Note text without leading bullet marks or extra spaces. */
+fun cleanNote(raw: String): String = raw.trim().trimStart('-', '•', '*', '·', '–').trim().replace(Regex("\\s+"), " ")
+
+/** Case- and punctuation-insensitive key, so "Litter turned." and "litter turned" count as the same point. */
+fun noteKey(raw: String): String = cleanNote(raw).lowercase().trimEnd('.', '!', ',')
+
+/** Splits saved notes (one point per line, any bullet style) into unique points. */
+fun parseNoteItems(raw: String): List<String> =
+    raw.lines().map { cleanNote(it) }.filter { it.isNotEmpty() }.distinctBy { noteKey(it) }
 
 private fun Double.fmt(): String = if (this % 1.0 == 0.0) this.toInt().toString() else this.toString()
 

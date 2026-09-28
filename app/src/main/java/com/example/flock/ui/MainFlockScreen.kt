@@ -78,6 +78,14 @@ fun MainFlockScreen(
     val hourly by viewModel.hourly.collectAsState()
     val spreadsheetId by viewModel.selectedSpreadsheetId.collectAsState()
     // Location bird counts from the most recent earlier weighing (carried forward as defaults).
+    // Points noted on recent days, most used first, offered as one-tap chips (no retyping, no near-duplicates).
+    val recentNotes = remember(dailyRows, selectedDay) {
+        dailyRows.filter { it.dayNumber in (selectedDay - 14) until selectedDay }
+            .flatMap { com.example.flock.ui.screens.parseNoteItems(it.notes) }
+            .groupBy { com.example.flock.ui.screens.noteKey(it) }
+            .entries.sortedByDescending { it.value.size }
+            .map { it.value.last() }
+    }
     val previousCounts = remember(dailyRows, selectedDay) {
         dailyRows.filter { it.dayNumber < selectedDay && listOf(it.n1, it.n2, it.n3, it.n4, it.n5).any { n -> n != null } }
             .maxByOrNull { it.dayNumber }
@@ -180,6 +188,7 @@ fun MainFlockScreen(
                     cutoffLockEnabled = cutoffLockEnabled,
                     draftKey = EntryDrafts.key(spreadsheetId, activeFlock?.flockId ?: "", selectedDay),
                     previousCounts = previousCounts,
+                    recentNotes = recentNotes,
                     onSave = { inputs -> viewModel.saveDayEntry(inputs) },
                     onToggleLockTimer = { viewModel.toggleCutoffLock() },
                     onRevertDay = { viewModel.revertDay() }

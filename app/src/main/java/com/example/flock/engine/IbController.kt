@@ -34,10 +34,13 @@ object IbController {
         fun avgCfm(fanCfm: Double): Double = avgFans * fanCfm
     }
 
-    private val TIMERS = listOf(50 to 550, 50 to 400, 50 to 250, 75 to 225, 105 to 195, 140 to 160, 180 to 120, 230 to 70)
-    private val FAN_DIFFS = listOf(0.6, 0.6, 0.5, 0.4, 0.4, 0.3, 0.3, 0.3, 0.3)
+    private val TIMERS = listOf(50 to 550, 50 to 400, 50 to 300, 60 to 240, 90 to 210, 120 to 180, 150 to 150, 190 to 110, 240 to 60)
+    private val FAN_DIFFS = listOf(0.4, 0.6, 0.5, 0.5, 0.4, 0.4, 0.3, 0.3, 0.3)
 
-    /** Levels 1–8: first fan on a growing timer · 9: first fan non-stop · 10: + second fan on a timer · then +1 fan per level. */
+    /**
+     * 20 levels for 10 fans. 1–9: first fan on a growing timer · 10: first fan non-stop ·
+     * 11: + second fan on a 120/180 s timer · 12–20: one more fan per level, never removing one.
+     */
     fun ladder(fanCount: Int): List<Level> {
         val seq = PhysiologicalEngine.fanSequence(max(1, fanCount))
         val first = seq[0]
@@ -45,7 +48,7 @@ object IbController {
         TIMERS.forEachIndexed { i, (on, off) -> out.add(Level(emptyList(), listOf(first), on, off, if (i == 0) 0.1 else 0.2)) }
         out.add(Level(listOf(first), emptyList(), 0, 0, 0.2))
         if (seq.size >= 2) {
-            out.add(Level(listOf(first), listOf(seq[1]), 90, 210, 0.2))
+            out.add(Level(listOf(first), listOf(seq[1]), 120, 180, 0.3))
             for (n in 2..seq.size) out.add(Level(seq.take(n), emptyList(), 0, 0, FAN_DIFFS.getOrElse(n - 2) { 0.3 }))
         }
         return out
@@ -60,7 +63,15 @@ object IbController {
     private val KCH = listOf(0.0 to 4.5, 7.0 to 4.0, 14.0 to 3.4, 21.0 to 2.9, 28.0 to 2.4, 35.0 to 2.1, 42.0 to 1.9)
 
     /** How much cooler a bird feels in moving air (°C). Rule of thumb: ∝ √speed, less for older birds, fades as air nears body heat. */
-    fun chillC(fpm: Double, day: Int, airC: Double): Double {
+    /**
+     * Sensors and birds sit about 1 ft above the litter, inside the slower air near the floor
+     * (friction from litter, floor and the birds themselves), so they get ~80 % of the average
+     * cross-section air speed.
+     */
+    const val FLOOR_AIR_FACTOR = 0.80
+
+    fun chillC(fpmAverage: Double, day: Int, airC: Double): Double {
+        val fpm = fpmAverage * FLOOR_AIR_FACTOR
         if (fpm <= 0) return 0.0
         val fT = ((41 - airC) / 11).coerceIn(0.0, 1.0)
         return PhysiologicalEngine.interpolate(KCH, day.toDouble()) * sqrt(fpm / 100) * fT
@@ -103,9 +114,13 @@ object IbController {
     fun fanCfm(farm: FarmEntity): Double = farm.fanRatedCfm * (1.0 - farm.fanDerate)
     fun crossFt2(farm: FarmEntity): Double = max(1.0, farm.usableWidthFt * farm.heightFt)
 
+    /**
+     * Fans allowed at this age: the young-bird air-speed cap plus 2. The top levels only switch on
+     * when the house is hot, so the extra fans help in summer and never run in cool weather.
+     */
     fun maxFans(day: Int, farm: FarmEntity): Int {
         val byAge = (PhysiologicalEngine.maxAirSpeedFpm(day) * crossFt2(farm) / max(1.0, fanCfm(farm))).roundToInt()
-        return byAge.coerceIn(1, max(1, farm.fanCount))
+        return (byAge + 2).coerceIn(1, max(1, farm.fanCount))
     }
 
     fun dayPlan(day: Int, bwG: Double, birds: Int, farm: FarmEntity): DayPlan {
@@ -127,10 +142,9 @@ object IbController {
         val target = comfort + levelChill(levels[mn], day, comfort, eff, cross)
         val set = r1(target - acc[mn])
         val heat = min(r1(target - PhysiologicalEngine.heatOnOffsetC(day)), r1(set - 0.2))
-        val safe = if (day <= 14) mn + 1 else {
-            val half = ceil(mf / 2.0).toInt()
-            (levels.indexOfFirst { !it.isTimer && it.cont.size >= half }.takeIf { it >= 0 } ?: mn) + 1
-        }
+        // SAFE (sensor-failure fallback) = MIN: run the minimum-ventilation rate, not a guessed
+        // temperature level — as the farm's own controller sheet already does.
+        val safe = mn + 1
         return DayPlan(
             day = day, levels = levels, accu = acc, minLevel = mn + 1, maxLevel = mx + 1, safeLevel = safe,
             set = set, heat = heat, vent = r1(set + acc[0]), high = r1(max(target + 4, 33.0)), low = r1(heat - 2),

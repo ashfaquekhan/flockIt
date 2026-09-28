@@ -1,5 +1,6 @@
 package com.example.flock.data
 
+import com.example.flock.engine.CompanyStandard
 import com.example.flock.engine.IbController
 import com.example.flock.engine.PhysiologicalEngine
 import com.example.flock.network.ForecastResult
@@ -558,11 +559,10 @@ class FlockRepository(
             val heatFactor = PhysiologicalEngine.computeFeedHeatDerate(meanTemp, config.feedHeatK)
             val waterUplift = PhysiologicalEngine.computeWaterUplift(meanTemp, config.waterHeatK)
 
-            // The breed curve gives 0 g on the hatch day (Day 0). Operationally you still pre-load
-            // the Day-1 starter ration on arrival, so clamp the feed age to >=1 for the "to give"
-            // figure (this does NOT touch FCR, which uses actual bags logged).
-            val feedAge = max(1.0, weightAge)
-            val feedPerBird = PhysiologicalEngine.dailyFeedFromDay(feedAge, flock.breed) * heatFactor
+            // Ration to give follows the company (commercial) feed curve at the flock's actual weight;
+            // the Ross objective intake runs ~20 % below what commercial flocks eat. Day 0 still
+            // gets the day-1 starter ration (this does NOT touch FCR, which uses actual bags logged).
+            val feedPerBird = CompanyStandard.feedForWeight(avgKg * 1000.0) * heatFactor
             val totalFeedKg = (feedPerBird * live) / 1000.0
             val feedBags = ceil(totalFeedKg / bagKg).toInt()
             val waterPerBird = feedPerBird * config.wfRatio * waterUplift // mL
