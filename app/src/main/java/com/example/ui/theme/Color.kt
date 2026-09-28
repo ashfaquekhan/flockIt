@@ -62,3 +62,5 @@ val ValuePredicted = Color(0xFFD9A441)   // projected estimate (no sample yet) �
 val ValuePredictedWash = Color(0xFF33290F)
 val ValueIdeal = Color(0xFF6FA8DA)       // breed-standard target — blue
 val ValueIdealWash = Color(0xFF14263A)
+val ValueCommercial = Color(0xFFB08CF0)  // company / commercial standard — violet
+val ValueCommercialWash = Color(0xFF2A2140)
