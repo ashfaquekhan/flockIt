@@ -312,7 +312,7 @@ fun TargetsScreen(
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
-                            color = BrandEmerald
+                            color = MaterialTheme.colorScheme.primary
                         ),
                         modifier = Modifier.weight(1.1f)
                     )
@@ -365,7 +365,7 @@ fun TargetsScreen(
                             style = MaterialTheme.typography.bodySmall.copy(
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold,
-                                color = BrandEmerald
+                                color = MaterialTheme.colorScheme.primary
                             ),
                             modifier = Modifier.weight(1.1f)
                         )

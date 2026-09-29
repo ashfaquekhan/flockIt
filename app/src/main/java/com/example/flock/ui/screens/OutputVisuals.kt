@@ -187,7 +187,7 @@ private fun chartMaxDay(d: OutputData) = max(d.harvestAge, d.day).coerceIn(14, C
 fun BirdCharts(d: OutputData) {
     val maxDay = chartMaxDay(d)
     val by = d.byDay
-    OutputCard(title = "📈 Bird curves") {
+    OutputCard(title = "Bird curves") {
         StandardsLegend()
         Text("Tap a chart to read any day.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         StandardChart(
@@ -246,7 +246,7 @@ fun FeedCharts(d: OutputData) {
         if (live == null || day + 1 > d.day) null
         else d.rows.filter { it.dayNumber <= day + 1 }.sumOf { d.usedKg(it) }.takeIf { it > 0 }?.let { it * 1000 / live }
     }
-    OutputCard(title = "📈 Feed curves") {
+    OutputCard(title = "Feed curves") {
         StandardsLegend()
         StandardChart(
             "Feed per bird per day", "g",

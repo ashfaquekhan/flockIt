@@ -459,7 +459,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
             _userMessage.value = "Backing up & repairing the sheet…"
             val res = syncManager.backupAndRepairFarm(spreadsheetId)
             _syncStatus.value = if (res.isSuccess) "synced" else "offline"
-            _userMessage.value = if (res.isSuccess) "Sheet repaired ✓ ${res.getOrNull()}"
+            _userMessage.value = if (res.isSuccess) "Sheet repaired: ${res.getOrNull()}"
                 else "Repair failed: ${res.exceptionOrNull()?.message ?: "unknown"}"
         }
     }
@@ -748,8 +748,8 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closeFlock(flockId: String) {
         viewModelScope.launch {
-            repository.closeFlock(_selectedSpreadsheetId.value, flockId)
-            _userMessage.value = "Flock archived"
+            val synced = repository.closeFlock(_selectedSpreadsheetId.value, flockId)
+            _userMessage.value = if (synced) "Batch closed and saved to the Google Sheet" else "Batch closed on this phone — it will reach the sheet when online"
         }
     }
 

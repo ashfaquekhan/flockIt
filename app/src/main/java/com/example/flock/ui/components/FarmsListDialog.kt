@@ -230,7 +230,7 @@ fun FarmsListDialog(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     if (farm.isOwner) {
                                         IconButton(onClick = { onShareFarm(farm) }) {
-                                            Icon(Icons.Default.Share, contentDescription = "Share farm", tint = BrandEmerald)
+                                            Icon(Icons.Default.Share, contentDescription = "Share farm", tint = MaterialTheme.colorScheme.primary)
                                         }
                                     }
 
@@ -238,7 +238,7 @@ fun FarmsListDialog(
                                         Icon(
                                             Icons.Default.Check,
                                             contentDescription = "Selected",
-                                            tint = BrandEmerald,
+                                            tint = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.padding(start = 4.dp)
                                         )
                                     }

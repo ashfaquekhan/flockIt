@@ -18,10 +18,19 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O9 | Foot temperature has no official target | Range shown is from the cheek test and thermal-camera studies; treat as a guide. |
 | O10 | Breast height vs pan lip is an estimate | ≈4.0 cm at 40 g, scaling with weight^⅓; pan lip height is a farm setting. |
 | O11 | Feeding times and "hot day" (≥ 33 °C) are rules of thumb | Based on farm practice + heat-stress research (no feed ~5 h before peak heat). |
+| O12 | Feedings logged on the Output page are kept on the phone only | They drive the coop animation; the day's feed used is still entered on the Entry tab. Sync to the sheet if wanted. |
+| O13 | Pan pattern uses estimates | Auger tube ≈ 0.95 kg/m, pan fill from "bags fill 1 line", pans 0.76 m apart, first pan 5 ft from the front wall. |
+| O14 | Lighting schedule assumes the dark period ends at 05:00 | Make it a farm setting if the farm's dark period differs. |
+| O15 | Coop environment values are ideals | No house sensors; birds behave as in comfortable air. |
 
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v31 | Reception deaths counted as mortality on Output; mortality % and livability divided by birds placed | Output added reception to deaths; engine used placed as denominator | Reception only reduces the entry flock; both use placed − reception |
+| v31 | Feeder lines assumed to be as long as the house | Line length taken from house length | Line length = pans × 0.76 m; drawn from the hopper |
+| v31 | Lock, unlock and close never reached the sheet — a refresh could undo them | Only saved locally | Flock row upserted in the sheet (upsertFlock) |
+| v31 | Text drawn black on the black glass panels | Panels had no content colour | Glass panels provide a light content colour |
+| v31 | Feeder showed 199.9 % and "empty in 29.9 h" at night | Over-fill not capped; hours to empty ignored the lighting programme | Fill capped at the pans (rest waits in the hopper); hours to empty stepped through the light schedule |
 | v30 | Values edited directly in the Google Sheet were sometimes ignored | Merge kept the phone's row when its timestamp was newer; cells were read as displayed text, so "1,200" or formatted numbers failed to parse | Sheet row always wins unless a local save hasn't reached the sheet ("dirty" flag, re-sent on refresh); cells read as raw values with a tolerant number parser |
 | v30 | Hand-edited FeedBagsUsed in the sheet didn't change feed used | Per-type breakdown string still held the old total | Breakdown rescaled to the new total on read |
 | v30 | Ideal range not marked on the comparison bars | Only the commercial band was drawn | Both bands drawn (commercial upper lane, ideal lower lane) |
@@ -54,6 +63,8 @@ is not made twice. Newest first. Open items at the top. Update together with
 | v14 | Shared / other-device farms not found | `drive.file` scope cannot list them | Farm index in appDataFolder |
 
 ## Build / tooling notes
+- Never edit source files with PowerShell `Get-Content`/`Set-Content` without `-Encoding utf8`: it re-encodes
+  UTF-8 as ANSI and mangles °, –, · (happened once in v31; repaired by reversing the cp1252 round-trip).
 - Build with an isolated `GRADLE_USER_HOME` (`~/.gradle-flockit`); the shared scoop Gradle home
   breaks the Kotlin settings script.
 - Bash heredocs containing Python triple quotes break in the agent shell — write scripts to a file.

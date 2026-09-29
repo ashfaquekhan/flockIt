@@ -17,6 +17,13 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.max
 
+/** Standard spacings: pans every 0.76 m (2.5 ft), nipples every 0.25 m; first pan ~5 ft from the front wall. */
+const val PAN_SPACING_FT = 2.5
+const val NIPPLE_SPACING_FT = 0.82
+const val LINE_START_FT = 5.0
+/** Ross: birds should not have to walk more than 2 m to feed or water. */
+const val ALLOWED_TRAVEL_M = 2.0
+
 /** The five Output topics, in the order the farm reads them. */
 enum class Topic(val emoji: String, val title: String) {
     VENT("🌀", "Ventilation"),
@@ -64,9 +71,11 @@ class OutputData(
     val live = e.liveBirds
     val liveSafe = live.coerceAtLeast(1)
     val mortToday = e.mortality
-    val mortTD = upto.sumOf { it.mortality } + reception
+    /** Birds that started the flock: placed minus reception / transit deaths (those are not flock mortality). */
+    val entryBirds = max(1, placed - reception)
+    val mortTD = upto.sumOf { it.mortality }
     val mortTodayPct: Double? = if (live + mortToday > 0) mortToday * 100.0 / (live + mortToday) else null
-    val mortTDPct: Double? = if (placed > 0) mortTD * 100.0 / placed else e.cumMortPct
+    val mortTDPct: Double? = if (placed > 0) mortTD * 100.0 / entryBirds else e.cumMortPct
     val comDailyPct = CompanyStandard.dailyMortPct(day)
     val comCumPct = CompanyStandard.cumMortPct(day)
     val comMortBirdsToday = comDailyPct * (live + mortToday) / 100.0
@@ -209,7 +218,7 @@ class OutputData(
             }
         }
         scenarioSource = if (dayPts.size >= 12) "forecast for this day" else "typical ${farm.season.lowercase()} day"
-        val names = listOf("Coolest" to "🌙", "Middle" to "⛅", "Hottest" to "☀️")
+        val names = listOf("Coolest" to "", "Middle" to "", "Hottest" to "")
         scenarios = cases.mapIndexed { i, (h, t, rh) ->
             val s = IbController.simulate(plan, t, rh, h, live, bw, farm)
             VentScenario(names[i].first, names[i].second, h, t, rh, s, levelOf(s), airFpm(s.fans), modeOf(s))
@@ -229,25 +238,35 @@ class OutputData(
     val dialStartC = weather?.tempC ?: hottestC
     val dialStartRh = weather?.rhPercent ?: scenarios.last().outRh
 
-    // ------------------------------- feeding plan -------------------------------
+    // ------------------------------- house layout & feeding plan -------------------------------
     val feederLines = max(1, farm.feederLines)
+    val drinkerLinesN = max(0, farm.drinkerLines)
     val pansPerLine = max(1, farm.pansPerFeederLine)
-    val lineLenFt = farm.usableLengthFt
+    val panSpacingFt = PAN_SPACING_FT
+    /** A feeder line is as long as its pans need (hopper → motor), not the house length. */
+    val lineLenFt = pansPerLine * panSpacingFt
+    val drinkerLenFt = if (farm.nipplesPerLine > 0) farm.nipplesPerLine * NIPPLE_SPACING_FT else lineLenFt
+    val lineStartFt = LINE_START_FT
     /** Bags that fill one whole line from empty (farm setting). */
     val bagsFullLine = max(0.1, farm.feederLineBags.toDouble())
     val houseFloorFt2 = max(1.0, farm.usableLengthFt * farm.usableWidthFt)
-    /** Share of the house the birds use today (brooding barricade). */
-    val openFrac = if (e.occupiedFt2 > 0) (e.occupiedFt2 / houseFloorFt2).coerceIn(0.05, 1.0) else 1.0
-    val openLenFt = lineLenFt * openFrac
-    val pansOpenPerLine = max(1, floor(pansPerLine * openFrac).toInt())
-    val pansOpen = pansOpenPerLine * feederLines
-    val birdsPerPan = live.toDouble() / pansOpen
-    /** Ross: 45–80 birds per pan (the lower figure above 3.5 kg). */
+    /** Brooding barricade: how far from the front the birds can go today. */
+    val barricadeFtNow: Double = if (e.occupiedFt2 > 0) min(farm.usableLengthFt, e.occupiedFt2 / max(1.0, farm.usableWidthFt)) else farm.usableLengthFt
+    val openFrac = (barricadeFtNow / max(1.0, farm.usableLengthFt)).coerceIn(0.05, 1.0)
+    /** Pans inside the birds' area on each line. */
+    val pansInArea = floor((barricadeFtNow - lineStartFt) / panSpacingFt).toInt().coerceIn(0, pansPerLine)
+    /** Lines spread evenly across the width, drinkers between feeders: D F D F … D. */
+    val lineOrder: List<Char> = buildList {
+        val f = feederLines; val dl = drinkerLinesN
+        if (dl >= f + 1) { repeat(f) { add('D'); add('F') }; add('D'); repeat(dl - f - 1) { add('D') } }
+        else if (dl == f) repeat(f) { add('D'); add('F') }
+        else { var dd = dl; repeat(f) { if (dd > 0) { add('D'); dd-- }; add('F') } }
+    }
+    val lineGapFt = farm.usableWidthFt / max(1, lineOrder.size)
+    val feederGapFt = farm.usableWidthFt / feederLines
+    /** Ross: 45–80 birds per pan (the lower figure above 3.5 kg); birds should not walk more than 2 m to feed. */
     val birdsPerPanMax = if (bw > 3500) 45.0 else 80.0
     val birdsPerPanMin = 45.0
-    val panSpacingFt = lineLenFt / pansPerLine
-    /** Bags to push feed to the end of the open section on every line. */
-    val bagsFillOpen = feederLines * bagsFullLine * openFrac
     val isHotDay = hottestC >= 33.0 || scenarios.last().state.feltC > plan.comfort + 4
     /** Feedings the age and heat call for (farm practice + Ross: small and often while young, cool hours when hot). */
     val feedingsWanted = when {
@@ -256,19 +275,59 @@ class OutputData(
         day <= 21 -> if (isHotDay) 2 else 3
         else -> 2
     }
-    /** Full charges of the open section today's ration covers. */
-    val fillsPossible: Double = if (bagsFillOpen > 0) giveBags / bagsFillOpen else 0.0
-    /**
-     * Pans fill in order from the hopper, and a full pan passes feed on. So a top-up reaches every open
-     * pan only while the pans still hold feed (the line stays "charged"); into EMPTY pans a feeding
-     * only reaches as far as its bags go.
-     */
     val feedings = feedingsWanted
     val bagsPerFeeding = giveBags / feedings
     val bagsPerLinePerFeeding = bagsPerFeeding / feederLines
-    /** How far one feeding reaches along a line if the pans were empty (ft), and as a share of the open part. */
-    val reachFt = min(lineLenFt, bagsPerLinePerFeeding / bagsFullLine * lineLenFt)
-    val reachOfOpen = reachFt / max(1.0, openLenFt)
+    private val phaseBagKg = kgPerBag(phase)
+    /** Feed in a pan when full, from the line setting minus what the auger tube holds (~0.95 kg per metre). */
+    val tubeKgPerFt = 0.95 * 0.3048
+    val panKg = max(0.3, (bagsFullLine * phaseBagKg - tubeKgPerFt * lineLenFt) / pansPerLine)
+
+    /** One on/off arrangement of the pans inside the birds' area (same on every line). */
+    data class PanPattern(val on: Int, val off: Int, val openPerLine: Int, val lastIdx: Int, val chargeKg: Double,
+                          val travelM: Double, val birdsPerPan: Double) {
+        val label get() = if (off == 0) "All pans open" else "$on on · $off off"
+        fun isOpen(i: Int) = (i % (on + off)) < on
+    }
+    val patterns: List<PanPattern> = listOf(1 to 0, 2 to 1, 1 to 1, 1 to 2).map { (on, off) ->
+        val open = (0 until pansInArea).filter { (it % (on + off)) < on }
+        val last = open.lastOrNull() ?: -1
+        val tubeFt = (last + 1) * panSpacingFt
+        val charge = feederLines * (tubeKgPerFt * tubeFt + panKg * open.size)
+        val gapM = (off + 1) * panSpacingFt * 0.3048
+        val travel = Math.hypot(feederGapFt * 0.3048 / 2, gapM / 2)
+        PanPattern(on, off, open.size, last, charge, travel, if (open.isEmpty()) Double.MAX_VALUE else live.toDouble() / (feederLines * open.size))
+    }
+    /** Patterns that keep every bird within 2 m of feed and each pan within its bird limit. */
+    val safePatterns = patterns.filter { it.openPerLine > 0 && it.travelM <= ALLOWED_TRAVEL_M && it.birdsPerPan <= birdsPerPanMax }
+    /**
+     * EACH: one feeding reaches the last open pan even from empty. CHARGE: fill the lines once (within
+     * today's ration), then top up before the pans run empty. MANUAL: no safe pattern fits today's ration.
+     */
+    val patternMode: String
+    val feedPattern: PanPattern
+    init {
+        val perFeedKg = giveKg / feedings
+        val each = safePatterns.firstOrNull { it.chargeKg <= perFeedKg }
+        val charge = safePatterns.firstOrNull { it.chargeKg <= giveKg }
+        when {
+            day <= 3 -> { patternMode = "TRAYS"; feedPattern = patterns.first() }
+            each != null -> { patternMode = "EACH"; feedPattern = each }
+            charge != null -> { patternMode = "CHARGE"; feedPattern = charge }
+            else -> { patternMode = "MANUAL"; feedPattern = safePatterns.lastOrNull() ?: patterns.first() }
+        }
+    }
+    val pansOpenPerLine = max(0, feedPattern.openPerLine)
+    val pansOpen = pansOpenPerLine * feederLines
+    val birdsPerPan = if (pansOpen > 0) live.toDouble() / pansOpen else 0.0
+    /** Length of line inside the birds' area. */
+    val openLenFt = min(lineLenFt, max(0.0, barricadeFtNow - lineStartFt))
+    /** Bags to fill every open pan (and the tube up to the last one) from empty. */
+    val bagsFillOpen = feedPattern.chargeKg / phaseBagKg
+    val fillsPossible: Double = if (bagsFillOpen > 0) giveBags / bagsFillOpen else 0.0
+    /** Share of the open pans one feeding reaches if they were empty, and how far along the line that is. */
+    val reachOfOpen = if (feedPattern.chargeKg > 0) (giveKg / feedings) / feedPattern.chargeKg else 1.0
+    val reachFt = min(1.0, reachOfOpen) * (feedPattern.lastIdx + 1) * panSpacingFt
     /** Ross: let birds clear the pans once a day from day 10–12 — only workable once a day's ration can refill the empty lines. */
     val cleanOutOk = day >= 10 && giveBags >= bagsFillOpen
     val feedTimes: String = when {
@@ -288,7 +347,7 @@ class OutputData(
     }
 
     // ------------------------------- first week equipment -------------------------------
-    val chicksPlaced = max(1, placed - reception)
+    val chicksPlaced = entryBirds
     /** Ross: feeder trays 1 per 100 chicks; mini drinkers 12 per 1,000 chicks. */
     val traysIdeal = ceil(chicksPlaced / 100.0)
     val miniDrinkersIdeal = ceil(chicksPlaced * 12.0 / 1000.0)
@@ -383,7 +442,8 @@ class OutputData(
             e.waterPh?.let { ph -> if (ph < 6.0 || ph > 6.8) add(TopicAlert(1, "Water pH ${Fmt.n(ph)} outside 6.00–6.80")) }
             e.waterTempC?.let { t -> if (t > 25) add(TopicAlert(1, "Water ${Fmt.n(t, 1)} °C is warm (ideal 10.0–25.0 °C) — flush the lines")) }
             nextPhaseDay?.let { d -> if (d - day in 1..2) add(TopicAlert(1, "Feed changes to ${CompanyStandard.feedPhase(d)} on day $d")) }
-            if (day >= 4 && reachOfOpen < 1.0) add(TopicAlert(1, "A ${Fmt.n(bagsPerFeeding, 2)}-bag feeding reaches only ${Fmt.n(reachOfOpen * 100, 1)}% of the open pans if they are empty — keep the pans from running empty"))
+            if (patternMode == "MANUAL") add(TopicAlert(2, "No safe pan pattern fits today's ${Fmt.n(giveBags, 2)} bags — pour the far pans by hand or move the barricade in"))
+            else if (patternMode == "CHARGE") add(TopicAlert(1, "Fill the lines once with ${Fmt.n(bagsFillOpen, 2)} bags (${feedPattern.label.lowercase()}), then top up before the pans run empty"))
             if (birdsPerPan > birdsPerPanMax) add(TopicAlert(1, "${Fmt.n(birdsPerPan, 1)} birds per open pan — more than ${Fmt.n(birdsPerPanMax, 1)}; open more pans"))
             birdsPerNipple?.let { b -> if (b > birdsPerNippleMax) add(TopicAlert(1, "${Fmt.n(b, 1)} birds per nipple — more than ${Fmt.n(birdsPerNippleMax, 1)}")) }
             if (day <= 3 && farm.manualFeeders < traysIdeal) add(TopicAlert(1, "${farm.manualFeeders} feeder trays; Ross advises ${Fmt.n(traysIdeal, 1)} (1 per 100 chicks)"))
@@ -420,6 +480,10 @@ class OutputData(
             weather?.let { w -> if (w.tempC >= 35) add(TopicAlert(1, "Hot outside: ${Fmt.n(w.tempC, 1)} °C")) }
         })
     }
+
+    /** Growth stage name for the day. */
+    val stage = when { day <= 3 -> "Day-old chick"; day <= 10 -> "Starter chick"; day <= 21 -> "Grower"; day <= 35 -> "Finisher"; else -> "Market weight" }
+    val allAlerts: List<TopicAlert> get() = alerts.values.flatten()
 
     fun worst(t: Topic): Int = alerts[t].orEmpty().maxOfOrNull { it.level } ?: 0
 }

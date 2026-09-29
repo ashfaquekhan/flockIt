@@ -74,7 +74,7 @@ fun ShareFarmDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Share, contentDescription = null, tint = BrandEmerald)
+                        Icon(Icons.Default.Share, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "Share Farm",
@@ -181,7 +181,7 @@ fun ShareFarmDialog(
                         IconButton(onClick = {
                             clipboardManager.setText(AnnotatedString(spreadsheetId))
                         }) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy ID", tint = BrandEmerald)
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy ID", tint = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
@@ -198,7 +198,7 @@ fun ShareFarmDialog(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Icon(Icons.Default.Share, contentDescription = null, tint = BrandEmerald)
+                    Icon(Icons.Default.Share, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(6.dp))
                     Text("Share Farm Link / ID", color = BrandEmerald, fontWeight = FontWeight.Bold)
                 }

@@ -202,7 +202,8 @@ fun MainFlockScreen(
                     feedTypes = feedTypes,
                     weather = weather,
                     hourly = hourly,
-                    isToday = selectedDay == currentFlockDay
+                    isToday = selectedDay == currentFlockDay,
+                    onCloseBatch = activeFlock?.let { f -> { viewModel.closeFlock(f.flockId) } }
                 )
                 FlockNavTab.TASKS -> TasksScreen(
                     allTasks = tasks,

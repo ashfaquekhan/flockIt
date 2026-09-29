@@ -19,6 +19,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.ui.draw.clip
+import com.example.ui.theme.GlassFill
+import com.example.ui.theme.GlassFillTop
+import com.example.ui.theme.GlassLine
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -111,6 +116,7 @@ fun OutputScreen(
     weather: WeatherResult? = null,
     hourly: List<HourPoint> = emptyList(),
     isToday: Boolean = false,
+    onCloseBatch: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     if (entry == null) {
@@ -126,30 +132,107 @@ fun OutputScreen(
     val d = remember(flock, farm, entry, dailyRows, feedTypes, weather, hourly, isToday) {
         OutputData(flock, farm, entry, dailyRows, feedTypes, weather, hourly, isToday)
     }
-    var topic by rememberSaveable { mutableStateOf(Topic.VENT.name) }
-    val sel = Topic.valueOf(topic)
+    // feedings logged here drive the coop's feeder; the feeder is re-worked every 30 s
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val flockKey = flock?.flockId ?: "none"
+    var events by remember(flockKey) { mutableStateOf(FeedLog.load(ctx, flockKey)) }
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(30_000); now = System.currentTimeMillis() } }
+    val zone = remember(farm.timeZone) { try { java.time.ZoneId.of(farm.timeZone) } catch (e: Exception) { java.time.ZoneId.systemDefault() } }
+    val light = LightProgram(entry.lightHours)
+    val feeder = remember(events, now, d) {
+        feederState(events, now, zone, d.giveKg, d.kgPerBag(d.phase), d.feedPattern.chargeKg.takeIf { it > 0 } ?: d.giveKg, light)
+    }
+    val coop = CoopInput(
+        age = d.day, meanG = d.bw, cvPct = entry.cv, live = d.live, entry = d.entryBirds, stage = d.stage, light = light, feeder = feeder,
+        zoneId = zone, airC = entry.tempIdeal, rhPct = entry.rhIdeal, feelsC = d.plan.comfort,
+        chillC = com.example.flock.engine.IbController.levelChill(d.minLevel, d.day, d.plan.comfort, d.fanCfm, d.plan.crossFt2),
+        pressurePa = 22.5, litterC = d.litterTemp.second, litterMoist = 25.0, bodyC = d.bodyTemp.second,
+        waterC = 18.0 to 21.0, waterPh = 6.0 to 6.8, travelM = ALLOWED_TRAVEL_M
+    )
+    var confirmClose by remember { mutableStateOf(false) }
 
     Column(
-        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         TagLegend()
-        TopicTiles(d, sel) { topic = it.name }
-        TopicView(d, sel)
+        GlassBox(Modifier.fillMaxWidth()) { Coop3D(coop) }
+        FeedEntryRow(d, feeder,
+            onFeed = { bags -> events = FeedLog.add(ctx, flockKey, bags); now = System.currentTimeMillis() },
+            onUndo = { events = FeedLog.undoLast(ctx, flockKey); now = System.currentTimeMillis() })
+        AlertList(d.allAlerts)
+        OverviewStats(d, feeder)
+        GrowthBlock(d)
+        SectionLabel("Feed")
+        FeedSection(d)
+        SectionLabel("Ventilation")
+        VentSection(d)
+        SectionLabel("Mortality")
+        MortalitySection(d)
+        SectionLabel("Environment")
+        EnvironmentSection(d)
+        if (onCloseBatch != null && flock?.status != "closed") {
+            OutlinedButton(onClick = { confirmClose = true }, modifier = Modifier.fillMaxWidth(),
+                border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine)) {
+                Text("Close batch and save", color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
         Spacer(modifier = Modifier.height(32.dp))
+    }
+    if (confirmClose) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmClose = false },
+            title = { Text("Close ${flock?.name ?: "batch"}?") },
+            text = { Text("Saves every day of this batch to the Google Sheet, then marks it closed and read-only.") },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { confirmClose = false; onCloseBatch?.invoke() }) { Text("Close batch") } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { confirmClose = false }) { Text("Cancel") } }
+        )
+    }
+}
+
+/** Log a feeding: type the bags poured into the lines and press Enter. */
+@Composable
+private fun FeedEntryRow(d: OutputData, feeder: FeederState, onFeed: (Double) -> Unit, onUndo: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+    fun submit() { text.replace(",", ".").toDoubleOrNull()?.takeIf { it > 0 }?.let { onFeed(it); text = "" } }
+    GlassBox(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.material3.OutlinedTextField(
+                    value = text, onValueChange = { text = it.filter { c -> c.isDigit() || c == '.' || c == ',' } },
+                    label = { Text("Bags fed now") }, singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal, imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { submit() }),
+                    modifier = Modifier.weight(1f)
+                )
+                OutlinedButton(onClick = { submit() }, border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine)) { Text("Feed", color = MaterialTheme.colorScheme.onSurface) }
+            }
+            Text(
+                "Given today ${Fmt.n(feeder.givenTodayBags, 2)} of ${Fmt.n(d.giveBags, 2)} bags" +
+                    (feeder.lastFedAt?.let { " · last at " + java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()).toLocalTime().withNano(0).toString().take(5) } ?: ""),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (feeder.lastFedAt != null) androidx.compose.material3.TextButton(onClick = onUndo, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+                Text("Undo last feeding", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 }
 
 // =================================== tags ===================================
 
-/** The four value tags and their colours. */
+/** One line: the six value colours. */
 @Composable
 fun TagLegend() {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        listOf(
-            listOf(ValueKind.PRESENT, ValueKind.PREDICTED, ValueKind.IDEAL),
-            listOf(ValueKind.COMMERCIAL, ValueKind.MIN, ValueKind.MAX)
-        ).forEach { row -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) { row.forEach { TagChip(it, Modifier.weight(1f)) } } }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        listOf(ValueKind.PRESENT, ValueKind.PREDICTED, ValueKind.IDEAL, ValueKind.COMMERCIAL, ValueKind.MIN, ValueKind.MAX).forEach { k ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(7.dp).background(kindColor(k), CircleShape))
+                Spacer(Modifier.width(4.dp))
+                Text(kindTag(k), style = MaterialTheme.typography.labelSmall, color = kindColor(k))
+            }
+        }
     }
 }
 
@@ -167,80 +250,32 @@ fun TagChip(k: ValueKind, modifier: Modifier = Modifier, text: String = kindTag(
     }
 }
 
-// =================================== topic tiles ===================================
-
 fun alertColor(level: Int): Color = when (level) { 2 -> StatusCrit; 1 -> StatusWarn; else -> BrandEmerald }
 
-private fun headline(d: OutputData, t: Topic): Pair<String, ValueKind> = when (t) {
-    Topic.VENT -> "min ${Fmt.n(d.minLevel.avgFans, 2)} fans" to ValueKind.IDEAL
-    Topic.ENV -> "${Fmt.n(d.e.tempIdeal, 1)} °C" to ValueKind.IDEAL
-    Topic.BIRDS -> "${Fmt.n(d.bw, 1)} g" to d.vk
-    Topic.FEED -> "${Fmt.n(d.giveBags, 2)} bags" to d.vk
-    Topic.STOCK -> "${Fmt.n(d.stockBagsTotal, 2)} bags" to ValueKind.PRESENT
-}
-
-@Composable
-fun TopicTiles(d: OutputData, selected: Topic, onSelect: (Topic) -> Unit) {
-    val all = Topic.entries
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        all.chunked(3).forEach { rowTopics ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                rowTopics.forEach { t -> TopicTile(d, t, t == selected, Modifier.weight(1f)) { onSelect(t) } }
-                repeat(3 - rowTopics.size) { Spacer(Modifier.weight(1f)) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun TopicTile(d: OutputData, t: Topic, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    val lvl = d.worst(t)
-    val n = d.alerts[t].orEmpty().size
-    val (value, kind) = headline(d, t)
-    val shape = RoundedCornerShape(12.dp)
-    Surface(
-        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surface,
-        shape = shape, tonalElevation = 1.dp,
-        modifier = modifier
-            .border(if (selected) 2.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), shape)
-            .clickable(onClick = onClick)
-    ) {
-        Column(Modifier.padding(horizontal = 10.dp, vertical = 10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(t.emoji, fontSize = 22.sp)
-                Spacer(Modifier.weight(1f))
-                Surface(color = alertColor(lvl), shape = CircleShape) {
-                    Text(if (n > 0) "$n" else "✓", modifier = Modifier.padding(horizontal = 7.dp, vertical = 1.dp),
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Black, color = Color.White))
-                }
-            }
-            Text(t.title, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(value, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 12.sp),
-                color = kindColor(kind), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-    }
-}
-
 // =================================== card + shared bits ===================================
+
+/** Transparent glass panel with a thin white outline on matte black. */
+@Composable
+fun GlassBox(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Box(
+        modifier
+            .clip(shape)
+            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(GlassFillTop, GlassFill)))
+            .border(1.dp, GlassLine, shape)
+    ) {
+        androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides MaterialTheme.colorScheme.onSurface) { content() }
+    }
+}
 
 @Composable
 fun OutputCard(
     title: String,
     content: @Composable () -> Unit
 ) {
-    val accent = MaterialTheme.colorScheme.primary
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(12.dp),
-        tonalElevation = 1.dp,
-        modifier = Modifier.fillMaxWidth()
-    ) {
+    GlassBox(Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(width = 4.dp, height = 18.dp).background(accent, RoundedCornerShape(2.dp)))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(text = title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface))
-            }
+            Text(text = title, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface))
             content()
         }
     }
@@ -284,7 +319,7 @@ fun PopulationDistributionCard(entry: DailyDataEntity) {
         }
     }
 
-    OutputCard(title = "⚖️ Bird size & uniformity") {
+    OutputCard(title = "Bird size & uniformity") {
         if (locs.isEmpty()) {
             Text(
                 "No weights entered today — weights shown are projected. Weigh 5 spots on the Entry tab to see the size spread.",

@@ -79,7 +79,7 @@ class FlockRepository(
         if (res.isSuccess) {
             flockDao.getAllFlocksList(spreadsheetId).forEach { recomputeFlock(spreadsheetId, it.flockId) }
         } else {
-            _syncNote.value = "⚠ Couldn't load latest from Google Sheet: ${res.exceptionOrNull()?.message ?: "unknown"}"
+            _syncNote.value = "Couldn't load latest from Google Sheet: ${res.exceptionOrNull()?.message ?: "unknown"}"
         }
     }
 
@@ -87,12 +87,12 @@ class FlockRepository(
     private suspend fun cloudPush(label: String, block: suspend (SheetsSyncManager) -> Result<Unit>): Boolean {
         val s = sync ?: return false
         if (!s.isOnline()) {
-            _syncNote.value = "⚠ $label saved on the phone — it will be sent to the Google Sheet when online"
+            _syncNote.value = "$label saved on the phone — it will be sent to the Google Sheet when online"
             return false
         }
         val r = try { block(s) } catch (e: Exception) { Result.failure(e) }
-        _syncNote.value = if (r.isSuccess) "✓ $label synced to Google Sheet"
-            else "⚠ $label saved locally but not synced: ${r.exceptionOrNull()?.message ?: "error"}"
+        _syncNote.value = if (r.isSuccess) "$label synced to Google Sheet"
+            else "$label saved locally but not synced: ${r.exceptionOrNull()?.message ?: "error"}"
         return r.isSuccess
     }
 
@@ -283,14 +283,24 @@ class FlockRepository(
             Result.success(Unit)
         }
 
-    suspend fun closeFlock(spreadsheetId: String, flockId: String) = withContext(Dispatchers.IO) {
-        val flock = flockDao.getFlockById(spreadsheetId, flockId) ?: return@withContext
-        flockDao.updateFlock(flock.copy(status = "closed"))
+    /**
+     * Closes a batch: every unsent day row is written to the sheet first, then the flock is marked
+     * closed and read-only locally and in the sheet, so the whole batch is saved as it stands.
+     */
+    suspend fun closeFlock(spreadsheetId: String, flockId: String): Boolean = withContext(Dispatchers.IO) {
+        val flock = flockDao.getFlockById(spreadsheetId, flockId) ?: return@withContext false
+        recomputeFlock(spreadsheetId, flockId)
+        resendDirtyDays(spreadsheetId)
+        val closed = flock.copy(status = "closed", locked = true)
+        flockDao.updateFlock(closed)
+        cloudPush("Batch \"${flock.name}\" closed") { it.upsertFlock(spreadsheetId, closed) }
     }
 
     suspend fun setFlockLocked(spreadsheetId: String, flockId: String, locked: Boolean) = withContext(Dispatchers.IO) {
         val flock = flockDao.getFlockById(spreadsheetId, flockId) ?: return@withContext
-        flockDao.updateFlock(flock.copy(locked = locked))
+        val updated = flock.copy(locked = locked)
+        flockDao.updateFlock(updated)
+        cloudPush(if (locked) "Flock locked" else "Flock unlocked") { it.upsertFlock(spreadsheetId, updated) }
     }
 
     suspend fun setFarmLocked(spreadsheetId: String, locked: Boolean) = withContext(Dispatchers.IO) {
@@ -636,8 +646,10 @@ class FlockRepository(
             val fcr = if (live > 0 && avgKg > 0 && cumFeedKg > 0) cumFeedKg / (live * avgKg) else null
             val cFcr = if (fcr != null) PhysiologicalEngine.computeCorrectedFcr(avgKg, fcr, config.cFcrDivisor) else null
 
-            val cumMortPct = if (flock.birdsPlaced > 0) (cumMort.toDouble() / flock.birdsPlaced) * 100.0 else null
-            val livability = if (flock.birdsPlaced > 0) (live.toDouble() / flock.birdsPlaced) * 100.0 else null
+            // Reception / transit deaths only reduce the entry flock; they are not flock mortality.
+            val entryBirds = (flock.birdsPlaced - flock.receptionMort).coerceAtLeast(0)
+            val cumMortPct = if (entryBirds > 0) (cumMort.toDouble() / entryBirds) * 100.0 else null
+            val livability = if (entryBirds > 0) (live.toDouble() / entryBirds) * 100.0 else null
 
             // Area & density
             val areaRes = PhysiologicalEngine.computeAreaAndDensity(

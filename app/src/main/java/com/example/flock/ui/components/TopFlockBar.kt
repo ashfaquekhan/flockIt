@@ -18,6 +18,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Today
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -240,9 +242,9 @@ fun TopFlockBar(
                             modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onSelectDay(currentFlockDay) }.testTag("today_button")
                         ) {
                             Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Today, contentDescription = "Go to today", tint = BrandEmerald, modifier = Modifier.size(15.dp))
+                                Icon(Icons.Default.Today, contentDescription = "Go to today", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Today", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = BrandEmerald))
+                                Text("Today", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary))
                             }
                         }
                     }
@@ -294,11 +296,9 @@ fun TopFlockBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(
-                    "0",
-                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                IconButton(onClick = onPrevDay, enabled = selectedDay > 0, modifier = Modifier.size(36.dp).testTag("prev_day")) {
+                    Icon(Icons.Default.ChevronLeft, contentDescription = "Previous day")
+                }
                 // Local drag state so the thumb tracks the finger smoothly (no round-trip jitter).
                 var sliderPos by remember { mutableFloatStateOf(selectedDay.toFloat()) }
                 LaunchedEffect(selectedDay) { sliderPos = selectedDay.toFloat() }
@@ -318,11 +318,9 @@ fun TopFlockBar(
                         .weight(1f)
                         .testTag("day_slider")
                 )
-                Text(
-                    "$harvestAge",
-                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                IconButton(onClick = onNextDay, enabled = selectedDay < harvestAge, modifier = Modifier.size(36.dp).testTag("next_day")) {
+                    Icon(Icons.Default.ChevronRight, contentDescription = "Next day")
+                }
             }
         }
     }

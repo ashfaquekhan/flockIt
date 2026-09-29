@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Egg
@@ -73,11 +74,17 @@ fun FlocksScreen(
     onCreateFlock: (name: String, breed: String, startDate: String, startTime: String, placed: Int, transitMort: Int, harvestAge: Int) -> Unit,
     onDeleteFlock: (String) -> Unit,
     onToggleLock: (flockId: String, locked: Boolean) -> Unit,
+    onCloseFlock: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showCreate by remember { mutableStateOf(false) }
     var deletingFlock by remember { mutableStateOf<FlockEntity?>(null) }
-    val ordered = remember(flocks) { flocks.sortedBy { it.createdAt } }
+    var closingFlock by remember { mutableStateOf<FlockEntity?>(null) }
+    // Batch numbers follow creation order; the list shows running batches first, newest on top.
+    val seqOf = remember(flocks) { flocks.sortedBy { it.createdAt }.mapIndexed { i, f -> f.flockId to i + 1 }.toMap() }
+    val ordered = remember(flocks) {
+        flocks.sortedWith(compareBy<FlockEntity> { it.status == "closed" }.thenByDescending { it.startDate }.thenByDescending { it.createdAt })
+    }
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -86,7 +93,7 @@ fun FlocksScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back to farms", tint = BrandEmerald)
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back to farms", tint = MaterialTheme.colorScheme.primary)
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
@@ -136,12 +143,13 @@ fun FlocksScreen(
                         items(ordered.size) { idx ->
                             val flock = ordered[idx]
                             FlockCard(
-                                seq = idx + 1,
+                                seq = seqOf[flock.flockId] ?: (idx + 1),
                                 flock = flock,
                                 timeZone = timeZone,
                                 onOpen = { onOpenFlock(flock.flockId) },
                                 onDelete = { deletingFlock = flock },
-                                onToggleLock = { onToggleLock(flock.flockId, !flock.locked) }
+                                onToggleLock = { onToggleLock(flock.flockId, !flock.locked) },
+                                onClose = { closingFlock = flock }
                             )
                         }
                     }
@@ -171,6 +179,15 @@ fun FlocksScreen(
             }
         )
     }
+    closingFlock?.let { f ->
+        AlertDialog(
+            onDismissRequest = { closingFlock = null },
+            title = { Text("Close ${f.name}?") },
+            text = { Text("Saves every day of this batch to the Google Sheet, then marks it closed and read-only. You can still open it to look back.") },
+            confirmButton = { TextButton(onClick = { onCloseFlock(f.flockId); closingFlock = null }) { Text("Close batch") } },
+            dismissButton = { TextButton(onClick = { closingFlock = null }) { Text("Cancel") } }
+        )
+    }
     deletingFlock?.let { f ->
         AlertDialog(
             onDismissRequest = { deletingFlock = null },
@@ -189,7 +206,8 @@ private fun FlockCard(
     timeZone: String,
     onOpen: () -> Unit,
     onDelete: () -> Unit,
-    onToggleLock: () -> Unit
+    onToggleLock: () -> Unit,
+    onClose: () -> Unit = {}
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val curDay = remember(flock.startDate, timeZone) {
@@ -242,6 +260,11 @@ private fun FlockCard(
                             text = { Text(if (flock.locked) "Unlock (allow edits)" else "Lock (read-only)") },
                             leadingIcon = { Icon(if (flock.locked) Icons.Default.LockOpen else Icons.Default.Lock, contentDescription = null) },
                             onClick = { menuOpen = false; onToggleLock() }
+                        )
+                        if (!isClosed) DropdownMenuItem(
+                            text = { Text("Close batch (save)") },
+                            leadingIcon = { Icon(Icons.Default.Archive, contentDescription = null) },
+                            onClick = { menuOpen = false; onClose() }
                         )
                         DropdownMenuItem(
                             text = { Text("Delete flock") },

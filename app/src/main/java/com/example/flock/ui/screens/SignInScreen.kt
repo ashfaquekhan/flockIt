@@ -50,15 +50,10 @@ fun SignInScreen(
             verticalArrangement = Arrangement.Center
         ) {
             Text(
-                text = "🐔",
-                fontSize = 56.sp
-            )
-            Spacer(Modifier.height(10.dp))
-            Text(
                 text = "FlockIt",
                 style = MaterialTheme.typography.headlineMedium.copy(
                     fontWeight = FontWeight.Black,
-                    color = BrandEmerald
+                    color = MaterialTheme.colorScheme.primary
                 )
             )
             Spacer(Modifier.height(6.dp))
@@ -98,7 +93,7 @@ fun SignInScreen(
                     .testTag("btn_offline"),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Icon(Icons.Default.CloudOff, contentDescription = null, tint = BrandEmerald)
+                Icon(Icons.Default.CloudOff, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Text(
                     "   Use offline (local only)",
                     color = BrandEmerald,

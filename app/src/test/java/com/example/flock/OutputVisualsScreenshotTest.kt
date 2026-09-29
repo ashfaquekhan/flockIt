@@ -17,11 +17,6 @@ import com.example.flock.engine.CompanyStandard
 import com.example.flock.engine.PhysiologicalEngine
 import com.example.flock.network.HourPoint
 import com.example.flock.network.WeatherResult
-import com.example.flock.ui.screens.OutputData
-import com.example.flock.ui.screens.TagLegend
-import com.example.flock.ui.screens.Topic
-import com.example.flock.ui.screens.TopicTiles
-import com.example.flock.ui.screens.TopicView
 import com.example.ui.theme.MyApplicationTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Rule
@@ -36,7 +31,7 @@ import kotlin.math.sin
 /** Renders every Output topic with a plausible day-24 flock, to eyeball layout and charts. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(qualifiers = "w412dp-h5200dp-xxhdpi", sdk = [34])
+@Config(qualifiers = "w412dp-h14000dp-mdpi", sdk = [34])
 class OutputVisualsScreenshotTest {
 
     @get:Rule val rule = createComposeRule()
@@ -99,30 +94,31 @@ class OutputVisualsScreenshotTest {
         HourPoint("${day}T${String.format("%02d", h % 24)}:00", t, 95.0 - (t - 24) * 3.5)
     }
 
-    private fun shoot(name: String, t: Topic, day: Int = 24) {
+    private fun shoot(name: String, day: Int, fedHoursAgo: Double?, bags: Double, localHour: Int = 11) {
         val r = rows(day)
-        val data = OutputData(flock, farm, r.last(), r, feedTypes, weather, hourly, isToday = true)
+        // pick a time zone where it is daytime now, so the birds are awake in the render
+        val utcH = java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC).hour
+        val off = ((localHour - utcH + 36) % 24 - 12).coerceIn(-12, 14)
+        val farm = farm.copy(timeZone = java.time.ZoneOffset.ofHours(off).id)
+        val ctx = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        ctx.getSharedPreferences("flockit_feedlog", android.content.Context.MODE_PRIVATE).edit().clear().commit()
+        if (fedHoursAgo != null) com.example.flock.ui.screens.FeedLog.add(ctx, "f", bags, System.currentTimeMillis() - (fedHoursAgo * 3600_000).toLong())
         rule.mainClock.autoAdvance = false
         rule.setContent {
             MyApplicationTheme {
-                Box(Modifier.background(MaterialTheme.colorScheme.background).padding(12.dp)) {
-                    Column {
-                        TagLegend()
-                        TopicTiles(data, t) {}
-                        TopicView(data, t)
-                    }
+                Box(Modifier.background(MaterialTheme.colorScheme.background)) {
+                    com.example.flock.ui.screens.OutputScreen(
+                        flock = flock, farm = farm, entry = r.last(), dailyRows = r,
+                        feedStockSummary = com.example.flock.data.FeedStockSummary(0.0, 0.0, 0.0, emptyMap()),
+                        feedTypes = feedTypes, weather = weather, hourly = hourly, isToday = true, onCloseBatch = {}
+                    )
                 }
             }
         }
-        rule.mainClock.advanceTimeBy(700)
-        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/topic_$name.png")
+        rule.mainClock.advanceTimeBy(1500)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/page_$name.png")
     }
 
-    @Test fun vent() = shoot("vent", Topic.VENT)
-    @Test fun env() = shoot("env", Topic.ENV)
-    @Test fun birds() = shoot("birds", Topic.BIRDS)
-    @Test fun feed() = shoot("feed", Topic.FEED)
-    @Test fun stock() = shoot("stock", Topic.STOCK)
-    @Test fun feed9() = shoot("feed9", Topic.FEED, 9)
-    @Test fun vent9() = shoot("vent9", Topic.VENT, 9)
+    @Test fun day24() = shoot("d24", 24, 2.0, 24.0)
+    @Test fun day9() = shoot("d9", 9, 9.0, 6.0, 15)
 }

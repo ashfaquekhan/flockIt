@@ -193,7 +193,7 @@ private fun BinRow(title: String, subtitle: String, onRestore: () -> Unit, onPur
                 Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
             IconButton(onClick = onRestore) {
-                Icon(Icons.Default.Restore, contentDescription = "Restore", tint = BrandEmerald)
+                Icon(Icons.Default.Restore, contentDescription = "Restore", tint = MaterialTheme.colorScheme.primary)
             }
             IconButton(onClick = onPurge) {
                 Icon(Icons.Default.DeleteForever, contentDescription = "Delete forever", tint = StatusCrit)

@@ -80,7 +80,7 @@ fun HouseFloorPlan(
                         text = if (fullHouse) "Full House (${usableLength.toInt()} ft)" else "Barricade at $barricadeFt ft",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontWeight = FontWeight.Bold,
-                            color = BrandEmerald
+                            color = MaterialTheme.colorScheme.primary
                         ),
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                     )
@@ -121,8 +121,8 @@ fun HouseFloorPlan(
                     }
                 }
                 Text(
-                    text = "🐣 Chicks kept here",
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = BrandEmerald),
+                    text = "Birds kept here",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary),
                     modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp)
                 )
                 if (!fullHouse) {

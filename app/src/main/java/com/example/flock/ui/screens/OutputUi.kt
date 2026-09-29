@@ -2,6 +2,7 @@ package com.example.flock.ui.screens
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -66,8 +67,9 @@ fun vi(value: Int?, kind: ValueKind, tag: String? = null) = V(Fmt.i(value), if (
 fun ValueChip(x: V, modifier: Modifier = Modifier, big: Boolean = false) {
     val k = if (x.text == "—") ValueKind.NEUTRAL else x.kind
     val col = kindColor(k)
-    Row(modifier.height(IntrinsicSize.Min).clip(RoundedCornerShape(8.dp)).background(kindWash(k))) {
-        Box(Modifier.width(4.dp).fillMaxHeight().background(col))
+    Row(modifier.height(IntrinsicSize.Min).clip(RoundedCornerShape(8.dp)).background(kindWash(k))
+        .border(1.dp, col.copy(alpha = 0.35f), RoundedCornerShape(8.dp))) {
+        Box(Modifier.width(2.dp).fillMaxHeight().background(col.copy(alpha = 0.8f)))
         Column(Modifier.padding(horizontal = 6.dp, vertical = 4.dp)) {
             Text(x.tag ?: kindTag(x.kind).ifEmpty { "—" }, maxLines = 1,
                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp), color = col.copy(alpha = 0.9f))

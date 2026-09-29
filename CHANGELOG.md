@@ -8,6 +8,36 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v31 — 2026-09-30 · One-page Output, coop animation, pan patterns
+- **One page, no topic tabs**: Overview (coop animation, feed entry, alerts, key numbers, growth),
+  then Feed, Ventilation, Mortality and Environment as you scroll. Close batch at the bottom.
+- **Coop animation** (small 3-plane box on black, only the floor and birds move): 3–4 birds with their
+  own character (curious, big eater, lazy, chatty). Their weights are spread by the flock's CV around the
+  live average weight; age changes size, colour, comb and behaviour (chicks busy, big broilers rest).
+  Lights follow the lighting programme by the clock (dark 23:00–05:00 at 18 h), and the birds sleep in the
+  dark. Floor shows a 0.5 m grid and the 2 m reach ring. In-box text: birds, weight, CV, air, RH, feels-like,
+  wind chill, static pressure, litter temperature and moisture, body temperature, water temperature and pH
+  (ideal values where there is no sensor), feeder level.
+- **Feeding log**: type the bags poured and press Enter. The one feeder in the animation fills and empties
+  at the flock's real intake rate (company curve at the flock's weight, eaten during the light hours);
+  when it runs dry the birds get hungry step by step — crowding the feeder, calling, then slumping.
+- **Farm top view**: every feeder line (hopper → pans → motor) and drinker line at the farm's aspect ratio,
+  the brooding barricade, and which pans are on or off today. Scrolls sideways for long houses.
+- **Feeder line length = pans × 0.76 m (2.5 ft)**, not the house length; lines spread evenly across the
+  width with drinkers between feeders.
+- **Pan on/off patterns**: all open, 2 on · 1 off, 1 on · 1 off, 1 on · 2 off — the app picks the most open
+  pattern that keeps every bird within 2 m of feed and ≤ 80 birds per pan (45 above 3.5 kg), then checks the
+  feed needed to reach the last open pan (auger tube + pans) against one feeding, else the day's ration;
+  if nothing fits it says to pour the far pans by hand.
+- **Reception deaths fixed**: they only reduce the entry flock. Mortality % and livability now use the
+  entry flock (placed − reception), and the Output no longer adds reception deaths to mortality.
+- **Close batch**: saves every unsent day to the sheet, then marks the batch closed and read-only locally
+  and in the sheet. Lock / unlock now also reach the sheet (before, a refresh could undo them).
+- **Flock list**: running batches first, newest on top (batch numbers stay in creation order).
+- **Day bar**: < and > buttons at the ends of the day slider.
+- **Matte black glass UI**: black background, transparent panels with thin white outlines, light value
+  colours; emojis removed throughout.
+
 ## v30 — 2026-09-29 · Clearer topics, feeding plan, sheet-first refresh — **DB v13 (no wipe)**
 - **Sheet edits are never skipped**: on every refresh the Google Sheet's day rows replace the phone's
   copy (except a day saved on the phone that hasn't reached the sheet yet — it is kept and re-sent).

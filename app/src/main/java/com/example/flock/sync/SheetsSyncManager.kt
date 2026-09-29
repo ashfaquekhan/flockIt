@@ -467,6 +467,25 @@ class SheetsSyncManager(
             } catch (e: Exception) { Result.failure(e) }
         }
 
+    /** Upserts a flock row by flockId (status, lock, counts), else appends it. */
+    suspend fun upsertFlock(spreadsheetId: String, flock: FlockEntity): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            val authHeader = authManager.getAuthHeader() ?: return@withContext Result.success(Unit)
+            try {
+                val keyRes = GoogleApiClientProvider.sheetsApi.batchGet(authHeader, spreadsheetId, listOf(appendRange("Flocks", "A2:A")))
+                val rows = keyRes.body()?.valueRanges?.getOrNull(0)?.values ?: emptyList()
+                val rowNum = rows.indexOfFirst { it.s(0) == flock.flockId }.let { if (it >= 0) it + 2 else -1 }
+                val ok = if (rowNum > 0) {
+                    GoogleApiClientProvider.sheetsApi.batchUpdateValues(
+                        authHeader, spreadsheetId,
+                        BatchUpdateValuesRequest(valueInputOption = RAW,
+                            data = listOf(ValueRange(range = a1("Flocks", "A$rowNum"), values = listOf(flockToRow(flock)))))
+                    ).isSuccessful
+                } else appendRows(authHeader, spreadsheetId, "Flocks", listOf(flockToRow(flock)))
+                if (ok) Result.success(Unit) else Result.failure(Exception("Flocks write failed"))
+            } catch (e: Exception) { Result.failure(e) }
+        }
+
     /** Upserts a single day's inputs into the DailyData tab (find row by FlockId+Day, else append). */
     suspend fun pushDayEntry(spreadsheetId: String, day: DailyDataEntity): Result<Unit> =
         withContext(Dispatchers.IO) {

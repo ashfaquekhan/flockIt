@@ -3,7 +3,7 @@ package com.example.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // Primary Domain Palette
-val BrandEmerald = Color(0xFF1B7A63)
+val BrandEmerald = Color(0xFF24463C)   // dark glass green for filled buttons (white text)
 val BrandDarkEmerald = Color(0xFF0F5C4A)
 val BrandWashLight = Color(0xFFE4F0EB)
 val BrandWashDark = Color(0xFF16302A)
@@ -42,29 +42,34 @@ val MutedLight = Color(0xFF7C8378)
 val LineLight = Color(0xFFE2DED3)
 
 // Dark Backgrounds & Neutrals — neutral charcoal, calm and clearly legible
-val GroundDark = Color(0xFF101214)
-val SurfaceDark = Color(0xFF181B1E)
-val Surface2Dark = Color(0xFF212529)
-val SunkDark = Color(0xFF0B0D0F)
-val InkDark = Color(0xFFE7EAED)      // primary text — high contrast
-val Ink2Dark = Color(0xFFAEB4BA)     // secondary text — clearly visible
+val GroundDark = Color(0xFF040404)   // matte black
+val SurfaceDark = Color(0xFF0B0B0C)
+val Surface2Dark = Color(0xFF141416)
+val SunkDark = Color(0xFF000000)
+val InkDark = Color(0xFFF2F2F0)      // primary text — high contrast
+val Ink2Dark = Color(0xFFB9BCBF)     // secondary text — clearly visible
 val MutedDark = Color(0xFF757C83)    // captions / hints
-val LineDark = Color(0xFF2A2F34)     // hairlines / outlines
+val LineDark = Color(0x55FFFFFF)     // thin white outline     // hairlines / outlines
 
 // Calm accent for dark mode (not flashy) — a muted teal-emerald
-val AccentDark = Color(0xFF4CA98E)
-val AccentDarkWash = Color(0xFF15302A)
+val AccentDark = Color(0xFFD9E8E1)   // light, near-white accent
+val AccentDarkWash = Color(0x1FFFFFFF)
 
 // Value provenance — keep the three kinds visually distinct so they're never confused:
-val ValuePresent = Color(0xFF46B98C)     // measured / actual (you entered it) — green
-val ValuePresentWash = Color(0xFF15332A)
-val ValuePredicted = Color(0xFFD9A441)   // projected estimate (no sample yet) — amber
-val ValuePredictedWash = Color(0xFF33290F)
-val ValueIdeal = Color(0xFF6FA8DA)       // breed-standard target — blue
-val ValueIdealWash = Color(0xFF14263A)
-val ValueCommercial = Color(0xFFB08CF0)  // company / commercial standard — violet
-val ValueCommercialWash = Color(0xFF2A2140)
-val ValueMin = Color(0xFF4DD9E6)        // lower limit — ice cyan
-val ValueMinWash = Color(0xFF10303A)
-val ValueMax = Color(0xFFF0628C)        // upper limit — rose
-val ValueMaxWash = Color(0xFF3A1522)
+val ValuePresent = Color(0xFF8FE3BE)     // measured / actual (you entered it) — green
+val ValuePresentWash = Color(0x148FE3BE)
+val ValuePredicted = Color(0xFFF2CF8A)   // projected estimate (no sample yet) — amber
+val ValuePredictedWash = Color(0x14F2CF8A)
+val ValueIdeal = Color(0xFFA9CCF0)       // breed-standard target — blue
+val ValueIdealWash = Color(0x14A9CCF0)
+val ValueCommercial = Color(0xFFCDB6F7)  // company / commercial standard — violet
+val ValueCommercialWash = Color(0x14CDB6F7)
+val ValueMin = Color(0xFF9CEBF2)        // lower limit — ice cyan
+val ValueMinWash = Color(0x149CEBF2)
+val ValueMax = Color(0xFFF7A6BF)        // upper limit — rose
+val ValueMaxWash = Color(0x14F7A6BF)
+
+// Glass panels on matte black: transparent fill, thin white outline, faint top highlight.
+val GlassFill = Color(0x0DFFFFFF)
+val GlassFillTop = Color(0x1AFFFFFF)
+val GlassLine = Color(0x4DFFFFFF)

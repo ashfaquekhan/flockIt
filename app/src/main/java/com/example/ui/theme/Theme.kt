@@ -9,9 +9,9 @@ import androidx.compose.ui.graphics.Color
 
 private val DarkColorScheme = darkColorScheme(
     primary = AccentDark,
-    onPrimary = Color(0xFF04231B),
+    onPrimary = Color(0xFF050505),
     primaryContainer = AccentDarkWash,
-    onPrimaryContainer = Color(0xFF8FD4BF),
+    onPrimaryContainer = Color(0xFFF2F2F0),
     secondary = Color(0xFF7FA6BC),
     onSecondary = Color(0xFF06222E),
     secondaryContainer = Color(0xFF16242B),
@@ -28,7 +28,7 @@ private val DarkColorScheme = darkColorScheme(
     onSurfaceVariant = Ink2Dark,
     surfaceContainerHighest = Surface2Dark,
     outline = LineDark,
-    outlineVariant = Color(0xFF343A40),
+    outlineVariant = Color(0x33FFFFFF),
     error = Color(0xFFD9705F),
     onError = Color(0xFF3A0906),
     errorContainer = Color(0xFF33201C),
