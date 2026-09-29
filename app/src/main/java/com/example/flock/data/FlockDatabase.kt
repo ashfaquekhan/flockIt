@@ -10,6 +10,18 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
+/** v12 → v13: godown + brooding-equipment farm settings, and the per-row "dirty" (unsynced) flag. */
+val MIGRATION_12_13 = object : androidx.room.migration.Migration(12, 13) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE farm ADD COLUMN godownBags REAL NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE farm ADD COLUMN manualFeeders INTEGER NOT NULL DEFAULT 150")
+        db.execSQL("ALTER TABLE farm ADD COLUMN manualDrinkers INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE farm ADD COLUMN nipplesPerLine INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE farm ADD COLUMN panLipCm REAL NOT NULL DEFAULT 6")
+        db.execSQL("ALTER TABLE daily_data ADD COLUMN dirty INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 @Database(
     entities = [
         StandardsEntity::class,
@@ -21,7 +33,7 @@ import kotlinx.coroutines.launch
         DailyDataEntity::class,
         TaskEntity::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 abstract class FlockDatabase : RoomDatabase() {
@@ -46,6 +58,7 @@ abstract class FlockDatabase : RoomDatabase() {
                     FlockDatabase::class.java,
                     "flockit_database"
                 )
+                    .addMigrations(MIGRATION_12_13)
                     .fallbackToDestructiveMigration()
                     .addCallback(FlockDatabaseCallback(scope))
                     .build()
@@ -55,6 +68,7 @@ abstract class FlockDatabase : RoomDatabase() {
         }
     }
 
+    /** v13 adds columns only, so existing flocks are kept (no wipe / re-pull). */
     private class FlockDatabaseCallback(
         private val scope: CoroutineScope
     ) : RoomDatabase.Callback() {

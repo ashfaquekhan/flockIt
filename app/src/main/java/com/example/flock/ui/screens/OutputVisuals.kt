@@ -81,102 +81,6 @@ private fun LegendSwatch(color: Color, label: String, dashed: Boolean, thick: Bo
     }
 }
 
-// =================================== KPI bars ===================================
-
-enum class Better { HIGHER, LOWER, CLOSER }
-
-data class Kpi(
-    val label: String, val unit: String, val actual: Double?, val actualKind: ValueKind,
-    val company: Double?, val ideal: Double?, val better: Better, val decimals: Int,
-    val settling: Boolean = false, val idealLabel: String = "Ideal", val points: Boolean = false
-)
-
-private fun status(k: Kpi): Pair<String, Color> {
-    val grey = Color(0xFF9AA0A6)
-    val a = k.actual ?: return "not logged" to grey
-    val c = k.company ?: return "—" to grey
-    if (k.settling) return "settling" to grey
-    val pct = if (c != 0.0) (a - c) / c * 100 else 0.0
-    // percentages (mortality) are compared in points, not "% of a %"
-    val txt = if (k.points) Fmt.signed(a - c, 2) + " pt" else Fmt.signed(pct, 1) + "%"
-    val col = when (k.better) {
-        Better.HIGHER -> if (pct >= -5) OkColor else if (pct >= -10) StatusWarn else StatusCrit
-        Better.LOWER -> if (pct <= 5) OkColor else if (pct <= 10) StatusWarn else StatusCrit
-        Better.CLOSER -> if (kotlin.math.abs(pct) <= 10) OkColor else if (kotlin.math.abs(pct) <= 20) StatusWarn else StatusCrit
-    }
-    return txt to col
-}
-
-/** Present vs Commercial vs Ideal, each KPI with a bullet bar (±5 % band around Commercial). */
-@Composable
-fun KpiCard(title: String, kpis: List<Kpi>, day: Int) {
-    OutputCard(title = title) {
-        kpis.forEach { KpiRow(it) }
-        Text(
-            if (CompanyStandard.toleranceApplies(day)) "Shaded band = commercial ±5.0% (applies from day 28)."
-            else "Shaded band = commercial ±5.0%; the company applies it from day 28.",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
-private fun KpiRow(k: Kpi) {
-    val (stTxt, stCol) = status(k)
-    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(k.label, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
-            if (k.unit.isNotEmpty()) Text("  " + k.unit, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.weight(1f))
-            Surface(color = stCol.copy(alpha = 0.18f), shape = RoundedCornerShape(8.dp)) {
-                Text(stTxt, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, color = stCol, fontFamily = FontFamily.Monospace))
-            }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TaggedValue(Fmt.n(k.actual, k.decimals), if (k.actual == null) ValueKind.NEUTRAL else k.actualKind, kindTag(k.actualKind), Modifier.weight(1f), big = true)
-            TaggedValue(Fmt.n(k.company, k.decimals), ValueKind.COMMERCIAL, "Commercial", Modifier.weight(1f))
-            TaggedValue(Fmt.n(k.ideal, k.decimals), ValueKind.IDEAL, k.idealLabel, Modifier.weight(1f))
-        }
-        BulletBar(k)
-    }
-}
-
-/** A value with its coloured tag above it. */
-@Composable
-fun TaggedValue(value: String, kind: ValueKind, tag: String, modifier: Modifier = Modifier, big: Boolean = false) {
-    Column(modifier) {
-        Text(tag, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = kindColor(kind).copy(alpha = 0.85f), maxLines = 1)
-        Text(value, maxLines = 1, color = kindColor(kind),
-            style = (if (big) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium)
-                .copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = if (big) 19.sp else 15.sp))
-    }
-}
-
-/** Commercial ±15 % scale: shaded ±5 % tolerance, Commercial tick, Ideal tick, present dot. */
-@Composable
-private fun BulletBar(k: Kpi) {
-    val c = k.company ?: return
-    val track = MaterialTheme.colorScheme.surfaceVariant
-    val dotC = kindColor(k.actualKind)
-    Canvas(Modifier.fillMaxWidth().height(16.dp)) {
-        val span = max(kotlin.math.abs(c) * 0.15, 0.05)
-        val lo = c - span; val hi = c + span
-        fun x(v: Double) = ((v.coerceIn(lo, hi) - lo) / (hi - lo) * size.width).toFloat()
-        val mid = size.height / 2
-        drawRoundRect(track, size = Size(size.width, size.height), cornerRadius = androidx.compose.ui.geometry.CornerRadius(8f, 8f))
-        val t0 = x(c * 0.95); val t1 = x(c * 1.05)
-        drawRect(CompanyColor.copy(alpha = 0.25f), topLeft = Offset(min(t0, t1), 0f), size = Size(kotlin.math.abs(t1 - t0), size.height))
-        drawLine(CompanyColor, Offset(x(c), 0f), Offset(x(c), size.height), strokeWidth = 5f)
-        k.ideal?.let { drawLine(ValueIdeal, Offset(x(it), 2f), Offset(x(it), size.height - 2f), strokeWidth = 4f) }
-        k.actual?.let {
-            val clipped = it < lo || it > hi
-            drawCircle(dotC, radius = size.height / 2.1f, center = Offset(x(it), mid))
-            if (clipped) drawCircle(Color.White, radius = size.height / 5f, center = Offset(x(it), mid))
-        }
-    }
-}
-
 // =================================== charts ===================================
 
 private enum class Style { ACTUAL, IDEAL, COMPANY }
@@ -211,7 +115,7 @@ private fun StandardChart(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             lines.forEach { l ->
                 val v = l.valueAt(sel)
-                TaggedValue(Fmt.n(v, decimals), if (v == null) ValueKind.NEUTRAL else kindOf(l.style), tagOf(l.style), Modifier.weight(1f))
+                ValueChip(V(Fmt.n(v, decimals), if (v == null) ValueKind.NEUTRAL else kindOf(l.style), tagOf(l.style)), Modifier.weight(1f))
             }
         }
         Canvas(
@@ -365,70 +269,4 @@ fun FeedCharts(d: OutputData) {
         Text("Feed entered on a day is what the birds ate the day before, so the present line runs one day behind.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
-}
-
-// =================================== ventilation helpers ===================================
-
-@Composable
-fun MiniStat(label: String, value: String, kind: ValueKind = ValueKind.NEUTRAL) {
-    Column {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
-            color = if (kind == ValueKind.NEUTRAL) MaterialTheme.colorScheme.onSurface else kindColor(kind))
-    }
-}
-
-/** Horizontal scale from comfort − 6 to comfort + 8 °C: cold / comfortable (±2) / warm / hot. */
-@Composable
-fun FeltGauge(comfort: Double, felt: Double, air: Double) {
-    val labelArgb = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
-    val ink = MaterialTheme.colorScheme.onSurface
-    Canvas(Modifier.fillMaxWidth().height(50.dp)) {
-        val lo = comfort - 6; val hi = comfort + 8
-        val barTop = 6f; val barH = 20f
-        fun x(v: Double) = ((v.coerceIn(lo, hi) - lo) / (hi - lo) * size.width).toFloat()
-        val zones = listOf(lo to comfort - 2 to ValueIdeal.copy(alpha = 0.55f), comfort - 2 to comfort + 2 to OkColor.copy(alpha = 0.7f),
-            comfort + 2 to comfort + 4 to StatusWarn.copy(alpha = 0.7f), comfort + 4 to hi to StatusCrit.copy(alpha = 0.7f))
-        zones.forEach { (range, col) -> drawRect(col, Offset(x(range.first), barTop), Size(x(range.second) - x(range.first), barH)) }
-        drawLine(ink.copy(alpha = 0.6f), Offset(x(air), barTop - 4), Offset(x(air), barTop + barH + 4), strokeWidth = 2f,
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f)))
-        drawCircle(ink, 10f, Offset(x(felt), barTop + barH / 2))
-        drawCircle(Color.White, 4.5f, Offset(x(felt), barTop + barH / 2))
-        val lbl = Paint().apply { color = labelArgb; textSize = 26f; isAntiAlias = true; textAlign = Paint.Align.CENTER }
-        drawContext.canvas.nativeCanvas.drawText("cold", x(comfort - 4), size.height - 2f, lbl)
-        drawContext.canvas.nativeCanvas.drawText("comfort ${Fmt.n(comfort, 1)}°", x(comfort), size.height - 2f, lbl)
-        drawContext.canvas.nativeCanvas.drawText("hot", x(comfort + 6), size.height - 2f, lbl)
-    }
-}
-
-/** Felt temperature (line) against the comfort band, with fans running as bars underneath. */
-@Composable
-fun Next24Chart(pts: List<HourPoint>, felt: List<Double>, fans: List<Double>, comfort: Double, fanCount: Int) {
-    val labelArgb = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
-    val bg = MaterialTheme.colorScheme.surfaceVariant
-    Text("Next 24 hours", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-    Canvas(Modifier.fillMaxWidth().height(160.dp).background(bg, RoundedCornerShape(12.dp)).padding(10.dp)) {
-        val padL = 44f; val padB = 24f
-        val gw = size.width - padL
-        val topH = (size.height - padB) * 0.68f
-        val barTop = topH + 8f; val barH = size.height - padB - barTop
-        val lo = min(comfort - 4, felt.minOrNull() ?: comfort); val hi = max(comfort + 6, felt.maxOrNull() ?: comfort)
-        fun px(i: Int) = padL + i.toFloat() / (pts.size - 1).coerceAtLeast(1) * gw
-        fun py(v: Double) = (topH - ((v - lo) / (hi - lo)) * topH).toFloat()
-        drawRect(OkColor.copy(alpha = 0.18f), Offset(padL, py(comfort + 2)), Size(gw, py(comfort - 2) - py(comfort + 2)))
-        val path = Path().apply { felt.forEachIndexed { i, v -> if (i == 0) moveTo(px(i), py(v)) else lineTo(px(i), py(v)) } }
-        drawPath(path, ValuePredicted, style = Stroke(width = 4f, cap = StrokeCap.Round))
-        val bw = gw / pts.size * 0.7f
-        fans.forEachIndexed { i, f ->
-            val h = (f / fanCount).toFloat() * barH
-            drawRect(ValueIdeal.copy(alpha = 0.8f), Offset(px(i) - bw / 2, barTop + barH - h), Size(bw, h))
-        }
-        val lbl = Paint().apply { color = labelArgb; textSize = 25f; isAntiAlias = true }
-        drawContext.canvas.nativeCanvas.drawText("${Fmt.n(hi, 1)}°", 0f, py(hi) + 10f, lbl)
-        drawContext.canvas.nativeCanvas.drawText("${Fmt.n(lo, 1)}°", 0f, py(lo), lbl)
-        drawContext.canvas.nativeCanvas.drawText("fans", 0f, barTop + barH, lbl)
-        for (i in pts.indices step 6) drawContext.canvas.nativeCanvas.drawText(String.format("%02d:00", pts[i].hour), px(i) - 20f, size.height, lbl)
-    }
-    Text("Amber line: what birds feel (projected) · green band: comfortable · blue bars: fans running.",
-        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }

@@ -41,7 +41,8 @@ class OutputVisualsScreenshotTest {
 
     @get:Rule val rule = createComposeRule()
 
-    private val farm = FarmEntity(spreadsheetId = "t", feedBagKg = 50.0)
+    private val farm = FarmEntity(spreadsheetId = "t", feedBagKg = 50.0, feederLines = 4, feederLineBags = 3, pansPerFeederLine = 60,
+        manualFeeders = 150, manualDrinkers = 180, nipplesPerLine = 290, godownBags = 600.0)
     private val flock = FlockEntity(spreadsheetId = "t", flockId = "f", name = "F", startDate = "2026-09-04", birdsPlaced = 15700, receptionMort = 40)
     private val feedTypes = listOf(
         FeedTypeEntity(spreadsheetId = "t", code = "B1", name = "Starter", bagKg = 50.0, sortOrder = 1),
@@ -49,6 +50,8 @@ class OutputVisualsScreenshotTest {
         FeedTypeEntity(spreadsheetId = "t", code = "B3", name = "Finisher", bagKg = 50.0, sortOrder = 3)
     )
     private fun date(d: Int) = java.time.LocalDate.parse("2026-09-04").plusDays(d.toLong()).toString()
+
+    private fun open(d: Int) = if (d >= 11) 1.0 else 0.3 + 0.7 * d / 11.0
 
     private fun rows(upTo: Int): List<DailyDataEntity> {
         val placed = 15700
@@ -81,7 +84,8 @@ class OutputVisualsScreenshotTest {
                 totalFeedKg = feed, feedPerBird = feed * 1000 / live,
                 totalWaterL = feed * 1.8, waterPerBird = feed * 1.8 * 1000 / live, waterHighL = feed * 1.8 * 1.18, waterLowL = feed * 1.8 * 0.85,
                 drinkerFlowLHrLine = feed * 1.8 / 5 / 16, drinkerPressureIn = 8.0,
-                densityKgM2 = live * bw / 1000 / (299 * 39 * 0.0929), ftPerBird = 299.0 * 39 / live, minFtPerBird = 0.8, occupiedFt2 = 299.0 * 39,
+                densityKgM2 = live * bw / 1000 / (299 * 39 * 0.0929 * open(d)), ftPerBird = 299.0 * 39 * open(d) / live, minFtPerBird = 0.8, occupiedFt2 = 299.0 * 39 * open(d),
+                barricadeFt = if (open(d) < 1.0) (299 * open(d)).toInt() else 0,
                 setTemp = 24.0, tempIdeal = 24.0, tempMin = 22.5, tempMax = 25.5, rhIdeal = 60.0, lightHours = 18.0,
                 measuredNh3 = if (d == 24) 12.0 else null, dieselCansUsed = if (d % 2 == 0) 1.5 else 0.0
             )
@@ -95,8 +99,8 @@ class OutputVisualsScreenshotTest {
         HourPoint("${day}T${String.format("%02d", h % 24)}:00", t, 95.0 - (t - 24) * 3.5)
     }
 
-    private fun shoot(name: String, t: Topic) {
-        val r = rows(24)
+    private fun shoot(name: String, t: Topic, day: Int = 24) {
+        val r = rows(day)
         val data = OutputData(flock, farm, r.last(), r, feedTypes, weather, hourly, isToday = true)
         rule.mainClock.autoAdvance = false
         rule.setContent {
@@ -119,4 +123,6 @@ class OutputVisualsScreenshotTest {
     @Test fun birds() = shoot("birds", Topic.BIRDS)
     @Test fun feed() = shoot("feed", Topic.FEED)
     @Test fun stock() = shoot("stock", Topic.STOCK)
+    @Test fun feed9() = shoot("feed9", Topic.FEED, 9)
+    @Test fun vent9() = shoot("vent9", Topic.VENT, 9)
 }

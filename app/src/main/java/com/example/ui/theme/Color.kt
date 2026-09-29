@@ -64,3 +64,7 @@ val ValueIdeal = Color(0xFF6FA8DA)       // breed-standard target — blue
 val ValueIdealWash = Color(0xFF14263A)
 val ValueCommercial = Color(0xFFB08CF0)  // company / commercial standard — violet
 val ValueCommercialWash = Color(0xFF2A2140)
+val ValueMin = Color(0xFF4DD9E6)        // lower limit — ice cyan
+val ValueMinWash = Color(0xFF10303A)
+val ValueMax = Color(0xFFF0628C)        // upper limit — rose
+val ValueMaxWash = Color(0xFF3A1522)

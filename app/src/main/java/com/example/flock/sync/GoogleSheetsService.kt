@@ -105,7 +105,11 @@ interface GoogleSheetsApi {
     suspend fun batchGet(
         @Header("Authorization") authHeader: String,
         @Path("spreadsheetId") spreadsheetId: String,
-        @Query("ranges") ranges: List<String>
+        @Query("ranges") ranges: List<String>,
+        // Real cell values, not the displayed text: a number typed in the sheet as "1,200" or
+        // shown with a format still reads correctly. Dates stay as text.
+        @Query("valueRenderOption") valueRenderOption: String = "UNFORMATTED_VALUE",
+        @Query("dateTimeRenderOption") dateTimeRenderOption: String = "FORMATTED_STRING"
     ): Response<BatchGetValuesResponse>
 
     @POST("v4/spreadsheets/{spreadsheetId}/values:batchUpdate")

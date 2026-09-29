@@ -74,6 +74,7 @@ class FlockRepository(
     suspend fun refreshFromCloud(spreadsheetId: String) = withContext(Dispatchers.IO) {
         val s = sync ?: return@withContext
         if (!s.isOnline()) return@withContext
+        resendDirtyDays(spreadsheetId)
         val res = s.pullFarmData(spreadsheetId)
         if (res.isSuccess) {
             flockDao.getAllFlocksList(spreadsheetId).forEach { recomputeFlock(spreadsheetId, it.flockId) }
@@ -83,12 +84,38 @@ class FlockRepository(
     }
 
     /** Runs a verified cloud write and records a user-visible note. No-op when offline. */
-    private suspend fun cloudPush(label: String, block: suspend (SheetsSyncManager) -> Result<Unit>) {
-        val s = sync ?: return
-        if (!s.isOnline()) return
+    private suspend fun cloudPush(label: String, block: suspend (SheetsSyncManager) -> Result<Unit>): Boolean {
+        val s = sync ?: return false
+        if (!s.isOnline()) {
+            _syncNote.value = "⚠ $label saved on the phone — it will be sent to the Google Sheet when online"
+            return false
+        }
         val r = try { block(s) } catch (e: Exception) { Result.failure(e) }
         _syncNote.value = if (r.isSuccess) "✓ $label synced to Google Sheet"
             else "⚠ $label saved locally but not synced: ${r.exceptionOrNull()?.message ?: "error"}"
+        return r.isSuccess
+    }
+
+    /** Saves a day row as "not yet sent", pushes it, and clears the flag once the sheet has it. */
+    private suspend fun saveAndPushDay(label: String, spreadsheetId: String, row: DailyDataEntity) {
+        dailyDataDao.insertOrUpdateDay(row.copy(dirty = true))
+        recomputeFlock(spreadsheetId, row.flockId)
+        if (cloudPush(label) { it.pushDayEntry(spreadsheetId, row) }) clearDirty(spreadsheetId, row.flockId, row.dayNumber)
+    }
+
+    private suspend fun clearDirty(spreadsheetId: String, flockId: String, day: Int) {
+        dailyDataDao.getDayEntry(spreadsheetId, flockId, day)?.let { if (it.dirty) dailyDataDao.insertOrUpdateDay(it.copy(dirty = false)) }
+    }
+
+    /** Re-sends day rows saved while offline (or whose push failed). */
+    private suspend fun resendDirtyDays(spreadsheetId: String) {
+        val s = sync ?: return
+        if (!s.isOnline()) return
+        flockDao.getAllFlocksList(spreadsheetId).forEach { f ->
+            dailyDataDao.getDailyDataList(spreadsheetId, f.flockId).filter { it.dirty }.forEach { row ->
+                if (s.pushDayEntry(spreadsheetId, row).isSuccess) clearDirty(spreadsheetId, row.flockId, row.dayNumber)
+            }
+        }
     }
 
     suspend fun registerFarm(
@@ -252,9 +279,7 @@ class FlockRepository(
                 sampleEntered = false, committed = false, savedFields = "",
                 updatedAt = System.currentTimeMillis(), updatedBy = userEmail
             )
-            dailyDataDao.insertOrUpdateDay(cleared)
-            recomputeFlock(spreadsheetId, flockId)
-            cloudPush("Day $dayNumber reverted") { it.pushDayEntry(spreadsheetId, cleared) }
+            saveAndPushDay("Day $dayNumber reverted", spreadsheetId, cleared)
             Result.success(Unit)
         }
 
@@ -457,10 +482,8 @@ class FlockRepository(
             updatedBy = userEmail
         )
 
-        dailyDataDao.insertOrUpdateDay(toSave)
-        recomputeFlock(spreadsheetId, flockId)
-        // Push the day's inputs to the sheet (upsert by FlockId+Day).
-        cloudPush("Day ${dayNumber}") { it.pushDayEntry(spreadsheetId, toSave) }
+        // Push the day's inputs to the sheet (upsert by FlockId+Day); kept as "not yet sent" until it lands.
+        saveAndPushDay("Day $dayNumber", spreadsheetId, toSave)
         Result.success(Unit)
     }
 

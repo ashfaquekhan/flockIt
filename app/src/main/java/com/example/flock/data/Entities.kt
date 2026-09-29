@@ -76,7 +76,13 @@ data class FarmEntity(
     val cutoffTime: String = "11:00",
     // User-tunable multipliers (real values often differ from the ideal curve)
     val waterRefillFactor: Double = 1.0,   // actual tank refills ≈ projected × this
-    val minVentFactor: Double = 1.0        // scales minimum-ventilation cfm/bird
+    val minVentFactor: Double = 1.0,       // scales minimum-ventilation cfm/bird
+    // Store & brooding equipment (v30)
+    val godownBags: Double = 0.0,          // bags the feed godown holds (0 = not set)
+    val manualFeeders: Int = 150,          // chick feeder trays used in the first week
+    val manualDrinkers: Int = 0,           // supplementary (mini) drinkers used in the first days
+    val nipplesPerLine: Int = 0,           // nipples on one drinker line (0 = not set)
+    val panLipCm: Double = 6.0             // height of the feeder-pan lip above the litter, cm
 )
 
 @Entity(tableName = "config")
@@ -264,7 +270,10 @@ data class DailyDataEntity(
     val drinkerPressureIn: Double = 0.0,    // drinker line pressure, inches
     val drinkerFlowLHrLine: Double = 0.0,   // water per drinker line, L/hr
     val waterLowL: Double = 0.0,            // total water at cooler day (−3°C)
-    val waterHighL: Double = 0.0            // total water at hotter day (+3°C)
+    val waterHighL: Double = 0.0,           // total water at hotter day (+3°C)
+    // Local edit not yet written to the sheet. While true, a refresh keeps this row and
+    // re-sends it; otherwise the sheet's row always wins (so direct sheet edits are picked up).
+    val dirty: Boolean = false
 )
 
 @Entity(

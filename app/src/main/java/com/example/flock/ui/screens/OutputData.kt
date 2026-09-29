@@ -11,14 +11,18 @@ import com.example.flock.network.HourPoint
 import com.example.flock.network.WeatherResult
 import com.example.flock.ui.Fmt
 import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.max
 
 /** The five Output topics, in the order the farm reads them. */
 enum class Topic(val emoji: String, val title: String) {
-    VENT("🌬️", "Ventilation"),
+    VENT("🌀", "Ventilation"),
     ENV("🌡️", "Environment"),
     BIRDS("🐔", "Birds"),
-    FEED("🌾", "Feed & Water"),
+    FEED("🥣", "Feed & Water"),
     STOCK("📦", "Stock")
 }
 
@@ -212,6 +216,138 @@ class OutputData(
         }
     }
 
+
+    // ------------------------------- cooling grid & fan finder -------------------------------
+    /** Hottest outside temperature of the day (forecast, else the season's typical day). */
+    val hottestC = scenarios.last().outC
+    val hottestHour = scenarios.last().hour
+    /** Cooling grid rows: hottest − 8, − 4 and the hottest itself; columns: dry, medium, humid air. */
+    val gridTemps = listOf(hottestC - 8, hottestC - 4, hottestC).map { (it * 2).roundToInt() / 2.0 }
+    val gridRh = listOf(40.0, 65.0, 90.0)
+    fun sim(outC: Double, outRh: Double, hr: Int = 14): IbController.HouseState = IbController.simulate(plan, outC, outRh, hr, live, bw, farm)
+    /** Where the fan finder dials start: the weather now if we have it, else the hottest hour. */
+    val dialStartC = weather?.tempC ?: hottestC
+    val dialStartRh = weather?.rhPercent ?: scenarios.last().outRh
+
+    // ------------------------------- feeding plan -------------------------------
+    val feederLines = max(1, farm.feederLines)
+    val pansPerLine = max(1, farm.pansPerFeederLine)
+    val lineLenFt = farm.usableLengthFt
+    /** Bags that fill one whole line from empty (farm setting). */
+    val bagsFullLine = max(0.1, farm.feederLineBags.toDouble())
+    val houseFloorFt2 = max(1.0, farm.usableLengthFt * farm.usableWidthFt)
+    /** Share of the house the birds use today (brooding barricade). */
+    val openFrac = if (e.occupiedFt2 > 0) (e.occupiedFt2 / houseFloorFt2).coerceIn(0.05, 1.0) else 1.0
+    val openLenFt = lineLenFt * openFrac
+    val pansOpenPerLine = max(1, floor(pansPerLine * openFrac).toInt())
+    val pansOpen = pansOpenPerLine * feederLines
+    val birdsPerPan = live.toDouble() / pansOpen
+    /** Ross: 45–80 birds per pan (the lower figure above 3.5 kg). */
+    val birdsPerPanMax = if (bw > 3500) 45.0 else 80.0
+    val birdsPerPanMin = 45.0
+    val panSpacingFt = lineLenFt / pansPerLine
+    /** Bags to push feed to the end of the open section on every line. */
+    val bagsFillOpen = feederLines * bagsFullLine * openFrac
+    val isHotDay = hottestC >= 33.0 || scenarios.last().state.feltC > plan.comfort + 4
+    /** Feedings the age and heat call for (farm practice + Ross: small and often while young, cool hours when hot). */
+    val feedingsWanted = when {
+        day <= 3 -> 5
+        day <= 7 -> 4
+        day <= 21 -> if (isHotDay) 2 else 3
+        else -> 2
+    }
+    /** Full charges of the open section today's ration covers. */
+    val fillsPossible: Double = if (bagsFillOpen > 0) giveBags / bagsFillOpen else 0.0
+    /**
+     * Pans fill in order from the hopper, and a full pan passes feed on. So a top-up reaches every open
+     * pan only while the pans still hold feed (the line stays "charged"); into EMPTY pans a feeding
+     * only reaches as far as its bags go.
+     */
+    val feedings = feedingsWanted
+    val bagsPerFeeding = giveBags / feedings
+    val bagsPerLinePerFeeding = bagsPerFeeding / feederLines
+    /** How far one feeding reaches along a line if the pans were empty (ft), and as a share of the open part. */
+    val reachFt = min(lineLenFt, bagsPerLinePerFeeding / bagsFullLine * lineLenFt)
+    val reachOfOpen = reachFt / max(1.0, openLenFt)
+    /** Ross: let birds clear the pans once a day from day 10–12 — only workable once a day's ration can refill the empty lines. */
+    val cleanOutOk = day >= 10 && giveBags >= bagsFillOpen
+    val feedTimes: String = when {
+        isHotDay && feedings == 2 -> "05:00 · 18:30"
+        isHotDay && feedings == 3 -> "04:30 · 18:00 · 21:30"
+        feedings == 1 -> "05:00"
+        feedings == 2 -> "06:00 · 17:00"
+        feedings == 3 -> "06:00 · 12:00 · 18:00"
+        feedings == 4 -> "06:00 · 10:00 · 14:00 · 18:00"
+        else -> "06:00 · 09:00 · 12:00 · 15:00 · 18:00 (+ night top-up)"
+    }
+    val feedingReason: String = when {
+        day <= 3 -> "Chicks eat from trays and paper: top up little and often (Ross). Keep the pans flooded."
+        isHotDay -> "Hot day (up to ${Fmt.n(hottestC, 1)} °C): feed in the cool hours; no feeding for ~5.0 h before the hottest hour (${String.format("%02d:00", hottestHour)})."
+        day <= 21 -> "Comfortable day: $feedings feedings for young birds."
+        else -> "$feedings feedings in the cooler morning and evening."
+    }
+
+    // ------------------------------- first week equipment -------------------------------
+    val chicksPlaced = max(1, placed - reception)
+    /** Ross: feeder trays 1 per 100 chicks; mini drinkers 12 per 1,000 chicks. */
+    val traysIdeal = ceil(chicksPlaced / 100.0)
+    val miniDrinkersIdeal = ceil(chicksPlaced * 12.0 / 1000.0)
+    /** Estimated breast height (cm): ~4.0 cm for a 40 g chick, scaling with weight^(1/3). */
+    fun breastCm(g: Double) = 4.0 * Math.cbrt(max(g, 30.0) / 40.0)
+    val breastNowCm = breastCm(bw)
+    /** First day the birds' breast reaches the pan lip (company curve weights). */
+    val panReachDay: Int = (0..14).firstOrNull { d -> breastCm(CompanyStandard.bw(d) ?: w0) >= farm.panLipCm } ?: 14
+    /** Share of trays to keep: all until day 3 (and until birds reach the pans), then out over ~3 days; none from day 7. */
+    val trayKeepFrac: Double = run {
+        val start = max(4, panReachDay)
+        val end = max(7, start + 3)
+        when {
+            day < start -> 1.0
+            day >= end -> 0.0
+            else -> 1.0 - (day - start + 1).toDouble() / (end - start + 1)
+        }
+    }
+    val traysKeepIdeal = ceil(traysIdeal * trayKeepFrac)
+    val traysKeepYours = ceil(farm.manualFeeders * trayKeepFrac)
+    /** Ross: supplementary drinkers for the first 3 days. */
+    val drinkerKeepFrac = when { day <= 3 -> 1.0; day == 4 -> 0.5; else -> 0.0 }
+    /** Ross: feed on paper covering ≥ 70 % of the brooding area; paper out by the end of day 4. */
+    val paperFt2 = if (day <= 4) 0.70 * (if (e.occupiedFt2 > 0) e.occupiedFt2 else houseFloorFt2) else 0.0
+    val nipples = farm.nipplesPerLine * max(1, farm.drinkerLines)
+    val birdsPerNipple: Double? = if (nipples > 0) live.toDouble() / nipples else null
+    /** Ross: 10–12 birds per nipple while brooding, 12 below 3 kg, 9 above 3 kg. */
+    val birdsPerNippleMax = when { day <= 10 -> 12.0; bw > 3000 -> 9.0; else -> 12.0 }
+    /** Ross nipple flow guide, mL/min by age. */
+    val nippleFlow: Pair<Double, Double> = when {
+        day <= 7 -> 20.0 to 29.0
+        day <= 14 -> 30.0 to 39.0
+        day <= 21 -> 40.0 to 49.0
+        day <= 28 -> 50.0 to 69.0
+        else -> 70.0 to 100.0
+    }
+
+    // ------------------------------- bird / litter temperatures -------------------------------
+    /** Body (vent/cloacal) temperature: Ross 39.4–40.5 °C in the first 2 days; ~41–42 °C once grown. */
+    val bodyTemp: Triple<Double, Double, Double> = when {
+        day <= 2 -> Triple(39.4, 40.0, 40.5)
+        day <= 10 -> Triple(40.0, 40.6, 41.2)
+        else -> Triple(40.6, 41.2, 42.0)
+    }
+    /** Foot (leg skin) temperature: warm to the touch; thermal-camera studies put comfortable birds at ~32–34 °C. */
+    val footTemp: Triple<Double, Double, Double> = if (day <= 7) Triple(29.0, 31.0, 33.0) else Triple(31.0, 33.0, 35.0)
+    /** Litter / floor: Ross 28–32 °C at placement (floor 28–30 °C); afterwards it follows the house air. */
+    val litterTemp: Triple<Double, Double, Double> = if (day <= 7) Triple(28.0, 30.0, 32.0) else Triple(e.tempMin, e.tempIdeal, e.tempMax)
+    val lightLux: Pair<Double, Double> = if (day <= 7) 30.0 to 40.0 else 5.0 to 10.0
+
+    // ------------------------------- stock by feed type -------------------------------
+    /** Bags still needed from today to lifting, split by the feed phase each day falls in. */
+    val needByCode: Map<String, Double> = rows.filter { it.dayNumber in day..harvestAge }
+        .groupBy { CompanyStandard.feedPhase(it.dayNumber) }
+        .mapValues { (code, rs) -> rs.sumOf { it.totalFeedKg } / kgPerBag(code) }
+    val allCodes: List<String> = (stockCodes + needByCode.keys).distinct()
+    fun orderBags(code: String) = max(0.0, (needByCode[code] ?: 0.0) - max(0.0, stockBags(code)))
+    val godownFree: Double? = if (farm.godownBags > 0) farm.godownBags - stockBagsTotal else null
+
     // ------------------------------- alerts -------------------------------
     val alerts: Map<Topic, List<TopicAlert>> = buildMap {
         put(Topic.BIRDS, buildList {
@@ -247,6 +383,10 @@ class OutputData(
             e.waterPh?.let { ph -> if (ph < 6.0 || ph > 6.8) add(TopicAlert(1, "Water pH ${Fmt.n(ph)} outside 6.00–6.80")) }
             e.waterTempC?.let { t -> if (t > 25) add(TopicAlert(1, "Water ${Fmt.n(t, 1)} °C is warm (ideal 10.0–25.0 °C) — flush the lines")) }
             nextPhaseDay?.let { d -> if (d - day in 1..2) add(TopicAlert(1, "Feed changes to ${CompanyStandard.feedPhase(d)} on day $d")) }
+            if (day >= 4 && reachOfOpen < 1.0) add(TopicAlert(1, "A ${Fmt.n(bagsPerFeeding, 2)}-bag feeding reaches only ${Fmt.n(reachOfOpen * 100, 1)}% of the open pans if they are empty — keep the pans from running empty"))
+            if (birdsPerPan > birdsPerPanMax) add(TopicAlert(1, "${Fmt.n(birdsPerPan, 1)} birds per open pan — more than ${Fmt.n(birdsPerPanMax, 1)}; open more pans"))
+            birdsPerNipple?.let { b -> if (b > birdsPerNippleMax) add(TopicAlert(1, "${Fmt.n(b, 1)} birds per nipple — more than ${Fmt.n(birdsPerNippleMax, 1)}")) }
+            if (day <= 3 && farm.manualFeeders < traysIdeal) add(TopicAlert(1, "${farm.manualFeeders} feeder trays; Ross advises ${Fmt.n(traysIdeal, 1)} (1 per 100 chicks)"))
         })
         put(Topic.STOCK, buildList {
             stockCodes.forEach { code -> if (stockBags(code) < -0.001) add(TopicAlert(2, "$code stock is negative (${Fmt.n(stockBags(code))} bags) — a delivery is missing")) }
@@ -256,6 +396,7 @@ class OutputData(
             }
             if (stockCodes.isNotEmpty() && stockBags(phase) <= 0.0) add(TopicAlert(1, "No $phase (current phase) in store"))
             if (stockCodes.isEmpty() && day >= 1) add(TopicAlert(1, "No feed deliveries logged yet"))
+            godownFree?.let { f -> if (f < 0) add(TopicAlert(2, "Godown over capacity by ${Fmt.n(-f, 2)} bags")) }
         })
         put(Topic.VENT, buildList {
             now?.let { s ->

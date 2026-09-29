@@ -1,13 +1,9 @@
 package com.example.flock.ui.screens
 
 import android.graphics.Paint
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,21 +21,21 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.flock.engine.CompanyStandard
@@ -53,23 +49,26 @@ import com.example.ui.theme.ValueIdeal
 import com.example.ui.theme.ValuePredicted
 import com.example.ui.theme.ValuePresent
 import kotlin.math.ceil
-import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 private val P = ValueKind.PRESENT
 private val PR = ValueKind.PREDICTED
 private val I = ValueKind.IDEAL
 private val C = ValueKind.COMMERCIAL
-private val N = ValueKind.NEUTRAL
+private val MN = ValueKind.MIN
+private val MX = ValueKind.MAX
+
+private val TempDial = Color(0xFFFF8A50)
+private val RhDial = Color(0xFF64B5F6)
 
 // =================================== topic dispatcher ===================================
 
 @Composable
 fun TopicView(d: OutputData, t: Topic) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("${t.emoji}  ${t.title} · Day ${d.day}", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurface)
+        Text("${t.emoji}  ${t.title} · Day ${d.day}", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onSurface)
         AlertPanel(d.alerts[t].orEmpty())
         when (t) {
             Topic.VENT -> VentTopic(d)
@@ -98,275 +97,117 @@ private fun AlertPanel(alerts: List<TopicAlert>) {
     }
 }
 
-// =================================== value table ===================================
-
-/** Column header: a tag chip (its kind colours it) or a plain scope title (per bird, whole farm …). */
-data class VCol(val title: String, val kind: ValueKind = N)
-data class VCell(val text: String, val kind: ValueKind)
-data class VRow(val label: String, val unit: String, val cells: List<VCell?>, val strong: Boolean = false)
-
-private fun cell(v: Double?, dec: Int, kind: ValueKind) = VCell(Fmt.n(v, dec), if (v == null) N else kind)
-private fun txt(s: String, kind: ValueKind) = VCell(s, kind)
-private fun count(v: Int?, kind: ValueKind) = VCell(Fmt.i(v), if (v == null) N else kind)
-
-/**
- * Each row: the parameter name on its own line, then its values under the column headers —
- * so labels are never squeezed and values stay large.
- */
-@Composable
-fun VTable(cols: List<VCol>, rows: List<VRow>) {
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    Column {
-        Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            cols.forEach { c ->
-                if (c.kind == N) Text(c.title, modifier = Modifier.weight(1f), maxLines = 1,
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = muted)
-                else TagChip(c.kind, Modifier.weight(1f), c.title, compact = cols.size >= 4)
-            }
-        }
-        rows.forEachIndexed { idx, r ->
-            if (idx > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-            Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(r.label, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = if (r.strong) FontWeight.Bold else FontWeight.SemiBold))
-                    if (r.unit.isNotEmpty()) Text("  " + r.unit, style = MaterialTheme.typography.bodySmall, color = muted)
-                }
-                Row(Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    cols.indices.forEach { i ->
-                        val c = r.cells.getOrNull(i)
-                        Text(
-                            c?.text ?: "—", modifier = Modifier.weight(1f), maxLines = 2,
-                            style = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace,
-                                fontWeight = if (r.strong) FontWeight.Black else FontWeight.Bold, fontSize = 15.sp),
-                            color = if (c == null || c.text == "—") kindColor(N) else kindColor(c.kind)
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun Hero(a: GistItem, b: GistItem, c: GistItem) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        GistTile(a, Modifier.weight(1f)); GistTile(b, Modifier.weight(1f)); GistTile(c, Modifier.weight(1f))
-    }
-}
-
-@Composable
-private fun Note(text: String) {
-    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-}
-
 // =================================== VENTILATION ===================================
 
 @Composable
 private fun VentTopic(d: OutputData) {
+    var tC by rememberSaveable(d.day) { mutableDoubleStateOf((d.dialStartC * 2).let { Math.round(it) / 2.0 }) }
+    var rh by rememberSaveable(d.day) { mutableDoubleStateOf((d.dialStartRh / 5).let { Math.round(it) * 5.0 }) }
+    MinVentCard(d)
+    FanFinderCard(d, tC, rh, { tC = it }, { rh = it })
+    CoolingGridCard(d) { t, h -> tC = t; rh = h }
+    ControllerCard(d)
+}
+
+@Composable
+private fun MinVentCard(d: OutputData) {
     val f = d.farm
-    val heaterCap = f.heaterCount * f.heaterKw
-    Hero(
-        GistItem("Minimum", "${Fmt.n(d.minLevel.avgFans, 2)} fans", timerText(d.minLevel), I),
-        GistItem("Hottest hour", "${Fmt.n(d.scenarios.last().state.fans, 2)} fans", "at ${Fmt.n(d.scenarios.last().outC, 1)} °C", PR),
-        GistItem("Allowed", "${Fmt.n(d.plan.maxFans.toDouble(), 1)} fans", "age cap + 2", I)
-    )
-
-    d.now?.let { s ->
-        OutputCard(title = "🟢 Right now · ${String.format("%02d:00", d.hour)}") {
-            HouseAirflow(d.levelOf(s), f.fanCount, f.hasEC, s.padEff > 0, s.heaterKw > 0.05, d.airFpm(s.fans))
-            Text(d.modeOf(s), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-            VTable(
-                listOf(VCol("Present", P), VCol("Projected", PR)),
-                listOf(
-                    VRow("Outside air", "°C · % RH", listOf(txt("${Fmt.n(d.weather!!.tempC, 1)} · ${Fmt.n(d.weather.rhPercent, 1)}", P), null)),
-                    VRow("House air", "°C · % RH", listOf(null, txt("${Fmt.n(s.houseC, 1)} · ${Fmt.n(s.houseRh, 1)}", PR))),
-                    VRow("Birds feel", "°C (comfort ${Fmt.n(d.plan.comfort, 1)})", listOf(null, cell(s.feltC, 1, PR)), strong = true),
-                    VRow("Fans running", "time-averaged", listOf(cell(d.e.actualFans?.toDouble(), 1, P), cell(s.fans, 2, PR))),
-                    VRow("Air speed at birds", "ft/min", listOf(cell(d.e.measuredAirspeed, 1, P), cell(d.airFpm(s.fans), 1, PR))),
-                    VRow("Wind-chill on birds", "°C cooler", listOf(null, cell(s.chillC, 1, PR))),
-                    VRow("Heaters", "kW", listOf(null, cell(s.heaterKw, 1, PR)))
-                )
-            )
-            FeltGauge(comfort = d.plan.comfort, felt = s.feltC, air = s.houseC)
-            val pts = d.hourly.let { hs ->
-                val start = hs.indexOfFirst { it.hour == d.hour }.takeIf { it >= 0 } ?: 0
-                hs.drop(start).take(24)
-            }
-            if (pts.size >= 6) {
-                val states = pts.map { IbController.simulate(d.plan, it.tempC, it.rhPct, it.hour, d.live, d.bw, f) }
-                Next24Chart(pts, states.map { it.feltC }, states.map { it.fans }, d.plan.comfort, f.fanCount)
-            }
-        }
-    }
-
-    OutputCard(title = "🔄 Minimum ventilation") {
-        HouseAirflow(d.minLevel, f.fanCount, f.hasEC, false, false, d.airFpm(d.minLevel.avgFans))
+    val l = d.minLevel
+    val live = d.liveSafe.toDouble()
+    OutputCard(title = "🔄 Minimum ventilation · air quality") {
+        HouseAirflow(l, f.fanCount, f.hasEC, false, false, d.airFpm(l.avgFans))
         Text(
-            if (d.minLevel.isTimer) "Fan ${d.minLevel.cyc.joinToString(", ")} on a timer: ${d.minLevel.on}.0 s ON / ${d.minLevel.off}.0 s OFF"
-            else "${d.minLevel.fansOn}.0 fans non-stop" + if (d.minLevel.cyc.isNotEmpty()) " + fan ${d.minLevel.cyc.joinToString(", ")} on ${d.minLevel.on}/${d.minLevel.off} s" else "",
+            if (l.isTimer && l.cont.isEmpty()) "Fan ${l.cyc.joinToString(", ")} on a timer: ${l.on}.0 s ON / ${l.off}.0 s OFF"
+            else "${l.cont.size}.0 fan(s) non-stop" + if (l.cyc.isNotEmpty()) " + fan ${l.cyc.joinToString(", ")} ${l.on}.0 / ${l.off}.0 s" else "",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
         )
-        val live = d.liveSafe.toDouble()
-        val rossPb = PhysiologicalEngine.rossMinVentCfmPerBird(d.avgKg)
-        VTable(
-            listOf(VCol("Per bird"), VCol("Whole house")),
-            listOf(
-                VRow("Air needed (Ross × 1.30 × calibration)", "cfm", listOf(cell(d.plan.needCfm / live, 3, I), cell(d.plan.needCfm, 1, I)), strong = true),
-                VRow("Ross air-quality floor", "cfm", listOf(cell(rossPb, 3, I), cell(rossPb * live, 1, I))),
-                VRow("Air delivered at minimum", "cfm", listOf(cell(d.minAvgCfm / live, 3, PR), cell(d.minAvgCfm, 1, PR))),
-                VRow("Fans running on average", "fans", listOf(null, cell(d.minLevel.avgFans, 2, PR))),
-                VRow("Timer", "s ON · s OFF", listOf(null, txt(if (d.minLevel.isTimer) "${d.minLevel.on}.0 · ${d.minLevel.off}.0" else "non-stop", I))),
-                VRow("Air changes", "per hour", listOf(null, cell(if (d.houseVolFt3 > 0) d.minAvgCfm * 60 / d.houseVolFt3 else null, 2, PR))),
-                VRow("Air speed at birds", "ft/min", listOf(null, cell(d.airFpm(d.minLevel.avgFans), 1, PR)))
-            )
-        )
-        Note("Minimum ventilation is for air quality (moisture, ammonia, CO₂), not cooling. The animation speeds the timer up; the real cycle is ${d.minLevel.on + d.minLevel.off}.0 s.")
-    }
-
-    OutputCard(title = "🌡️ Fans across the day") {
-        val lo = d.scenarios.first(); val hi = d.scenarios.last()
-        Text("Run ${Fmt.n(lo.state.fans, 2)} → ${Fmt.n(hi.state.fans, 2)} fans as outside goes ${Fmt.n(lo.outC, 1)} → ${Fmt.n(hi.outC, 1)} °C",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-        Note("Based on the ${d.scenarioSource}. Values are projected by the house model.")
-        d.scenarios.forEach { s ->
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-            Text("${s.emoji}  ${s.label} · ${String.format("%02d:00", s.hour)} · ${Fmt.n(s.outC, 1)} °C · ${Fmt.n(s.outRh, 1)}% RH",
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-            HouseAirflow(s.level, f.fanCount, f.hasEC, s.state.padEff > 0, s.state.heaterKw > 0.05, s.airFpm)
-            Text(s.mode, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold), color = ValuePredicted)
-            VTable(
-                listOf(VCol("Projected", PR), VCol("Ideal", I)),
-                listOf(
-                    VRow("Fans running", "time-averaged · fans on", listOf(txt("${Fmt.n(s.state.fans, 2)} · ${s.level.fansOn}.0", PR), txt("≤ ${d.plan.maxFans}.0", I)), strong = true),
-                    VRow("Air speed at birds", "ft/min", listOf(cell(s.airFpm, 1, PR), cell(PhysiologicalEngine.maxAirSpeedFpm(d.day), 1, I))),
-                    VRow("House air", "°C · % RH", listOf(txt("${Fmt.n(s.state.houseC, 1)} · ${Fmt.n(s.state.houseRh, 1)}", PR), txt("${Fmt.n(d.e.tempIdeal, 1)} · ${Fmt.n(d.e.rhIdeal, 1)}", I))),
-                    VRow("Birds feel", "°C", listOf(cell(s.state.feltC, 1, PR), cell(d.plan.comfort, 1, I)), strong = true),
-                    VRow("Heaters", "kW of ${Fmt.n(heaterCap, 1)}", listOf(cell(s.state.heaterKw, 1, PR), null)),
-                    VRow("Cooling pads", "% efficiency used", listOf(cell(s.state.padEff * 100, 1, PR), null))
-                )
-            )
-        }
-    }
-
-    OutputCard(title = "🎛️ Controller for day ${d.day}") {
-        VTable(
-            listOf(VCol("Ideal", I)),
-            listOf(
-                VRow("Bird comfort (still air, 65% RH)", "°C", listOf(cell(d.plan.comfort, 1, I)), strong = true),
-                VRow("House target at minimum", "°C", listOf(cell(d.plan.target, 1, I))),
-                VRow("SET temperature", "°C", listOf(cell(d.plan.set, 1, I))),
-                VRow("Heaters on below", "°C", listOf(cell(d.plan.heat, 1, I))),
-                VRow("Fans allowed at this age", "fans", listOf(cell(d.plan.maxFans.toDouble(), 1, I))),
-                VRow("Air-speed limit for this age", "ft/min", listOf(cell(PhysiologicalEngine.maxAirSpeedFpm(d.day), 1, I)))
-            )
-        )
-    }
-
-    OutputCard(title = "🏭 Fan capacity") {
-        VTable(
-            listOf(VCol("One fan"), VCol("All ${f.fanCount}.0 fans")),
-            listOf(
-                VRow("Airflow", "cfm (rated × ${Fmt.n(1 - f.fanDerate, 2)})", listOf(cell(d.fanCfm, 1, I), cell(d.allFansCfm, 1, I))),
-                VRow("Air speed at birds", "ft/min", listOf(cell(d.airFpm(1.0), 1, I), cell(d.airFpm(f.fanCount.toDouble()), 1, I))),
-                VRow("Air changes", "per hour", listOf(cell(if (d.houseVolFt3 > 0) d.fanCfm * 60 / d.houseVolFt3 else null, 2, I), cell(if (d.houseVolFt3 > 0) d.allFansCfm * 60 / d.houseVolFt3 else null, 2, I)))
-            )
-        )
-        Note("House cross-section ${Fmt.n(d.plan.crossFt2, 1)} ft². Birds and sensors sit ~1 ft above the litter, where air runs at about ${Fmt.n(IbController.FLOOR_AIR_FACTOR * 100, 1)}% of the average speed.")
+        Param("Air", "cfm", listOf(
+            "per bird" to listOf(v(d.plan.needCfm / live, 3, I, "Needed"), v(d.minAvgCfm / live, 3, PR, "Delivered")),
+            "whole house" to listOf(v(d.plan.needCfm, 1, I, "Needed"), v(d.minAvgCfm, 1, PR, "Delivered"))
+        ), note = "Needed = Ross air-quality floor × 1.30 × your min-vent calibration (${Fmt.n(f.minVentFactor, 2)}).", strong = true)
+        Param("Fans running on average", "fans", v(l.avgFans, 2, PR), v(l.duty * 100, 1, PR, "Timer duty %"))
+        Param("Air changes", "per hour", v(if (d.houseVolFt3 > 0) d.minAvgCfm * 60 / d.houseVolFt3 else null, 2, PR))
+        if (d.day <= 14) Param("Air speed at birds", "ft/min", v(d.airFpm(l.avgFans), 1, PR), v(29.5, 1, MX, "Draught limit"),
+            note = "Ross: air at chick level should stay below 0.15 m/s (29.5 ft/min) while brooding.")
+        else Param("Air speed at birds", "ft/min", v(d.airFpm(l.avgFans), 1, PR))
+        Note("The animation speeds the timer up; the real cycle is ${l.on + l.off}.0 s.")
     }
 }
 
-private fun timerText(l: IbController.Level) =
-    if (l.isTimer && l.cont.isEmpty()) "${l.on}.0 s on / ${l.off}.0 s off" else "${l.cont.size}.0 non-stop"
-
-/**
- * Top view of the house: pads on the left, fans on the right end wall. Running fans spin, the timer
- * fan blinks through a sped-up ON/OFF cycle (amber ring), and air streaks move at a speed
- * matching the air speed at bird height.
- */
 @Composable
-fun HouseAirflow(level: IbController.Level, fanCount: Int, hasPads: Boolean, padsOn: Boolean, heatersOn: Boolean, airFpm: Double) {
-    val n = max(1, fanCount)
-    val inf = rememberInfiniteTransition(label = "air")
-    val t by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(2000, easing = LinearEasing)), label = "t")
-    val cyc by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(6000, easing = LinearEasing)), label = "cyc")
-    val timerOn = level.cyc.isEmpty() || cyc < level.duty
-    val houseC = MaterialTheme.colorScheme.surfaceVariant
-    val offC = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
-    val labelArgb = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
-    val running = level.cont.size + if (timerOn) level.cyc.size else 0
-    Column {
-        Canvas(Modifier.fillMaxWidth().height(132.dp)) {
-            val w = size.width; val h = size.height
-            val rowsF = ceil(n / 2.0).toInt()
-            val fanR = min((h - 16f) / rowsF / 2f - 2f, 26f)
-            val fanColW = fanR * 4 + 46f
-            val left = if (hasPads) 22f else 6f
-            val right = w - fanColW - 8f
-            val top = 6f; val bottom = h - 6f
-            drawRoundRect(houseC, Offset(left, top), Size(right - left, bottom - top), CornerRadius(14f, 14f))
-            if (hasPads) {
-                val padC = if (padsOn) ValueIdeal else offC
-                drawRoundRect(padC, Offset(4f, top + 8f), Size(14f, bottom - top - 16f), CornerRadius(4f, 4f))
-                var y = top + 14f
-                while (y < bottom - 12f) { drawLine(Color.White.copy(alpha = 0.35f), Offset(6f, y), Offset(16f, y + 6f), strokeWidth = 2f); y += 10f }
+private fun FanFinderCard(d: OutputData, tC: Double, rh: Double, setT: (Double) -> Unit, setRh: (Double) -> Unit) {
+    val f = d.farm
+    val e = d.e
+    val live = d.liveSafe.toDouble()
+    OutputCard(title = "🎛️ Fan finder · turn to the outside air") {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            Knob("Outside temperature", "°C", tC, 5.0, 48.0, 0.5, TempDial, setT)
+            Knob("Outside humidity", "% RH", rh, 10.0, 100.0, 5.0, RhDial, setRh)
+        }
+        val s = remember(tC, rh, d) { d.sim(tC, rh) }
+        val lv = d.levelOf(s)
+        val cfm = s.fans * d.fanCfm
+        HouseAirflow(lv, f.fanCount, f.hasEC, s.padEff > 0, s.heaterKw > 0.05, d.airFpm(s.fans))
+        Text(d.modeOf(s), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = ValuePredicted)
+        Param("Fans to run", "fans", v(s.fans, 2, PR, "Average"), vt("${lv.fansOn}.0", PR, "Switched on"), v(d.plan.maxFans.toDouble(), 1, MX, "Allowed"), strong = true)
+        Param("Air", "cfm", listOf("per bird" to listOf(v(cfm / live, 3, PR)), "whole house" to listOf(v(cfm, 1, PR))))
+        Param("Air speed at birds", "ft/min", v(d.airFpm(s.fans), 1, PR), v(PhysiologicalEngine.maxAirSpeedFpm(d.day), 1, MX))
+        Param("House air", "°C", v(s.houseC, 1, PR), v(e.tempMin, 1, MN), v(e.tempIdeal, 1, I), v(e.tempMax, 1, MX))
+        Param("House humidity", "% RH", v(s.houseRh, 1, PR), v(e.rhMin, 1, MN), v(e.rhIdeal, 1, I), v(e.rhMax, 1, MX))
+        Param("Birds feel", "°C", v(s.feltC, 1, PR), v(d.plan.comfort, 1, I, "Comfort"), strong = true)
+        Param("Heaters · pads", "", v(s.heaterKw, 1, PR, "Heaters kW"), v(s.padEff * 100, 1, PR, "Pads %"))
+        Note("Starts at ${if (d.weather != null) "the weather now" else "the hottest hour"}. Tap a cell in the cooling grid to load it here.")
+    }
+}
+
+@Composable
+private fun CoolingGridCard(d: OutputData, onPick: (Double, Double) -> Unit) {
+    val states = remember(d) { d.gridTemps.map { t -> d.gridRh.map { h -> d.sim(t, h) } } }
+    OutputCard(title = "🌡️ Cooling grid · fans to run") {
+        Note("Outside air, 3 temperatures × 3 humidities around the hottest hour (${d.scenarioSource}). Big number = fans running (average) · small = what birds feel.")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Spacer(Modifier.width(62.dp))
+            d.gridRh.forEach { h ->
+                Text("${Fmt.n(h, 1)}% RH", Modifier.weight(1f), textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = RhDial)
             }
-            if (heatersOn) listOf(0.3f, 0.55f, 0.8f).forEach { fx ->
-                val c = Offset(left + (right - left) * fx, (top + bottom) / 2)
-                drawCircle(Color(0xFFE0703A).copy(alpha = 0.25f + 0.2f * t), 20f, c)
-                drawCircle(Color(0xFFE0703A), 8f, c)
-            }
-            // air streaks, speed ∝ air speed at birds
-            val k = (airFpm / 150.0).coerceIn(0.3, 5.0)
-            val mult = max(1, (k * 2).roundToInt())
-            val spacing = 64f
-            val off = ((t * mult) % 1f) * spacing
-            val frac = running.toFloat() / n
-            val alpha = if (running == 0) 0.06f else 0.25f + 0.6f * frac
-            val rows = 6
-            for (r in 0 until rows) {
-                val y = top + (r + 0.5f) * (bottom - top) / rows
-                var x = left - spacing + off + (r % 2) * spacing / 2
-                while (x < right - 4f) {
-                    val x0 = max(x, left + 4f); val x1 = min(x + 26f, right - 4f)
-                    if (x1 > x0) drawLine(ValueIdeal.copy(alpha = alpha), Offset(x0, y), Offset(x1, y), strokeWidth = 3f, cap = StrokeCap.Round)
-                    x += spacing
+        }
+        d.gridTemps.forEachIndexed { i, t ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("${Fmt.n(t, 1)} °C", Modifier.width(62.dp), style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = TempDial)
+                d.gridRh.forEachIndexed { j, h ->
+                    val s = states[i][j]
+                    val over = s.feltC - d.plan.comfort
+                    val col = when { over > 4 -> StatusCrit; over > 2 -> StatusWarn; over < -3 -> ValueIdeal; else -> ValuePresent }
+                    Surface(color = col.copy(alpha = 0.20f), shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f).clickable { onPick(t, h) }) {
+                        Column(Modifier.padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(Fmt.n(s.fans, 1), style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black), color = col)
+                            Text("feel ${Fmt.n(s.feltC, 1)}°", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
+                            Text(if (s.padEff > 0) "pads on" else if (s.level >= 12) "tunnel" else "timer", style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 }
             }
-            // fans: 2 columns on the end wall, numbered 1..n top-left to bottom-right
-            val lbl = Paint().apply { color = labelArgb; textSize = 22f; isAntiAlias = true; textAlign = Paint.Align.CENTER }
-            for (i in 1..n) {
-                val col = (i - 1) % 2; val row = (i - 1) / 2
-                val cx = right + 22f + fanR + col * (fanR * 2 + 18f)
-                val cy = top + (bottom - top) * (row + 0.5f) / rowsF
-                val isCont = i in level.cont
-                val isCyc = i in level.cyc
-                val on = isCont || (isCyc && timerOn)
-                drawCircle(houseC, fanR, Offset(cx, cy))
-                fanBlades(Offset(cx, cy), fanR * 0.85f, if (on) t * 360f * 3 else 20f, if (on) ValuePresent else offC)
-                if (isCyc) drawArc(ValuePredicted, -90f, 360f * cyc, false, Offset(cx - fanR, cy - fanR), Size(fanR * 2, fanR * 2), style = Stroke(width = 3.5f))
-                drawContext.canvas.nativeCanvas.drawText("$i", cx - fanR - 8f, cy + 8f, lbl)
-            }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("● ${running}.0 of $n.0 fans on", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = ValuePresent)
-            if (level.isTimer) Text("◔ timer fan", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = ValuePredicted)
-            if (hasPads) Text(if (padsOn) "▮ pads wet" else "▮ pads off", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = if (padsOn) ValueIdeal else MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        KeyLine(ValuePresent to "comfortable", StatusWarn to "warm", StatusCrit to "hot", ValueIdeal to "cool")
     }
 }
 
-private fun DrawScope.fanBlades(c: Offset, r: Float, rotation: Float, color: Color) {
-    drawCircle(color, r * 0.18f, c)
-    for (i in 0..2) {
-        rotate(degrees = rotation + i * 120f, pivot = c) {
-            val p = Path().apply {
-                moveTo(c.x, c.y)
-                quadraticBezierTo(c.x + r * 0.55f, c.y - r * 0.35f, c.x + r * 0.12f, c.y - r * 0.95f)
-                quadraticBezierTo(c.x - r * 0.20f, c.y - r * 0.50f, c.x, c.y)
-                close()
-            }
-            drawPath(p, color)
-        }
+@Composable
+private fun ControllerCard(d: OutputData) {
+    val f = d.farm
+    OutputCard(title = "⚙️ Controller for day ${d.day}") {
+        Param("Bird comfort", "°C · still air, 65% RH", v(d.plan.comfort, 1, I), strong = true)
+        Param("Temperatures", "°C", v(d.plan.set, 1, I, "SET"), v(d.plan.heat, 1, I, "Heat on below"), v(d.plan.target, 1, I, "Target at min"))
+        Param("Limits for this age", "", v(d.plan.maxFans.toDouble(), 1, MX, "Fans allowed"), v(PhysiologicalEngine.maxAirSpeedFpm(d.day), 1, MX, "Air speed ft/min"))
+        Param("Fan airflow", "cfm (rated × ${Fmt.n(1 - f.fanDerate, 2)})", listOf(
+            "one fan" to listOf(v(d.fanCfm, 1, I), v(d.airFpm(1.0), 1, I, "ft/min at birds")),
+            "all ${f.fanCount}.0" to listOf(v(d.allFansCfm, 1, I), v(d.airFpm(f.fanCount.toDouble()), 1, I, "ft/min at birds"))
+        ))
+        Param("Air changes at all fans", "per hour", v(if (d.houseVolFt3 > 0) d.allFansCfm * 60 / d.houseVolFt3 else null, 2, I))
+        Note("House cross-section ${Fmt.n(d.plan.crossFt2, 1)} ft². Birds and sensors sit ~1 ft above the litter, where air runs at ~${Fmt.n(IbController.FLOOR_AIR_FACTOR * 100, 1)}% of the average speed.")
     }
 }
 
@@ -375,73 +216,52 @@ private fun DrawScope.fanBlades(c: Offset, r: Float, rotation: Float, color: Col
 @Composable
 private fun EnvTopic(d: OutputData) {
     val e = d.e
-    val w = d.weather
-    Hero(
-        GistItem("Outside", w?.let { "${Fmt.n(it.tempC, 1)} °C" } ?: "—", w?.let { "${Fmt.n(it.rhPercent, 1)}% RH" } ?: "no weather", P),
-        GistItem("Comfort", "${Fmt.n(d.plan.comfort, 1)} °C", "birds, still air", I),
-        GistItem("Birds feel", d.now?.let { "${Fmt.n(it.feltC, 1)} °C" } ?: "—", d.now?.let { "house ${Fmt.n(it.houseC, 1)} °C" } ?: "today only", PR)
-    )
-    OutputCard(title = "🌡️ Temperature & humidity") {
-        VTable(
-            listOf(VCol("Min", I), VCol("Ideal", I), VCol("Max", I)),
-            listOf(
-                VRow("House temperature", "°C", listOf(cell(e.tempMin, 1, I), cell(e.tempIdeal, 1, I), cell(e.tempMax, 1, I)), strong = true),
-                VRow("Relative humidity", "%", listOf(cell(e.rhMin, 1, I), cell(e.rhIdeal, 1, I), cell(e.rhMax, 1, I)))
-            )
-        )
-        VTable(
-            listOf(VCol("Present", P), VCol("Projected", PR)),
-            listOf(
-                VRow("Outside temperature", "°C", listOf(cell(w?.tempC ?: e.outTemp, 1, P), null)),
-                VRow("Outside humidity", "% RH", listOf(cell(w?.rhPercent ?: e.outRH, 1, P), null)),
-                VRow("Wind", "km/h", listOf(cell(w?.windKmh, 1, P), null)),
-                VRow("House temperature now", "°C", listOf(null, cell(d.now?.houseC, 1, PR))),
-                VRow("House humidity now", "% RH", listOf(null, cell(d.now?.houseRh, 1, PR))),
-                VRow("Birds feel now", "°C", listOf(null, cell(d.now?.feltC, 1, PR)), strong = true)
-            )
-        )
-        Note(w?.let { "Weather: ${it.locationName}${if (it.isLive) "" else " (offline — last known)"}." } ?: "Weather not loaded — open the weather chip on top.")
+    OutputCard(title = "🏠 House air") {
+        RangeParam("Air temperature", "°C", e.tempMin, e.tempIdeal, e.tempMax, null)
+        RangeParam("Relative humidity", "%", e.rhMin, e.rhIdeal, e.rhMax, null,
+            note = if (d.day <= 10) "Ross: 60.0–70.0% at placement, above 50.0% until day 10." else null)
+        Param("Bird comfort", "°C · still air, 65% RH", v(d.plan.comfort, 1, I))
+        d.weather?.let { w ->
+            Param("Outside air (weather)", "°C · % RH", vt("${Fmt.n(w.tempC, 1)} · ${Fmt.n(w.rhPercent, 1)}", P, "Outside now"),
+                note = "Outside air only — the house figures above are targets, not estimates from the weather.")
+        }
+    }
+    OutputCard(title = "🟫 Litter") {
+        RangeParam("Litter / floor temperature", "°C", d.litterTemp.first, d.litterTemp.second, d.litterTemp.third, null,
+            note = if (d.day <= 7) "Ross: floor 28.0–30.0 °C and litter 28.0–32.0 °C at placement — pre-heat the house." else "After brooding the litter follows the house air.")
+        RangeParam("Litter moisture", "%", 20.0, 25.0, 30.0, null,
+            note = "20.0–30.0% is ideal (Mississippi State); above ~25.0% ammonia rises. Squeeze test: a handful should fall apart.")
+        Param("Litter depth at placement", "cm", vt("2.0–4.0", I))
+    }
+    OutputCard(title = "🐥 Bird temperature") {
+        RangeParam("Body (vent) temperature", "°C", d.bodyTemp.first, d.bodyTemp.second, d.bodyTemp.third, null,
+            note = if (d.day <= 2) "Ross: 39.4–40.5 °C in the first 2 days — check 10 chicks at 5 places." else "Rises to the adult 41–42 °C as the chick's own heating matures (~day 10). Above 42.0 °C = heat stress.")
+        RangeParam("Foot temperature", "°C", d.footTemp.first, d.footTemp.second, d.footTemp.third, null,
+            note = "No official figure: feet should feel warm against your cheek or neck (Ross, Cobb) — cold feet mean a cold floor. Thermal-camera studies: leg skin ≈33.9 °C at 14 d and ≈32.4 °C at 21 d in comfortable birds, ~2 °C higher in heat stress.")
     }
     OutputCard(title = "💨 Air quality") {
-        VTable(
-            listOf(VCol("Present", P), VCol("Ideal", I)),
-            listOf(
-                VRow("CO₂", "ppm", listOf(cell(e.measuredCo2, 1, P), txt("< ${Fmt.n(e.co2Max, 1)}", I))),
-                VRow("Ammonia NH₃", "ppm", listOf(cell(e.measuredNh3, 1, P), txt("< ${Fmt.n(e.nh3Max, 1)}", I))),
-                VRow("Carbon monoxide CO", "ppm", listOf(null, txt("< 10.0", I))),
-                VRow("Oxygen O₂", "%", listOf(cell(e.measuredO2, 2, P), txt("≥ 19.60", I))),
-                VRow("Dust", "mg/m³", listOf(null, txt("< 5.0", I))),
-                VRow("Static pressure", "Pa", listOf(cell(e.measuredPressure, 1, P), txt("20.0–25.0 min · 30.0–37.0 tunnel", I))),
-                VRow("Air speed at birds", "ft/min", listOf(cell(e.measuredAirspeed, 1, P), txt("≤ ${Fmt.n(PhysiologicalEngine.maxAirSpeedFpm(d.day), 1)}", I))),
-                VRow("Pad wet time", "min", listOf(cell(e.padWetMin, 1, P), null)),
-                VRow("Pad dry time", "min", listOf(cell(e.padDryMin, 1, P), null))
-            )
-        )
-        Note("Present values are what you entered on the Entry tab; — means no reading today.")
+        RangeParam("CO₂", "ppm", null, null, e.co2Max, e.measuredCo2)
+        RangeParam("Ammonia NH₃", "ppm", null, null, e.nh3Max, e.measuredNh3)
+        RangeParam("Carbon monoxide CO", "ppm", null, null, 10.0, null)
+        RangeParam("Oxygen O₂", "%", 19.6, null, null, e.measuredO2, 2)
+        RangeParam("Dust", "mg/m³", null, null, 5.0, null)
+        RangeParam("Static pressure", "Pa", 20.0, null, 25.0, e.measuredPressure, note = "20.0–25.0 Pa on minimum ventilation · 30.0–37.0 Pa in tunnel.")
+        RangeParam("Air speed at birds", "ft/min", null, null, PhysiologicalEngine.maxAirSpeedFpm(d.day), e.measuredAirspeed)
+        if (e.padWetMin != null || e.padDryMin != null) Param("Cooling pads", "min", v(e.padWetMin, 1, P, "Wet time"), v(e.padDryMin, 1, P, "Dry time"))
     }
-    OutputCard(title = "💡 Light & litter") {
-        VTable(
-            listOf(VCol("Present", P), VCol("Ideal", I)),
-            listOf(
-                VRow("Light", "hours per day", listOf(null, cell(e.lightHours, 1, I))),
-                VRow("Dark", "hours per day", listOf(null, cell(24.0 - e.lightHours, 1, I))),
-                VRow("Light intensity", "lux", listOf(cell(e.luxPerFt2, 1, P), txt(d.lightIdealLux, I))),
-                VRow("Litter moisture", "%", listOf(null, txt("20.0–25.0", I)))
-            )
-        )
-        Note("Litter over 30.0% moisture → ammonia and foot-pad burns; rake every 2 days.")
+    OutputCard(title = "💡 Light") {
+        Param("Day length", "hours", v(e.lightHours, 1, I, "Light"), v(24.0 - e.lightHours, 1, I, "Dark"),
+            note = if (d.day <= 7) "Ross: 23 h light on arrival; 4–6 h dark by day 7." else null)
+        RangeParam("Light intensity", "lux", d.lightLux.first, null, d.lightLux.second, e.luxPerFt2, idealBand = d.lightLux)
     }
     OutputCard(title = "🔥 Bird heat & moisture") {
-        VTable(
-            listOf(VCol("Per bird"), VCol("Whole house")),
-            listOf(
-                VRow("Total heat", "W per bird · kW house", listOf(cell(d.heatPerBirdW, 2, d.vk), cell(d.heatPerBirdW * d.live / 1000.0, 2, d.vk)), strong = true),
-                VRow("Sensible heat (warms air)", "W · kW", listOf(cell(d.heatPerBirdW * d.sensibleFrac, 2, d.vk), cell(d.heatPerBirdW * d.sensibleFrac * d.live / 1000.0, 2, d.vk))),
-                VRow("Latent heat (as moisture)", "W · kW", listOf(cell(d.heatPerBirdW * (1 - d.sensibleFrac), 2, d.vk), cell(d.heatPerBirdW * (1 - d.sensibleFrac) * d.live / 1000.0, 2, d.vk))),
-                VRow("Moisture breathed out", "g/h · kg/h", listOf(cell(d.moistureGPerBirdHr, 2, d.vk), cell(d.moistureGPerBirdHr * d.live / 1000.0, 2, d.vk)))
-            )
-        )
-        Note("Bird heat = 10.62 × kg^0.75 W (CIGR). This is the heat and water the ventilation has to remove.")
+        val live = d.live.toDouble()
+        Param("Heat from the birds", "", listOf(
+            "per bird W" to listOf(v(d.heatPerBirdW, 2, d.vk, "Total"), v(d.heatPerBirdW * d.sensibleFrac, 2, d.vk, "Warms air"), v(d.heatPerBirdW * (1 - d.sensibleFrac), 2, d.vk, "As moisture")),
+            "house kW" to listOf(v(d.heatPerBirdW * live / 1000, 2, d.vk, "Total"), v(d.heatPerBirdW * d.sensibleFrac * live / 1000, 2, d.vk, "Warms air"), v(d.heatPerBirdW * (1 - d.sensibleFrac) * live / 1000, 2, d.vk, "As moisture"))
+        ), strong = true)
+        Param("Moisture breathed out", "", listOf("per bird g/h" to listOf(v(d.moistureGPerBirdHr, 2, d.vk)), "house kg/h" to listOf(v(d.moistureGPerBirdHr * live / 1000, 2, d.vk))))
+        Note("This is the heat and water the ventilation has to carry out (CIGR: 10.62 × kg^0.75 W per bird).")
     }
 }
 
@@ -450,81 +270,44 @@ private fun EnvTopic(d: OutputData) {
 @Composable
 private fun BirdsTopic(d: OutputData) {
     val e = d.e
-    Hero(
-        GistItem("Live birds", Fmt.i(d.live), "of ${Fmt.i(d.placed)} placed", P),
-        GistItem("Avg weight", "${Fmt.n(d.bw, 1)} g", if (e.avgWeight != null) "sampled today" else "no sample today", d.vk),
-        GistItem("Mortality", Fmt.pct(d.mortTDPct), "till date", P)
-    )
+    val live = d.live.toDouble()
     KpiCard(
         "🎯 How the flock compares",
         listOf(
-            Kpi("Body weight", "g", d.bw, d.vk, d.bwCom, d.bwIdeal, Better.HIGHER, 1),
-            Kpi("Daily gain", "g/day", d.gain, d.gainKind, d.gainCom, d.gainIdeal, Better.HIGHER, 1),
-            Kpi("FCR", "", e.fcr, P, d.fcrCom, d.fcrIdeal, Better.LOWER, 3, settling = d.day < 7),
+            Kpi("Body weight", "g", d.bw, d.vk, d.bwCom, d.bwIdeal, Better.HIGHER, 1, totalFactor = live / 1000, totalUnit = "kg"),
+            Kpi("Daily gain", "g/day", d.gain, d.gainKind, d.gainCom, d.gainIdeal, Better.HIGHER, 1, totalFactor = live / 1000, totalUnit = "kg/day"),
+            Kpi("FCR", "kg feed / kg bird", e.fcr, P, d.fcrCom, d.fcrIdeal, Better.LOWER, 3, settling = d.day < 7),
             Kpi("cFCR", "to 2 kg", e.cFcr, P, d.cfcrCom, d.cfcrIdeal, Better.LOWER, 3, settling = d.day < 7),
-            Kpi("Mortality", "% till date", d.mortTDPct, P, d.comCumPct, d.ceilingPct, Better.LOWER, 2, points = true),
-            Kpi("EPEF", "efficiency", d.epef, P, d.epefCom, d.epefIdeal, Better.HIGHER, 1, settling = d.day < 7)
-        ),
-        d.day
+            Kpi("EPEF", "efficiency", d.epef, P, d.epefCom, d.epefIdeal, Better.HIGHER, 1, settling = d.day < 7),
+            Kpi("Mortality", "till date", d.mortTDPct, P, d.comCumPct, d.ceilingPct, Better.LOWER, 2, points = true,
+                totalFactor = d.placed / 100.0, totalUnit = "birds", scope = "% of placed")
+        )
     )
-    OutputCard(title = "🐣 Population") {
+    OutputCard(title = "🐣 Birds today") {
         val comCumBirds = d.comCumPct * d.placed / 100.0
-        VTable(
-            listOf(VCol("Today", P), VCol("Commercial", C), VCol("Till date", P), VCol("Commercial", C)),
-            listOf(
-                VRow("Birds placed", "head", listOf(null, null, count(d.placed, P), null)),
-                VRow("Reception / transit deaths", "head", listOf(null, null, count(d.reception, P), null)),
-                VRow("Deaths", "birds", listOf(count(d.mortToday, P), cell(d.comMortBirdsToday, 1, C), count(d.mortTD, P), cell(comCumBirds, 1, C)), strong = true),
-                VRow("Deaths", "% of birds", listOf(cell(d.mortTodayPct, 3, P), cell(d.comDailyPct, 3, C), cell(d.mortTDPct, 2, P), cell(d.comCumPct, 2, C))),
-                VRow("Culls / lame", "birds", listOf(count(e.lameSeparated, P), null, count(d.lameTD, P), null)),
-                VRow("Lifted", "birds", listOf(count(e.birdsLifted, P), null, count(d.liftTD, P), null)),
-                VRow("Lifted weight", "kg", listOf(cell(e.weightLifted, 2, P), null, cell(d.liftKgTD, 2, P), null)),
-                VRow("Live birds", "head", listOf(count(d.live, P), null, null, cell(d.placed - comCumBirds, 1, C)), strong = true),
-                VRow("Livability", "%", listOf(null, null, cell(e.livability, 2, P), cell(100 - d.comCumPct, 2, C)))
-            )
-        )
-        Note("Ideal (industry benchmark) mortality at day ${d.day}: ${Fmt.pct(d.ceilingPct)}. Till-date deaths include reception deaths.")
+        Param("Live birds", "head", vi(d.live, P), v(d.placed - comCumBirds, 1, C), vi(d.placed, P, "Placed"), strong = true)
+        Param("Deaths today", "", listOf(
+            "birds" to listOf(vi(d.mortToday, P), v(d.comMortBirdsToday, 1, C)),
+            "% of live" to listOf(v(d.mortTodayPct, 3, P), v(d.comDailyPct, 3, C))
+        ))
+        Param("Livability", "%", v(e.livability, 2, P), v(100 - d.comCumPct, 2, C))
+        Param("Reception / transit deaths", "head", vi(d.reception, P))
+        Param("Culls / lame", "birds", vi(e.lameSeparated, P, "Today"), vi(d.lameTD, P, "Till date"))
+        Param("Lifted", "", listOf("birds" to listOf(vi(e.birdsLifted, P, "Today"), vi(d.liftTD, P, "Till date")),
+            "kg" to listOf(v(e.weightLifted, 2, P, "Today"), v(d.liftKgTD, 2, P, "Till date"))))
     }
-    OutputCard(title = "⚖️ Weight & growth") {
-        val live = d.live.toDouble()
-        VTable(
-            listOf(VCol(kindTag(d.vk), d.vk), VCol("Commercial", C), VCol("Ideal", I)),
-            listOf(
-                VRow("Average weight", "g per bird", listOf(cell(d.bw, 1, d.vk), cell(d.bwCom, 1, C), cell(d.bwIdeal, 1, I)), strong = true),
-                VRow("Whole flock live weight", "kg", listOf(cell(live * d.bw / 1000, 1, d.vk), cell(d.bwCom?.let { live * it / 1000 }, 1, C), cell(live * d.bwIdeal / 1000, 1, I))),
-                VRow("vs commercial", "%", listOf(txt(d.bwCom?.let { Fmt.signed((d.bw - it) / it * 100, 2) + "%" } ?: "—", d.vk), null, txt(d.bwCom?.let { Fmt.signed((d.bwIdeal - it) / it * 100, 2) + "%" } ?: "—", I))),
-                VRow("Weight-age", "days", listOf(cell(e.weightAge, 2, d.vk), null, cell(d.day.toDouble(), 1, I))),
-                VRow("Daily gain", "g per bird per day", listOf(cell(d.gain, 1, d.gainKind), cell(d.gainCom, 1, C), cell(d.gainIdeal, 1, I))),
-                VRow("Daily gain, whole flock", "kg per day", listOf(cell(d.gain * live / 1000, 1, d.gainKind), cell(d.gainCom?.let { it * live / 1000 }, 1, C), cell(d.gainIdeal * live / 1000, 1, I))),
-                VRow("Uniformity CV", "%", listOf(cell(e.cv, 2, P), null, txt("< 10.00", I)))
-            )
-        )
+    OutputCard(title = "⚖️ Growth detail") {
+        Param("Weight-age", "days", v(e.weightAge, 2, d.vk), v(d.day.toDouble(), 1, I, "Calendar age"))
+        RangeParam("Uniformity CV", "%", null, null, 10.0, e.cv, 2)
+        Param("7-day weight multiple", "day-7 weight ÷ chick weight", v(d.sevenDayMultiple, 2, P), v(4.5, 2, MN))
     }
-    OutputCard(title = "🔁 Conversion") {
-        VTable(
-            listOf(VCol("Present", P), VCol("Commercial", C), VCol("Ideal", I)),
-            listOf(
-                VRow("FCR", "kg feed per kg bird", listOf(cell(e.fcr, 3, P), cell(d.fcrCom, 3, C), cell(d.fcrIdeal, 3, I)), strong = true),
-                VRow("cFCR to 2 kg", "(2 − kg) × 0.25 + FCR", listOf(cell(e.cFcr, 3, P), cell(d.cfcrCom, 3, C), cell(d.cfcrIdeal, 3, I))),
-                VRow("EPEF", "livability × kg × 100 ÷ (age × FCR)", listOf(cell(d.epef, 1, P), cell(d.epefCom, 1, C), cell(d.epefIdeal, 1, I))),
-                VRow("7-day weight multiple", "day-7 weight ÷ chick weight", listOf(cell(d.sevenDayMultiple, 2, P), null, txt("≥ 4.50", I)))
-            )
-        )
-    }
+    PopulationDistributionCard(entry = e)
     OutputCard(title = "🏠 Space") {
-        VTable(
-            listOf(VCol(kindTag(d.vk), d.vk), VCol("Ideal", I)),
-            listOf(
-                VRow("Stocking density", "kg per ft²", listOf(cell(e.densityKgM2?.let { kgPerFt2(it) }, 3, d.vk), txt("≤ ${Fmt.n(kgPerFt2(d.farm.densityCapDefault), 3)}", I)), strong = true),
-                VRow("Floor space", "ft² per bird", listOf(cell(e.ftPerBird, 3, d.vk), txt("≥ ${Fmt.n(e.minFtPerBird, 3)}", I))),
-                VRow("Birds per ft²", "birds", listOf(cell(if (e.ftPerBird > 0) 1 / e.ftPerBird else null, 2, d.vk), null)),
-                VRow("Occupied floor", "ft²", listOf(cell(e.occupiedFt2, 1, d.vk), cell(d.farm.usableLengthFt * d.farm.usableWidthFt, 1, I))),
-                VRow("Brooding barricade at", "ft from the front", listOf(cell(if (e.barricadeFt > 0) e.barricadeFt.toDouble() else null, 1, d.vk), cell(d.farm.usableLengthFt, 1, I)))
-            )
-        )
+        RangeParam("Stocking density", "kg per ft²", null, null, kgPerFt2(d.farm.densityCapDefault), e.densityKgM2?.let { kgPerFt2(it) }, 3, d.vk)
+        RangeParam("Floor space", "ft² per bird", e.minFtPerBird.takeIf { it > 0 }, null, null, e.ftPerBird.takeIf { it > 0 }, 3, d.vk)
+        Param("Floor in use", "ft²", v(e.occupiedFt2, 1, d.vk, "Birds' area"), v(d.houseFloorFt2, 1, I, "Whole house"))
     }
     HouseFloorPlan(entry = e, farm = d.farm)
-    PopulationDistributionCard(entry = e)
     BirdCharts(d)
 }
 
@@ -532,135 +315,187 @@ private fun BirdsTopic(d: OutputData) {
 
 @Composable
 private fun FeedTopic(d: OutputData) {
-    val e = d.e
-    val live = d.live.toDouble()
+    FeedingPlanCard(d)
+    if (d.day <= 7) FirstWeekCard(d)
     val yLive = (d.byDay[d.day - 1]?.liveBirds ?: d.live).toDouble()
-    Hero(
-        GistItem("Feed to give", "${Fmt.n(d.giveBags, 2)} bags", "${Fmt.n(d.giveKg, 1)} kg · ${d.phase}", d.vk),
-        GistItem("Per bird", "${Fmt.n(d.givePerBird, 1)} g", "commercial ${Fmt.n(d.comPerBird, 1)} g", d.vk),
-        GistItem("Water", "${Fmt.n(e.totalWaterL, 1)} L", "${Fmt.n(e.totalWaterL / d.tankL * d.refillF, 2)} tank fills", PR)
-    )
     KpiCard(
-        "🎯 Feed vs standards",
+        "🎯 Eaten vs standards",
         listOf(
-            Kpi("Eaten yesterday", "g per bird", d.usedPerBirdY, P, d.comPerBirdY, d.idealPerBirdY, Better.CLOSER, 1),
-            Kpi("Eaten till date", "g per bird", d.cumPerBird, P, d.cumPerBirdCom, d.cumPerBirdIdeal, Better.CLOSER, 1),
-            Kpi("To give today", "g per bird", d.givePerBird, d.vk, d.comPerBird, d.idealPerBird, Better.CLOSER, 1)
-        ),
-        d.day
+            Kpi("Eaten yesterday", "g per bird", d.usedPerBirdY, P, d.comPerBirdY, d.idealPerBirdY, Better.CLOSER, 1, totalFactor = yLive / 1000, totalUnit = "kg"),
+            Kpi("Eaten till date", "g per bird", d.cumPerBird, P, d.cumPerBirdCom, d.cumPerBirdIdeal, Better.CLOSER, 1, totalFactor = d.live / 1000.0, totalUnit = "kg")
+        )
     )
-    OutputCard(title = "🌾 Feed today") {
-        Text(
-            "Phase ${d.phase}" + (d.nextPhaseDay?.let { " until day ${it - 1} · ${CompanyStandard.feedPhase(it)} from day $it" } ?: " until lifting"),
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-        )
-        val bag = d.bagKg
-        VTable(
-            listOf(VCol("Per bird g"), VCol("Farm kg"), VCol("Bags")),
-            listOf(
-                VRow("To give today", "your flock, heat-adjusted", listOf(cell(d.givePerBird, 1, d.vk), cell(d.giveKg, 2, d.vk), cell(d.giveBags, 2, d.vk)), strong = true),
-                VRow("Commercial ration", "company chart", listOf(cell(d.comPerBird, 1, C), cell(d.comPerBird?.let { it * live / 1000 }, 2, C), cell(d.comPerBird?.let { it * live / 1000 / bag }, 2, C))),
-                VRow("Ideal ration", "Ross 308", listOf(cell(d.idealPerBird, 1, I), cell(d.idealPerBird * live / 1000, 2, I), cell(d.idealPerBird * live / 1000 / bag, 2, I))),
-                VRow("Eaten yesterday", "entered today", listOf(cell(d.usedPerBirdY, 1, P), cell(d.usedKgToday, 2, P), cell(d.usedBagsToday, 2, P)), strong = true),
-                VRow("Commercial yesterday", "", listOf(cell(d.comPerBirdY, 1, C), cell(d.comPerBirdY?.let { it * yLive / 1000 }, 2, C), cell(d.comPerBirdY?.let { it * yLive / 1000 / bag }, 2, C))),
-                VRow("Ideal yesterday", "", listOf(cell(d.idealPerBirdY, 1, I), cell(d.idealPerBirdY * yLive / 1000, 2, I), cell(d.idealPerBirdY * yLive / 1000 / bag, 2, I)))
-            )
-        )
-        Note("Bag = ${Fmt.n(bag, 1)} kg. Values are exact — round up only when issuing bags.")
-    }
-    OutputCard(title = "📊 Feed till date") {
-        val bag = d.bagKg
-        VTable(
-            listOf(VCol("Per bird g"), VCol("Farm kg"), VCol("Bags")),
-            listOf(
-                VRow("Eaten till date", "", listOf(cell(d.cumPerBird, 1, P), cell(d.usedKgTD, 2, P), cell(d.usedBagsTD, 2, P)), strong = true),
-                VRow("Commercial", "", listOf(cell(d.cumPerBirdCom, 1, C), cell(d.comKgTD, 2, C), cell(d.comKgTD / bag, 2, C))),
-                VRow("Ideal", "", listOf(cell(d.cumPerBirdIdeal, 1, I), cell(d.idealKgTD, 2, I), cell(d.idealKgTD / bag, 2, I))),
-                VRow("More (+) / less (−) than commercial", "", listOf(
-                    txt(if (d.cumPerBird != null && d.cumPerBirdCom != null) Fmt.signed(d.cumPerBird - d.cumPerBirdCom, 1) else "—", P),
-                    txt(Fmt.signed(d.usedKgTD - d.comKgTD, 2), P), txt(Fmt.signed((d.usedKgTD - d.comKgTD) / bag, 2), P))),
-                VRow("Still needed to lifting", "day ${d.day}–${d.harvestAge}", listOf(cell(d.remainPlanKg * 1000 / d.liveSafe, 1, PR), cell(d.remainPlanKg, 2, PR), cell(d.remainPlanKg / bag, 2, PR)))
-            )
-        )
-    }
-    OutputCard(title = "💧 Water") {
-        val tank = d.tankL; val fct = d.refillF
-        VTable(
-            listOf(VCol("Per bird mL"), VCol("Farm L"), VCol("Tank fills")),
-            listOf(
-                VRow("Today", "projected (water isn't logged)", listOf(cell(e.waterPerBird, 1, PR), cell(e.totalWaterL, 1, PR), cell(e.totalWaterL / tank * fct, 2, PR)), strong = true),
-                VRow("Hot day (+3.0 °C)", "", listOf(cell(e.waterHighL * 1000 / d.liveSafe, 1, PR), cell(e.waterHighL, 1, PR), cell(e.waterHighL / tank * fct, 2, PR))),
-                VRow("Cool day (−3.0 °C)", "", listOf(cell(e.waterLowL * 1000 / d.liveSafe, 1, PR), cell(e.waterLowL, 1, PR), cell(e.waterLowL / tank * fct, 2, PR))),
-                VRow("Till date", "", listOf(cell(d.waterTD * 1000 / d.liveSafe, 1, PR), cell(d.waterTD, 1, PR), cell(d.waterTD / tank * fct, 2, PR)))
-            )
-        )
-        VTable(
-            listOf(VCol("Present", P), VCol("Projected", PR), VCol("Ideal", I)),
-            listOf(
-                VRow("Per drinker line", "L/hour over 16.0 h", listOf(null, cell(e.drinkerFlowLHrLine, 2, PR), null)),
-                VRow("Water : feed", "ratio", listOf(null, cell(if (e.totalFeedKg > 0) e.totalWaterL / e.totalFeedKg else null, 2, PR), txt("1.80–2.00", I))),
-                VRow("Drinker height", "inches", listOf(null, null, cell(d.drinkerHtIn, 1, I))),
-                VRow("Line pressure", "inches of water", listOf(null, null, cell(e.drinkerPressureIn, 1, I))),
-                VRow("Nipple flow", "mL/min", listOf(null, null, txt("60.0–90.0", I))),
-                VRow("Water pH", "", listOf(cell(e.waterPh, 2, P), null, txt("6.00–6.80", I))),
-                VRow("Water temperature", "°C", listOf(cell(e.waterTempC, 1, P), null, txt("10.0–25.0", I)))
-            )
-        )
-        Note("Tank = ${Fmt.n(tank, 1)} L; fills include your calibration × ${Fmt.n(fct, 2)}.")
-    }
+    WaterCard(d)
     FeedCharts(d)
+}
+
+@Composable
+private fun FeedingPlanCard(d: OutputData) {
+    val live = d.live.toDouble()
+    val bag = d.bagKg
+    OutputCard(title = "🥣 Feeding plan") {
+        Text("Phase ${d.phase}" + (d.nextPhaseDay?.let { " until day ${it - 1} · ${CompanyStandard.feedPhase(it)} from day $it" } ?: " until lifting"),
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+        Param("Feed today", "", listOf(
+            "per bird g" to listOf(v(d.givePerBird, 1, PR, "To give"), v(d.comPerBird, 1, C), v(d.idealPerBird, 1, I)),
+            "farm kg" to listOf(v(d.giveKg, 1, PR, "To give"), v(d.comPerBird?.let { it * live / 1000 }, 1, C), v(d.idealPerBird * live / 1000, 1, I)),
+            "bags" to listOf(v(d.giveBags, 2, PR, "To give"), v(d.comPerBird?.let { it * live / 1000 / bag }, 2, C), v(d.idealPerBird * live / 1000 / bag, 2, I))
+        ), strong = true, note = "To give = company feed curve at your flock's weight, adjusted for heat. Bag = ${Fmt.n(bag, 1)} kg.")
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        SubHeader("Feedings")
+        Param("Feed", "times today", vt("${d.feedings}.0 ×", PR, "Feed"), vt(d.feedTimes, PR, "At"))
+        Note(d.feedingReason)
+        Param("Each feeding", "bags", listOf(
+            "all lines" to listOf(v(d.bagsPerFeeding, 2, PR)),
+            "per line" to listOf(v(d.bagsPerLinePerFeeding, 2, PR))
+        ), strong = true)
+        Param("Charge the lines", "bags to fill every open pan", v(d.bagsFillOpen, 2, I, "All lines"), v(d.bagsFillOpen / d.feederLines, 2, I, "Per line"),
+            v(d.fillsPossible, 2, PR, "Charges today"))
+        val emptyReach = d.reachOfOpen.coerceAtMost(1.0) * 100
+        Text(
+            if (d.reachOfOpen >= 1.0) "✅ Each feeding reaches the last open pan even if the pans are empty."
+            else "⚠ Pans fill in order from the hopper. Poured into EMPTY pans, one ${Fmt.n(d.bagsPerFeeding, 2)}-bag feeding reaches only ${Fmt.n(emptyReach, 1)}% of the open pans " +
+                "(${Fmt.n(d.reachFt, 1)} of ${Fmt.n(d.openLenFt, 1)} ft). Keep the lines charged: fill them with ${Fmt.n(d.bagsFillOpen, 2)} bags once, then each top-up only replaces what was eaten and reaches every pan — so feed again before the pans run empty.",
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = if (d.reachOfOpen >= 1.0) ValuePresent else StatusWarn
+        )
+        if (d.day >= 10) Note(
+            if (d.cleanOutOk) "Clean-out (Ross, from day 10–12): once a day let the birds empty the pans, then refill with ${Fmt.n(d.bagsFillOpen, 2)} bags at once and give the other ${Fmt.n(d.giveBags - d.bagsFillOpen, 2)} bags as top-ups."
+            else "Skip the daily clean-out for now: refilling empty lines takes ${Fmt.n(d.bagsFillOpen, 2)} bags — more than today's ${Fmt.n(d.giveBags, 2)} bags."
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        SubHeader("Feeder lines")
+        FeederLinePicture(d)
+        Param("Line", "", v(d.lineLenFt, 1, P, "Length ft"), v(d.bagsFullLine, 1, P, "Bags fill 1 line"), v(d.openLenFt, 1, PR, "Open ft"))
+        Param("Pans", "", listOf(
+            "open now" to listOf(vi(d.pansOpen, PR, "All lines"), vi(d.pansOpenPerLine, PR, "Per line")),
+            "house" to listOf(vi(d.pansPerLine * d.feederLines, P, "All pans"), v(d.panSpacingFt, 2, P, "Spacing ft"))
+        ))
+        Param("Birds per open pan", "birds", v(d.birdsPerPan, 1, PR), v(d.birdsPerPanMin, 1, MN), v(d.birdsPerPanMax, 1, MX),
+            note = "Ross: 45–80 birds per pan (the lower figure above 3.5 kg).")
+    }
+}
+
+/** One feeder line: the whole line, the part open to the birds, and how far one feeding reaches. */
+@Composable
+private fun FeederLinePicture(d: OutputData) {
+    val track = MaterialTheme.colorScheme.surfaceVariant
+    val labelArgb = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
+    val openC = ValueIdeal
+    val reachC = kindColor(PR)
+    Canvas(Modifier.fillMaxWidth().height(46.dp)) {
+        val left = 26f; val right = size.width - 8f
+        val w = right - left
+        val y = size.height * 0.24f
+        // hopper
+        drawRect(reachC, Offset(2f, y - 16f), Size(20f, 32f))
+        drawRoundRect(track, Offset(left, y - 10f), Size(w, 20f), CornerRadius(10f, 10f))
+        drawRoundRect(openC.copy(alpha = 0.30f), Offset(left, y - 10f), Size((w * d.openFrac).toFloat(), 20f), CornerRadius(10f, 10f))
+        val reach = (d.reachFt / d.lineLenFt).coerceIn(0.0, 1.0).toFloat()
+        drawRoundRect(reachC, Offset(left, y - 5f), Size(w * reach, 10f), CornerRadius(5f, 5f))
+        // pans
+        val n = d.pansPerLine
+        val step = max(1, n / 60)
+        for (i in 0 until n step step) {
+            val px = left + w * (i + 0.5f) / n
+            val open = i < d.pansOpenPerLine
+            val fed = (i + 0.5f) / n <= reach
+            drawCircle(if (fed && open) reachC else if (open) openC else track.copy(alpha = 0.9f), 4.5f, Offset(px, size.height * 0.5f))
+        }
+        val lbl = Paint().apply { color = labelArgb; textSize = 26f; isAntiAlias = true }
+        drawContext.canvas.nativeCanvas.drawText("0.0 ft", left, size.height - 4f, lbl)
+        lbl.textAlign = Paint.Align.CENTER
+        drawContext.canvas.nativeCanvas.drawText("open ${Fmt.n(d.openLenFt, 1)} ft", left + (w * d.openFrac).toFloat() * 0.5f, size.height - 4f, lbl)
+        lbl.textAlign = Paint.Align.RIGHT
+        drawContext.canvas.nativeCanvas.drawText("${Fmt.n(d.lineLenFt, 1)} ft × ${d.feederLines}.0 lines", right, size.height - 4f, lbl)
+    }
+    KeyLine(kindColor(PR) to "one feeding into empty pans", ValueIdeal to "open to birds", MaterialTheme.colorScheme.onSurfaceVariant to "closed")
+}
+
+@Composable
+private fun FirstWeekCard(d: OutputData) {
+    val f = d.farm
+    val start = max(4, d.panReachDay)
+    val end = max(7, start + 3)
+    OutputCard(title = "🐤 First week · trays, paper, drinkers") {
+        Param("Feeder trays (manual feeders)", "", listOf(
+            "keep today" to listOf(v(ceil(f.manualFeeders * d.trayKeepFrac), 1, PR, "Yours"), v(d.traysKeepIdeal, 1, I)),
+            "full set" to listOf(vi(f.manualFeeders, P, "Yours"), v(d.traysIdeal, 1, I, "1 per 100 chicks"))
+        ), strong = true, note = "Keep all trays until day ${start - 1}; take them out over days $start–${end - 1}; none from day $end (Ross: on the main feeders by day 6–7).")
+        if (d.day <= 4) Param("Feed paper", "ft²", v(d.paperFt2, 1, I, "At least"),
+            note = "Ross: feed on paper over ≥ 70.0% of the brooding area; top it up often; take the paper out by the end of day 4.")
+        Param("Manual drinkers", "", listOf(
+            "keep today" to listOf(v(ceil(f.manualDrinkers * d.drinkerKeepFrac), 1, PR, "Yours"), v(ceil(d.miniDrinkersIdeal * d.drinkerKeepFrac), 1, I)),
+            "full set" to listOf(vi(f.manualDrinkers, P, "Yours"), v(d.miniDrinkersIdeal, 1, I, "12 per 1,000"))
+        ), note = "Ross: supplementary drinkers for the first 3 days; half on day 4; none from day 5." +
+            if (f.manualDrinkers == 0) " Set how many you use in farm settings." else "")
+        Param("Can birds reach the pans?", "cm", v(d.breastNowCm, 1, PR, "Breast height"), v(f.panLipCm, 1, MX, "Pan lip"), vt("day ${d.panReachDay}", PR, "Reach from"),
+            note = "Breast height estimated from weight (≈4.0 cm at 40 g, growing with weight^⅓). Ross: the pan lip should be level with the top of the breast. Set your pan lip height in farm settings.")
+    }
+}
+
+@Composable
+private fun WaterCard(d: OutputData) {
+    val e = d.e
+    val live = d.liveSafe.toDouble()
+    val tank = d.tankL; val fct = d.refillF
+    OutputCard(title = "💧 Water") {
+        Param("Water", "projected — water isn't logged", listOf(
+            "per bird mL" to listOf(v(e.waterPerBird, 1, PR, "Today"), v(e.waterHighL * 1000 / live, 1, PR, "Hot +3 °C"), v(e.waterLowL * 1000 / live, 1, PR, "Cool −3 °C")),
+            "farm L" to listOf(v(e.totalWaterL, 1, PR, "Today"), v(e.waterHighL, 1, PR, "Hot +3 °C"), v(e.waterLowL, 1, PR, "Cool −3 °C")),
+            "tank fills" to listOf(v(e.totalWaterL / tank * fct, 2, PR, "Today"), v(e.waterHighL / tank * fct, 2, PR, "Hot +3 °C"), v(e.waterLowL / tank * fct, 2, PR, "Cool −3 °C"))
+        ), strong = true, note = "Tank ${Fmt.n(tank, 1)} L; fills include your calibration × ${Fmt.n(fct, 2)}.")
+        Param("Water till date", "farm L", v(d.waterTD, 1, PR))
+        Param("Per drinker line", "L/hour over 16.0 h", v(e.drinkerFlowLHrLine, 2, PR))
+        RangeParam("Water : feed", "ratio", 1.8, null, 2.0, if (e.totalFeedKg > 0) e.totalWaterL / e.totalFeedKg else null, 2, PR)
+        if (d.birdsPerNipple != null) RangeParam("Birds per nipple", "birds", null, null, d.birdsPerNippleMax, d.birdsPerNipple, 1, PR,
+            note = "Ross: 10–12 while brooding, 12 below 3 kg, 9 above 3 kg.")
+        else Note("Set nipples per drinker line in farm settings to check birds per nipple.")
+        RangeParam("Nipple flow", "mL/min", d.nippleFlow.first, null, d.nippleFlow.second, null, idealBand = d.nippleFlow, note = "Ross flow guide for this age.")
+        RangeParam("Water temperature", "°C", 18.0, null, 21.0, e.waterTempC, idealBand = 18.0 to 21.0, note = "Ross: 18–21 °C drinks best; above 30 °C intake drops — flush lines on hot days.")
+        RangeParam("Water pH", "", 6.0, null, 6.8, e.waterPh, 2)
+        Param("Drinker line", "inches", v(d.drinkerHtIn, 1, I, "Height"), v(e.drinkerPressureIn, 1, I, "Pressure"),
+            note = "Ross: nipple height — bird's back at 35–45° to the floor under 7 days, 75–85° after.")
+    }
 }
 
 // =================================== STOCK ===================================
 
 @Composable
 private fun StockTopic(d: OutputData) {
-    Hero(
-        GistItem("In store", "${Fmt.n(d.stockBagsTotal, 2)} bags", "${Fmt.n(d.stockKgTotal, 1)} kg", P),
-        GistItem("Lasts", d.lastsDays?.takeIf { d.stockKgTotal > 0 }?.let { "${Fmt.n(it, 1)} days" } ?: "—", "at today's ration", PR),
-        GistItem("To order", "${Fmt.n(d.toOrderBags, 2)} bags", "to reach day ${d.harvestAge}", PR)
-    )
-    OutputCard(title = "📦 Feed store") {
-        if (d.stockCodes.isEmpty()) {
-            Note("No deliveries logged yet. Enter feed received on the Entry tab.")
-        } else {
-            val maxRec = d.stockCodes.maxOf { max(d.recByCode[it] ?: 0.0, d.stockBags(it)) }
-            val unit = listOf(1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0).firstOrNull { maxRec / it <= 20 } ?: 200.0
-            Text("Each sack = ${Fmt.n(unit, 1)} bags · filled = in store · faded = used",
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            d.stockCodes.forEach { code -> FeedSackRow(d, code, unit) }
-        }
+    val f = d.farm
+    OutputCard(title = "🏚️ Godown") {
+        if (f.godownBags > 0) {
+            FillBar(d.stockBagsTotal / f.godownBags, ValuePresent)
+            Param("Space", "bags", v(d.stockBagsTotal, 2, P, "In store"), v(f.godownBags, 1, MX, "Holds"), v(d.godownFree, 2, PR, "Free"), strong = true,
+                note = "Free space is what the next delivery can be.")
+        } else Note("Set how many bags the godown holds (Farm settings → Godown) to see free space.")
         Note("Store below 25.0 °C and 60.0% RH, on pallets, first in – first out.")
     }
-    OutputCard(title = "🧮 Store totals") {
-        VTable(
-            listOf(VCol("Bags"), VCol("kg")),
-            listOf(
-                VRow("Received till date", "", listOf(cell(d.recBagsTD, 2, P), cell(d.recKgTD, 2, P))),
-                VRow("Used till date", "", listOf(cell(d.usedBagsTD, 2, P), cell(d.usedKgTD, 2, P))),
-                VRow("In store now", "", listOf(cell(d.stockBagsTotal, 2, P), cell(d.stockKgTotal, 2, P)), strong = true),
-                VRow("Needed today", "", listOf(cell(d.giveBags, 2, d.vk), cell(d.giveKg, 2, d.vk))),
-                VRow("Needed to lifting", "day ${d.day}–${d.harvestAge}", listOf(cell(d.remainPlanKg / d.bagKg, 2, PR), cell(d.remainPlanKg, 2, PR))),
-                VRow("Still to order", "", listOf(cell(d.toOrderBags, 2, PR), cell(d.toOrderBags * d.bagKg, 2, PR)), strong = true)
-            )
-        )
+    OutputCard(title = "📦 Feed by type") {
+        val maxBags = d.allCodes.maxOfOrNull { max(d.recByCode[it] ?: 0.0, d.stockBags(it)) } ?: 0.0
+        val unit = listOf(1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0).firstOrNull { maxBags / it <= 20 } ?: 200.0
+        if (d.allCodes.isEmpty()) Note("No deliveries logged yet. Enter feed received on the Entry tab.")
+        d.allCodes.forEach { code -> FeedTypeBlock(d, code, unit) }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+        Param("All types", "bags", listOf(
+            "logged" to listOf(v(d.recBagsTD, 2, P, "Received"), v(d.usedBagsTD, 2, P, "Used"), v(d.stockBagsTotal, 2, P, "In store")),
+            "to lifting" to listOf(v(d.needByCode.values.sum(), 2, PR, "Needed"), v(d.allCodes.sumOf { d.orderBags(it) }, 2, PR, "To order"),
+                v(d.lastsDays?.takeIf { d.stockKgTotal > 0 }, 1, PR, "Days left"))
+        ), strong = true, note = "In store = ${Fmt.n(d.stockKgTotal, 1)} kg. Each sack drawn = ${Fmt.n(unit, 1)} bags · filled = in store · outline = used.")
     }
     OutputCard(title = "⛽ Diesel") {
-        val canL = d.farm.dieselCanL
-        VTable(
-            listOf(VCol("Today", P), VCol("Till date", P)),
-            listOf(
-                VRow("Cans", "", listOf(cell(d.e.dieselCansUsed, 2, P), cell(d.dieselTD, 2, P))),
-                VRow("Litres", "${Fmt.n(canL, 1)} L per can", listOf(cell(d.e.dieselCansUsed * canL, 1, P), cell(d.dieselTD * canL, 1, P)), strong = true),
-                VRow("Per 1,000 birds", "litres", listOf(cell(d.e.dieselCansUsed * canL * 1000 / d.liveSafe, 2, P), cell(d.dieselTD * canL * 1000 / d.liveSafe, 2, P)))
-            )
-        )
+        val canL = f.dieselCanL
+        Param("Diesel used", "", listOf(
+            "cans" to listOf(v(d.e.dieselCansUsed, 2, P, "Today"), v(d.dieselTD, 2, P, "Till date")),
+            "litres" to listOf(v(d.e.dieselCansUsed * canL, 1, P, "Today"), v(d.dieselTD * canL, 1, P, "Till date")),
+            "L / 1,000 birds" to listOf(v(d.e.dieselCansUsed * canL * 1000 / d.liveSafe, 2, P, "Today"), v(d.dieselTD * canL * 1000 / d.liveSafe, 2, P, "Till date"))
+        ), note = "Can = ${Fmt.n(canL, 1)} L.")
     }
 }
 
-/** One feed type: sacks in store (filled) and used (faded), with the numbers underneath. */
 @Composable
-private fun FeedSackRow(d: OutputData, code: String, unit: Double) {
+private fun FeedTypeBlock(d: OutputData, code: String, unit: Double) {
     val ft = d.feedTypes.firstOrNull { it.code == code }
     val col = feedColor(code, d.feedTypes)
     val rec = d.recByCode[code] ?: 0.0
@@ -674,64 +509,25 @@ private fun FeedSackRow(d: OutputData, code: String, unit: Double) {
                 Box(Modifier.size(14.dp).background(col, RoundedCornerShape(4.dp)))
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("$code · ${ft?.name ?: "Feed"}" + if (isPhase) "  ◀ feeding now" else "",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = col)
+                    Text("$code · ${ft?.name ?: "Feed"}" + if (isPhase) "  ◀ feeding now" else "", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = col)
                     Text("${Fmt.n(kgBag, 1)} kg per bag", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text("${Fmt.n(stock, 2)} bags", style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black),
-                        color = if (stock < 0) StatusCrit else col)
-                    Text("${Fmt.n(stock * kgBag, 1)} kg" + if (isPhase && d.giveKg > 0) " · ${Fmt.n(stock * kgBag / d.giveKg, 1)} days" else "",
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                Text("${Fmt.n(stock, 2)} bags", style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black),
+                    color = if (stock < 0) StatusCrit else col)
             }
-            SackStrip(max(0.0, stock) / unit, min(used, rec) / unit, col)
-            Row(Modifier.fillMaxWidth()) {
-                Text("Received ${Fmt.n(rec, 2)}", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace))
-                Text("Used ${Fmt.n(used, 2)}", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace))
-                if (stock < 0) Text("⚠ missing delivery", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), color = StatusCrit)
+            if (rec > 0 || used > 0) SackStrip(max(0.0, stock) / unit, min(used, rec) / unit, col)
+            val need = d.needByCode[code] ?: 0.0
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                ValueChip(v(rec, 2, P, "Received"), Modifier.weight(1f))
+                ValueChip(v(used, 2, P, "Used"), Modifier.weight(1f))
+                ValueChip(v(stock * kgBag, 1, P, "In store kg"), Modifier.weight(1f))
             }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                ValueChip(v(need, 2, PR, "Needed to lifting"), Modifier.weight(1f))
+                ValueChip(v(d.orderBags(code), 2, PR, "To order"), Modifier.weight(1f))
+                ValueChip(v(if (isPhase && d.giveKg > 0 && stock > 0) stock * kgBag / d.giveKg else null, 1, PR, "Days left"), Modifier.weight(1f))
+            }
+            if (stock < 0) Text("⚠ more used than received — a delivery is missing", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), color = StatusCrit)
         }
-    }
-}
-
-/** Sacks drawn in rows of 10: [full] filled sacks (last one part-filled), then [used] faded ones. */
-@Composable
-private fun SackStrip(full: Double, used: Double, color: Color) {
-    val total = ceil(full) + ceil(used)
-    val rows = max(1, ceil(total / 10.0).toInt())
-    val faded = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f)
-    Canvas(Modifier.fillMaxWidth().height((rows * 30).dp)) {
-        val cw = size.width / 10f
-        val sh = 30.dp.toPx()
-        fun sack(i: Int, fill: Float, c: Color, outline: Boolean) {
-            val x = (i % 10) * cw + cw * 0.12f
-            val y = (i / 10) * sh + 4f
-            val w = cw * 0.76f; val h = sh - 10f
-            val body = Path().apply {
-                moveTo(x + w * 0.2f, y + h * 0.18f)
-                lineTo(x + w * 0.8f, y + h * 0.18f)
-                quadraticBezierTo(x + w * 1.02f, y + h * 0.6f, x + w * 0.9f, y + h)
-                lineTo(x + w * 0.1f, y + h)
-                quadraticBezierTo(x - w * 0.02f, y + h * 0.6f, x + w * 0.2f, y + h * 0.18f)
-                close()
-            }
-            if (outline) drawPath(body, c, style = Stroke(width = 2.5f))
-            else {
-                drawPath(body, c.copy(alpha = 0.18f))
-                val fy = y + h - h * 0.82f * fill
-                drawContext.canvas.save()
-                drawContext.canvas.clipRect(x - 4f, fy, x + w + 4f, y + h + 2f)
-                drawPath(body, c)
-                drawContext.canvas.restore()
-            }
-            drawLine(if (outline) c else c.copy(alpha = 0.9f), Offset(x + w * 0.35f, y + h * 0.1f), Offset(x + w * 0.65f, y + h * 0.1f), strokeWidth = 4f, cap = StrokeCap.Round)
-        }
-        var i = 0
-        val whole = floor(full).toInt()
-        repeat(whole) { sack(i++, 1f, color, false) }
-        val part = (full - whole).toFloat()
-        if (part > 0.01f) sack(i++, part, color, false)
-        repeat(ceil(used).toInt()) { if (i < rows * 10) sack(i++, 0f, faded, true) }
     }
 }

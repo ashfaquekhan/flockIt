@@ -90,6 +90,11 @@ fun FarmSettingsDialog(
     var feederMoveMin by remember { mutableStateOf(farm.feederMoveMin.toString()) }
     var pansPerFeederLine by remember { mutableStateOf(farm.pansPerFeederLine.toString()) }
     var dieselCanL by remember { mutableStateOf(farm.dieselCanL.toString()) }
+    var godownBags by remember { mutableStateOf(farm.godownBags.toString()) }
+    var manualFeeders by remember { mutableStateOf(farm.manualFeeders.toString()) }
+    var manualDrinkers by remember { mutableStateOf(farm.manualDrinkers.toString()) }
+    var nipplesPerLine by remember { mutableStateOf(farm.nipplesPerLine.toString()) }
+    var panLipCm by remember { mutableStateOf(farm.panLipCm.toString()) }
 
     var waterRefillFactor by remember { mutableStateOf(farm.waterRefillFactor.toString()) }
     var minVentFactor by remember { mutableStateOf(farm.minVentFactor.toString()) }
@@ -298,6 +303,20 @@ fun FarmSettingsDialog(
                             OutlinedTextField(feederMoveMin, { feederMoveMin = it }, label = { Text("Feeder move (min)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
                             OutlinedTextField(pansPerFeederLine, { pansPerFeederLine = it }, label = { Text("Pans/feeder line") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
                         }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(nipplesPerLine, { nipplesPerLine = it }, label = { Text("Nipples/drinker line") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                            OutlinedTextField(panLipCm, { panLipCm = it }, label = { Text("Pan lip height (cm)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
+                        }
+                        Text("First week", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(manualFeeders, { manualFeeders = it }, label = { Text("Manual feeders (trays)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                            OutlinedTextField(manualDrinkers, { manualDrinkers = it }, label = { Text("Manual drinkers") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                        }
+
+                        Divider(modifier = Modifier.padding(vertical = 4.dp))
+
+                        Text("Godown (feed store)", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                        OutlinedTextField(godownBags, { godownBags = it }, label = { Text("Bags the godown holds") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
 
                         Divider(modifier = Modifier.padding(vertical = 4.dp))
 
@@ -512,7 +531,12 @@ fun FarmSettingsDialog(
                                 pansPerFeederLine = pansPerFeederLine.toIntOrNull() ?: farm.pansPerFeederLine,
                                 dieselCanL = dieselCanL.toDoubleOrNull() ?: farm.dieselCanL,
                                 waterRefillFactor = waterRefillFactor.toDoubleOrNull() ?: farm.waterRefillFactor,
-                                minVentFactor = minVentFactor.toDoubleOrNull() ?: farm.minVentFactor
+                                minVentFactor = minVentFactor.toDoubleOrNull() ?: farm.minVentFactor,
+                                godownBags = godownBags.toDoubleOrNull() ?: farm.godownBags,
+                                manualFeeders = manualFeeders.toIntOrNull() ?: farm.manualFeeders,
+                                manualDrinkers = manualDrinkers.toIntOrNull() ?: farm.manualDrinkers,
+                                nipplesPerLine = nipplesPerLine.toIntOrNull() ?: farm.nipplesPerLine,
+                                panLipCm = panLipCm.toDoubleOrNull() ?: farm.panLipCm
                             )
                             val updatedConfig = config.copy(
                                 tempBand = tempBand.toDoubleOrNull() ?: config.tempBand,

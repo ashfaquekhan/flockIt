@@ -8,6 +8,44 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v30 — 2026-09-29 · Clearer topics, feeding plan, sheet-first refresh — **DB v13 (no wipe)**
+- **Sheet edits are never skipped**: on every refresh the Google Sheet's day rows replace the phone's
+  copy (except a day saved on the phone that hasn't reached the sheet yet — it is kept and re-sent).
+  Cells are read as real values, so numbers typed or formatted in the sheet ("1,200", "12.5 kg")
+  read correctly. A hand-edited FeedBagsUsed rescales the per-type breakdown to match.
+- **Database v13 upgrades in place** (new columns only) — the flock is kept, nothing is re-pulled.
+  A unit test builds a v12 database with data, upgrades it and checks the rows survive.
+- **Six colour-coded value kinds everywhere**: Present (green), Projected (amber), Ideal (blue),
+  Commercial (violet), Min (cyan), Max (rose). Every number sits in a chip that names its kind.
+- **Macro + micro in one place**: per bird and whole flock/farm/house on the same row; no parameter is
+  shown twice across a topic. Hero tiles removed (the topic tile carries the headline).
+- **Comparison bars show both bands**: commercial ±5 % (violet) and ideal ±5 % (blue).
+- **Range bars** for min / ideal / max parameters (temperatures, humidity, air quality, water, space).
+- New emojis: 🌀 Ventilation, 🥣 Feed & Water.
+- **Ventilation**: minimum-ventilation card (needed vs delivered air per bird and whole house, timer,
+  air changes, draught limit); **fan finder** with two rotary dials (outside temperature and humidity)
+  showing fans to run, air per bird / house, air speed, house air vs min/ideal/max, felt temperature,
+  heaters and pads; **3 × 3 cooling grid** (3 temperatures × 3 humidities, tap a cell to load it into
+  the dials); controller & fan capacity card. The messy three-scenario block is gone.
+- **Environment**: inside targets only — the house is no longer estimated from the weather (outside
+  air is shown labelled "outside"). New: litter/floor temperature and moisture, body (vent)
+  temperature and foot temperature ranges by age, light intensity, air-quality range bars.
+- **Birds**: KPIs with per-bird and whole-flock rows (weight, gain, FCR, cFCR, EPEF, mortality);
+  birds-today card without repeats; growth detail; space as range bars.
+- **Feed & Water — feeding plan**: feed today (to give vs commercial vs ideal, per bird / farm kg /
+  bags), feedings by age and heat with times, bags per feeding and per line, bags to charge the open
+  part of the lines, how far a feeding reaches into empty pans (pans fill in order from the hopper),
+  pans open, birds per pan vs Ross 45–80, daily clean-out advice from day 10.
+- **First week card**: feeder trays (Ross 1 per 100 chicks) and manual drinkers (12 per 1,000) to keep
+  each day with a removal schedule, feed paper area (≥ 70 % of the brooding area, out by day 4), and
+  when the birds' breast reaches the pan lip.
+- **Water**: per bird / farm / tank fills for today, hot and cool days; birds per nipple; Ross nipple
+  flow by age; water temperature 18–21 °C (Ross).
+- **Stock**: each feed type separately (received, used, in store, kg, needed to lifting by phase,
+  to order, days left) plus all types; godown capacity bar with free space.
+- **Farm settings**: godown capacity (bags), manual feeders (trays), manual drinkers, nipples per
+  drinker line, pan lip height (cm).
+
 ## v29 — 2026-09-28 · Output by topic
 - **Output rebuilt as five topic tiles** — 🌬️ Ventilation, 🌡️ Environment, 🐔 Birds,
   🌾 Feed & Water, 📦 Stock. Each tile shows an emoji, one headline value and an alert badge

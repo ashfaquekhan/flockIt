@@ -226,9 +226,14 @@ class SheetsSyncManager(
 
     private fun sv(v: Any?): String = v?.toString() ?: ""
     private fun List<Any>.s(i: Int): String = getOrNull(i)?.toString()?.trim() ?: ""
-    private fun List<Any>.d(i: Int): Double? = getOrNull(i)?.toString()?.trim()?.toDoubleOrNull()
-    private fun List<Any>.i(i: Int): Int? =
-        getOrNull(i)?.toString()?.trim()?.let { it.toIntOrNull() ?: it.toDoubleOrNull()?.toInt() }
+    /** Number from a cell, tolerant of hand edits: "1,200", " 12.5 ", "12.5 kg" all read. */
+    private fun num(raw: Any?): Double? {
+        val t = raw?.toString()?.trim()?.replace(",", "")?.replace(" ", "") ?: return null
+        if (t.isEmpty()) return null
+        return t.toDoubleOrNull() ?: Regex("^-?\\d+(\\.\\d+)?").find(t)?.value?.toDoubleOrNull()
+    }
+    private fun List<Any>.d(i: Int): Double? = num(getOrNull(i))
+    private fun List<Any>.i(i: Int): Int? = num(getOrNull(i))?.let { kotlin.math.round(it).toInt() }
     private fun List<Any>.l(i: Int): Long? =
         getOrNull(i)?.toString()?.trim()?.let { it.toLongOrNull() ?: it.toDoubleOrNull()?.toLong() }
     private fun List<Any>.b(i: Int): Boolean =
@@ -284,7 +289,24 @@ class SheetsSyncManager(
         sv(d.measuredPressure), sv(d.measuredAirspeed), sv(d.padWetMin), sv(d.padDryMin), sv(d.luxPerFt2), sv(d.dieselCansUsed),
         sv(d.updatedAt), d.updatedBy, sv(d.committed), d.feedUsedBreakdown, d.savedFields
     )
-    private fun rowToDay(spreadsheetId: String, r: List<Any>): DailyDataEntity? {
+    private fun rowToDay(spreadsheetId: String, r: List<Any>): DailyDataEntity? = rowToDayRaw(spreadsheetId, r)?.let { d ->
+        // Hand edits in the sheet: if FeedBagsUsed was changed but the per-type breakdown wasn't,
+        // scale the breakdown to the new total so both agree.
+        val parts = com.example.flock.data.parseFeedBreakdown(d.feedUsedBreakdown)
+        val partSum = parts.sumOf { it.second }
+        val breakdown = when {
+            parts.isEmpty() -> d.feedUsedBreakdown
+            d.feedBagsUsed <= 0.0 -> ""
+            kotlin.math.abs(partSum - d.feedBagsUsed) < 0.001 -> d.feedUsedBreakdown
+            partSum > 0 -> parts.joinToString(";") { (c, b) -> "$c=${b * d.feedBagsUsed / partSum}" }
+            else -> "${d.feedUsedType}=${d.feedBagsUsed}"
+        }
+        val hasSample = listOf(d.w1 to d.n1, d.w2 to d.n2, d.w3 to d.n3, d.w4 to d.n4, d.w5 to d.n5)
+            .any { (w, n) -> (w ?: 0.0) > 0 && (n ?: 0) > 0 }
+        d.copy(feedUsedBreakdown = breakdown, sampleEntered = hasSample)
+    }
+
+    private fun rowToDayRaw(spreadsheetId: String, r: List<Any>): DailyDataEntity? {
         val fId = r.s(0); if (fId.isBlank()) return null
         val day = r.i(1) ?: return null
         return DailyDataEntity(
@@ -352,14 +374,17 @@ class SheetsSyncManager(
         listOf("weatherLat", sv(farm.weatherLat)), listOf("weatherLon", sv(farm.weatherLon)),
         listOf("weatherName", farm.weatherName), listOf("densityCapDefault", sv(farm.densityCapDefault)),
         listOf("cutoffTime", farm.cutoffTime),
-        listOf("waterRefillFactor", sv(farm.waterRefillFactor)), listOf("minVentFactor", sv(farm.minVentFactor))
+        listOf("waterRefillFactor", sv(farm.waterRefillFactor)), listOf("minVentFactor", sv(farm.minVentFactor)),
+        listOf("godownBags", sv(farm.godownBags)), listOf("manualFeeders", sv(farm.manualFeeders)),
+        listOf("manualDrinkers", sv(farm.manualDrinkers)), listOf("nipplesPerLine", sv(farm.nipplesPerLine)),
+        listOf("panLipCm", sv(farm.panLipCm))
     )
     private fun kvToFarm(spreadsheetId: String, rows: List<List<Any>>, base: FarmEntity): FarmEntity {
         val m = HashMap<String, String>()
         for (row in rows) if (row.size >= 2) m[row[0].toString().trim()] = row[1].toString().trim()
         fun st(k: String, d: String) = m[k]?.takeIf { it.isNotBlank() && !it.equals("null", true) } ?: d
-        fun db(k: String, d: Double) = m[k]?.toDoubleOrNull() ?: d
-        fun it2(k: String, d: Int) = m[k]?.let { it.toIntOrNull() ?: it.toDoubleOrNull()?.toInt() } ?: d
+        fun db(k: String, d: Double) = num(m[k]) ?: d
+        fun it2(k: String, d: Int) = num(m[k])?.let { kotlin.math.round(it).toInt() } ?: d
         fun bl(k: String, d: Boolean) = m[k]?.let { it.equals("true", true) || it == "1" } ?: d
         return base.copy(
             spreadsheetId = spreadsheetId,
@@ -383,7 +408,10 @@ class SheetsSyncManager(
             weatherLat = db("weatherLat", base.weatherLat), weatherLon = db("weatherLon", base.weatherLon),
             weatherName = st("weatherName", base.weatherName), densityCapDefault = db("densityCapDefault", base.densityCapDefault),
             cutoffTime = st("cutoffTime", base.cutoffTime),
-            waterRefillFactor = db("waterRefillFactor", base.waterRefillFactor), minVentFactor = db("minVentFactor", base.minVentFactor)
+            waterRefillFactor = db("waterRefillFactor", base.waterRefillFactor), minVentFactor = db("minVentFactor", base.minVentFactor),
+            godownBags = db("godownBags", base.godownBags), manualFeeders = it2("manualFeeders", base.manualFeeders),
+            manualDrinkers = it2("manualDrinkers", base.manualDrinkers), nipplesPerLine = it2("nipplesPerLine", base.nipplesPerLine),
+            panLipCm = db("panLipCm", base.panLipCm)
         )
     }
 
@@ -1133,8 +1161,9 @@ class SheetsSyncManager(
     /**
      * Pulls the authoritative farm workspace from the spreadsheet into Room:
      * _Farm settings, all flock definitions, every day's INPUTS, and tasks.
-     * Newer local edits (by UpdatedAt) are preserved so an open doesn't clobber
-     * unsynced changes. Derived values are recomputed by the caller afterwards.
+     * The sheet is authoritative: every day row it holds replaces the local copy (so hand edits
+     * in the sheet are never skipped), except rows with a local edit still waiting to be sent.
+     * Derived values are recomputed by the caller afterwards.
      */
     suspend fun pullFarmData(spreadsheetId: String): Result<Boolean> = withContext(Dispatchers.IO) {
         val authHeader = authManager.getAuthHeader() ?: return@withContext Result.success(true)
@@ -1180,14 +1209,13 @@ class SheetsSyncManager(
                 rowToFlock(spreadsheetId, flockRows[i])?.let { db.flockDao().insertFlock(it) }
             }
 
-            // --- DailyData (inputs, last-write-wins by UpdatedAt) ---
+            // --- DailyData: the sheet wins for every row it has (so values edited directly in
+            // the sheet are always picked up), except rows with a local edit not yet sent. ---
             val dayRows = vr.getOrNull(2)?.values ?: emptyList()
             for (i in 1 until dayRows.size) {
                 val pulled = rowToDay(spreadsheetId, dayRows[i]) ?: continue
                 val local = db.dailyDataDao().getDayEntry(spreadsheetId, pulled.flockId, pulled.dayNumber)
-                if (local == null || pulled.updatedAt >= local.updatedAt) {
-                    db.dailyDataDao().insertOrUpdateDay(pulled)
-                }
+                if (local == null || !local.dirty) db.dailyDataDao().insertOrUpdateDay(pulled)
             }
 
             // --- Tasks ---

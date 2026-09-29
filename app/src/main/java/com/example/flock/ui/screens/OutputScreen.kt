@@ -50,6 +50,10 @@ import com.example.ui.theme.ValueCommercial
 import com.example.ui.theme.ValueCommercialWash
 import com.example.ui.theme.ValueIdeal
 import com.example.ui.theme.ValueIdealWash
+import com.example.ui.theme.ValueMax
+import com.example.ui.theme.ValueMaxWash
+import com.example.ui.theme.ValueMin
+import com.example.ui.theme.ValueMinWash
 import com.example.ui.theme.ValuePredicted
 import com.example.ui.theme.ValuePredictedWash
 import com.example.ui.theme.ValuePresent
@@ -61,13 +65,15 @@ import kotlin.math.abs
  * PRESENT = logged / measured, PREDICTED ("Projected") = estimated because nothing was logged,
  * IDEAL = Ross 308 breed objective, COMMERCIAL = the company's all-branches standard.
  */
-enum class ValueKind { PRESENT, PREDICTED, IDEAL, COMMERCIAL, NEUTRAL }
+enum class ValueKind { PRESENT, PREDICTED, IDEAL, COMMERCIAL, MIN, MAX, NEUTRAL }
 
 fun kindColor(k: ValueKind): Color = when (k) {
     ValueKind.PRESENT -> ValuePresent
     ValueKind.PREDICTED -> ValuePredicted
     ValueKind.IDEAL -> ValueIdeal
     ValueKind.COMMERCIAL -> ValueCommercial
+    ValueKind.MIN -> ValueMin
+    ValueKind.MAX -> ValueMax
     ValueKind.NEUTRAL -> Color(0xFF9AA0A6)
 }
 
@@ -76,6 +82,8 @@ fun kindWash(k: ValueKind): Color = when (k) {
     ValueKind.PREDICTED -> ValuePredictedWash
     ValueKind.IDEAL -> ValueIdealWash
     ValueKind.COMMERCIAL -> ValueCommercialWash
+    ValueKind.MIN -> ValueMinWash
+    ValueKind.MAX -> ValueMaxWash
     ValueKind.NEUTRAL -> Color(0xFF26292E)
 }
 
@@ -84,6 +92,8 @@ fun kindTag(k: ValueKind): String = when (k) {
     ValueKind.PREDICTED -> "Projected"
     ValueKind.IDEAL -> "Ideal"
     ValueKind.COMMERCIAL -> "Commercial"
+    ValueKind.MIN -> "Min"
+    ValueKind.MAX -> "Max"
     ValueKind.NEUTRAL -> ""
 }
 
@@ -135,8 +145,11 @@ fun OutputScreen(
 /** The four value tags and their colours. */
 @Composable
 fun TagLegend() {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        listOf(ValueKind.PRESENT, ValueKind.PREDICTED, ValueKind.IDEAL, ValueKind.COMMERCIAL).forEach { TagChip(it) }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf(
+            listOf(ValueKind.PRESENT, ValueKind.PREDICTED, ValueKind.IDEAL),
+            listOf(ValueKind.COMMERCIAL, ValueKind.MIN, ValueKind.MAX)
+        ).forEach { row -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) { row.forEach { TagChip(it, Modifier.weight(1f)) } } }
     }
 }
 
@@ -159,10 +172,8 @@ fun TagChip(k: ValueKind, modifier: Modifier = Modifier, text: String = kindTag(
 fun alertColor(level: Int): Color = when (level) { 2 -> StatusCrit; 1 -> StatusWarn; else -> BrandEmerald }
 
 private fun headline(d: OutputData, t: Topic): Pair<String, ValueKind> = when (t) {
-    Topic.VENT -> d.now?.let { "${Fmt.n(it.fans, 2)} fans now" to ValueKind.PREDICTED }
-        ?: ("min ${Fmt.n(d.minLevel.avgFans, 2)} fans" to ValueKind.IDEAL)
-    Topic.ENV -> (d.weather?.let { "out ${Fmt.n(it.tempC, 1)} °C" to ValueKind.PRESENT }
-        ?: ("set ${Fmt.n(d.plan.comfort, 1)} °C" to ValueKind.IDEAL))
+    Topic.VENT -> "min ${Fmt.n(d.minLevel.avgFans, 2)} fans" to ValueKind.IDEAL
+    Topic.ENV -> "${Fmt.n(d.e.tempIdeal, 1)} °C" to ValueKind.IDEAL
     Topic.BIRDS -> "${Fmt.n(d.bw, 1)} g" to d.vk
     Topic.FEED -> "${Fmt.n(d.giveBags, 2)} bags" to d.vk
     Topic.STOCK -> "${Fmt.n(d.stockBagsTotal, 2)} bags" to ValueKind.PRESENT
