@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.flock.engine.IbController
 import com.example.ui.theme.ValueIdeal
 import com.example.ui.theme.ValuePredicted
@@ -54,9 +55,9 @@ fun HouseAirflow(level: IbController.Level, fanCount: Int, hasPads: Boolean, pad
     val t by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(2000, easing = LinearEasing)), label = "t")
     val cyc by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(6000, easing = LinearEasing)), label = "cyc")
     val timerOn = level.cyc.isEmpty() || cyc < level.duty
-    val houseC = MaterialTheme.colorScheme.surfaceVariant
+    val houseC = Color.Black
     val offC = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
-    val labelArgb = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
+    val labelArgb = Color.White.copy(alpha = 0.6f).toArgb()
     val running = level.cont.size + if (timerOn) level.cyc.size else 0
     Column {
         Canvas(Modifier.fillMaxWidth().height(132.dp)) {
@@ -67,7 +68,7 @@ fun HouseAirflow(level: IbController.Level, fanCount: Int, hasPads: Boolean, pad
             val left = if (hasPads) 22f else 6f
             val right = w - fanColW - 8f
             val top = 6f; val bottom = h - 6f
-            drawRoundRect(houseC, Offset(left, top), Size(right - left, bottom - top), CornerRadius(14f, 14f))
+            drawRoundRect(Color.White.copy(alpha = 0.45f), Offset(left, top), Size(right - left, bottom - top), CornerRadius(14f, 14f), style = Stroke(1.5f))
             if (hasPads) {
                 val padC = if (padsOn) ValueIdeal else offC
                 drawRoundRect(padC, Offset(4f, top + 8f), Size(14f, bottom - top - 16f), CornerRadius(4f, 4f))
@@ -97,7 +98,7 @@ fun HouseAirflow(level: IbController.Level, fanCount: Int, hasPads: Boolean, pad
                 }
             }
             // fans: 2 columns on the end wall, numbered 1..n top-left to bottom-right
-            val lbl = Paint().apply { color = labelArgb; textSize = 22f; isAntiAlias = true; textAlign = Paint.Align.CENTER }
+            val lbl = Paint().apply { color = labelArgb; textSize = 10.sp.toPx(); isAntiAlias = true; textAlign = Paint.Align.CENTER }
             for (i in 1..n) {
                 val col = (i - 1) % 2; val row = (i - 1) / 2
                 val cx = right + 22f + fanR + col * (fanR * 2 + 18f)
@@ -112,9 +113,9 @@ fun HouseAirflow(level: IbController.Level, fanCount: Int, hasPads: Boolean, pad
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("● ${running}.0 of $n.0 fans on", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = ValuePresent)
-            if (level.isTimer) Text("◔ timer fan", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = ValuePredicted)
-            if (hasPads) Text(if (padsOn) "▮ pads wet" else "▮ pads off", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = if (padsOn) ValueIdeal else MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("${running}.0 / $n.0 fans", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = ValuePresent)
+            if (level.isTimer) Text("timer", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = ValuePredicted)
+            if (hasPads) Text(if (padsOn) "pads wet" else "pads off", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = if (padsOn) ValueIdeal else MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

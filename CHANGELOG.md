@@ -8,6 +8,27 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v32 — 2026-09-30 · Black and white UI, pan plan rebuilt, no weather inside
+- **Pan on/off plan rebuilt** (numbers and the top view only, no instructions):
+  one bag fills (pans per line ÷ bags per line) pans — 20 on a 60-pan line that takes 3 bags. Each
+  feeding = day's bags ÷ feedings for the age (5 / 4 / 3 / 2). The plan picks the most open pattern
+  (all on, 3·1, 2·1, 3·2, 1·1, 2·3, 1·2, 1·3) that one feeding fills completely, keeps every bird within
+  2 m of an open pan, and stays under the birds-per-pan limit (Ross 45–80 for grown birds, scaled up
+  for small birds by weight^⅓). If nothing fits, it tries one feeding fewer. Example (unit-tested):
+  day 11, 16 bags → 2 feedings × 8.00 bags, 2 on · 1 off, 40 of 60 pans a line. The old "charge the
+  lines" step is gone.
+- **No weather for anything inside the house**: no "birds feel now", no house humidity from weather,
+  fan finder and cooling grid start from the season's typical day, feedings follow age only.
+- **Coop**: Wake / Sleep button while the lights are off; box size and text follow the screen width;
+  grey labels, coloured numbers; feeder and drinker drawn as white outlines.
+- **Pure black UI with white outlines**: every card, button, chip, tab and the top bar; colour only on
+  numbers and on the Present / Projected / Ideal / Commercial / Min / Max markers. Emoji-free.
+- **Fits small phones and large text**: value chips wrap to fit (3 per row at 360 dp), tiles drop to 2
+  per row on narrow screens or ≥ 110 % text, legend in two rows, chart and coop text sized for the screen.
+- **Less text, fewer parameters**: explanatory notes removed from Output; sections trimmed.
+- Render tests for every screen at 360 dp and 412 dp and at 130 % text (`ScreensRenderTest`);
+  feeding-plan unit tests (`FeedPlanTest`).
+
 ## v31 — 2026-09-30 · One-page Output, coop animation, pan patterns
 - **One page, no topic tabs**: Overview (coop animation, feed entry, alerts, key numbers, growth),
   then Feed, Ventilation, Mortality and Environment as you scroll. Close batch at the bottom.

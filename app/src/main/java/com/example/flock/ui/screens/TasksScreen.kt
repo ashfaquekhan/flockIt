@@ -129,9 +129,9 @@ fun TasksScreen(
                 Text("Day $dayNumber planner", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black))
                 Text("$doneCount of ${dayTasks.size} done", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Button(
+            Button(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                 onClick = { editing = null; showAdd = true },
-                colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald),
+                colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -178,7 +178,7 @@ private fun BlockCard(
     onDelete: (String) -> Unit,
     onCopy: (TaskEntity) -> Unit
 ) {
-    Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(12.dp), tonalElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
+    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(12.dp), tonalElevation = 0.dp, modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(modifier = Modifier.size(width = 4.dp, height = 16.dp).background(accent, RoundedCornerShape(2.dp)))

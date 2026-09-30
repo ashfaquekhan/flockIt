@@ -43,11 +43,11 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun WeatherForecastDialog(forecast: ForecastResult?, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(
+        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
             modifier = Modifier.fillMaxWidth(0.95f).fillMaxHeight(0.85f).padding(vertical = 24.dp),
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp
+            tonalElevation = 0.dp
         ) {
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                 Row(

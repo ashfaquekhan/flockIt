@@ -141,7 +141,7 @@ fun OutputScreen(
     val zone = remember(farm.timeZone) { try { java.time.ZoneId.of(farm.timeZone) } catch (e: Exception) { java.time.ZoneId.systemDefault() } }
     val light = LightProgram(entry.lightHours)
     val feeder = remember(events, now, d) {
-        feederState(events, now, zone, d.giveKg, d.kgPerBag(d.phase), d.feedPattern.chargeKg.takeIf { it > 0 } ?: d.giveKg, light)
+        feederState(events, now, zone, d.giveKg, d.kgPerBag(d.phase), (d.bagsFillOpen * d.kgPerBag(d.phase)).takeIf { it > 0 } ?: d.giveKg, light)
     }
     val coop = CoopInput(
         age = d.day, meanG = d.bw, cvPct = entry.cv, live = d.live, entry = d.entryBirds, stage = d.stage, light = light, feeder = feeder,
@@ -225,12 +225,16 @@ private fun FeedEntryRow(d: OutputData, feeder: FeederState, onFeed: (Double) ->
 /** One line: the six value colours. */
 @Composable
 fun TagLegend() {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        listOf(ValueKind.PRESENT, ValueKind.PREDICTED, ValueKind.IDEAL, ValueKind.COMMERCIAL, ValueKind.MIN, ValueKind.MAX).forEach { k ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(7.dp).background(kindColor(k), CircleShape))
-                Spacer(Modifier.width(4.dp))
-                Text(kindTag(k), style = MaterialTheme.typography.labelSmall, color = kindColor(k))
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        listOf(listOf(ValueKind.PRESENT, ValueKind.PREDICTED, ValueKind.IDEAL), listOf(ValueKind.COMMERCIAL, ValueKind.MIN, ValueKind.MAX)).forEach { row ->
+            Row(Modifier.fillMaxWidth()) {
+                row.forEach { k ->
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(7.dp).background(kindColor(k), CircleShape))
+                        Spacer(Modifier.width(5.dp))
+                        Text(kindTag(k), style = MaterialTheme.typography.labelMedium, color = kindColor(k), maxLines = 1)
+                    }
+                }
             }
         }
     }
@@ -250,7 +254,7 @@ fun TagChip(k: ValueKind, modifier: Modifier = Modifier, text: String = kindTag(
     }
 }
 
-fun alertColor(level: Int): Color = when (level) { 2 -> StatusCrit; 1 -> StatusWarn; else -> BrandEmerald }
+fun alertColor(level: Int): Color = when (level) { 2 -> StatusCrit; 1 -> StatusWarn; else -> ValuePresent }
 
 // =================================== card + shared bits ===================================
 
@@ -286,16 +290,12 @@ data class GistItem(val label: String, val value: String, val sub: String, val k
 @Composable
 fun GistTile(item: GistItem, modifier: Modifier = Modifier) {
     val valColor = if (item.value == "—") kindColor(ValueKind.NEUTRAL) else kindColor(item.kind)
-    Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(10.dp), modifier = modifier) {
+    Surface(color = Color.Black, shape = RoundedCornerShape(10.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine), modifier = modifier) {
         Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp)) {
             Text(item.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             Text(item.value, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace, fontSize = 16.sp),
                 color = valColor, maxLines = 2)
             Text(item.sub, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (item.kind != ValueKind.NEUTRAL && item.value != "—") {
-                Spacer(Modifier.height(4.dp))
-                TagChip(item.kind)
-            }
         }
     }
 }
@@ -350,7 +350,7 @@ fun PopulationDistributionCard(entry: DailyDataEntity) {
                 val frac = ((loc.avg - minScale) / (maxScale - minScale)).coerceIn(0.08, 1.0)
                 val dev = if (mean > 0) (loc.avg - mean) / mean else 0.0
                 val barColor = when {
-                    abs(dev) <= 0.05 -> BrandEmerald
+                    abs(dev) <= 0.05 -> ValuePresent
                     abs(dev) <= 0.10 -> StatusWarn
                     else -> StatusCrit
                 }
@@ -367,7 +367,7 @@ fun PopulationDistributionCard(entry: DailyDataEntity) {
         val heavy = locs.count { it.avg > mean * 1.05 }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             BandChip("Light < 95%", light, StatusWarn, Modifier.weight(1f))
-            BandChip("On target", onTarget, BrandEmerald, Modifier.weight(1f))
+            BandChip("On target", onTarget, ValuePresent, Modifier.weight(1f))
             BandChip("Heavy > 105%", heavy, StatusCrit, Modifier.weight(1f))
         }
     }
@@ -375,7 +375,7 @@ fun PopulationDistributionCard(entry: DailyDataEntity) {
 
 @Composable
 private fun BandChip(label: String, count: Int, color: Color, modifier: Modifier = Modifier) {
-    Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(8.dp), modifier = modifier) {
+    Surface(color = Color.Black, shape = RoundedCornerShape(8.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine), modifier = modifier) {
         Column(modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("$count spots", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Black, color = color, fontFamily = FontFamily.Monospace))
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)

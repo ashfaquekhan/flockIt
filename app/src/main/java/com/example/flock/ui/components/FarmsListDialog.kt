@@ -76,14 +76,14 @@ fun FarmsListDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Surface(
+        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
             modifier = Modifier
                 .fillMaxWidth(0.95f)
                 .padding(vertical = 24.dp)
                 .testTag("farms_list_dialog"),
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp
+            tonalElevation = 0.dp
         ) {
             Column(
                 modifier = Modifier
@@ -115,7 +115,7 @@ fun FarmsListDialog(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Account & Auth Card
-                Surface(
+                Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.fillMaxWidth()
@@ -128,9 +128,9 @@ fun FarmsListDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(
+                            Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                                 shape = CircleShape,
-                                color = BrandEmerald,
+                                color = androidx.compose.ui.graphics.Color(0xFFF2F2F0),
                                 modifier = Modifier.size(32.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
@@ -181,7 +181,7 @@ fun FarmsListDialog(
                     for (farm in farms) {
                         val isSelected = farm.spreadsheetId == selectedSpreadsheetId
 
-                        Surface(
+                        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                             color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
@@ -206,8 +206,8 @@ fun FarmsListDialog(
                                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Surface(
-                                            color = if (farm.isOwner) BrandEmerald else Color.Gray,
+                                        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
+                                            color = if (farm.isOwner) androidx.compose.ui.graphics.Color(0xFFF2F2F0) else Color.Gray,
                                             shape = RoundedCornerShape(4.dp)
                                         ) {
                                             Text(
@@ -248,7 +248,7 @@ fun FarmsListDialog(
                     }
 
                     if (showOpenSharedInput) {
-                        Surface(
+                        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                             color = MaterialTheme.colorScheme.surfaceVariant,
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
@@ -263,7 +263,7 @@ fun FarmsListDialog(
                                     modifier = Modifier.fillMaxWidth()
                                 )
                                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                                    Button(
+                                    Button(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                                         onClick = {
                                             val cleanId = extractSpreadsheetId(sharedIdInput)
                                             if (cleanId.isNotBlank()) {
@@ -272,7 +272,7 @@ fun FarmsListDialog(
                                                 onDismiss()
                                             }
                                         },
-                                        colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald),
+                                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
                                         enabled = sharedIdInput.isNotBlank()
                                     ) {
                                         Text("Open Farm")
@@ -300,12 +300,12 @@ fun FarmsListDialog(
                         Text("Open Shared")
                     }
 
-                    Button(
+                    Button(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                         onClick = {
                             onCreateNewFarm()
                             onDismiss()
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald),
+                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(10.dp)
                     ) {

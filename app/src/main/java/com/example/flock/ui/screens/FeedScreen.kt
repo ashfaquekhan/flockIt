@@ -76,10 +76,10 @@ fun FeedScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // 1. Daily Issue Banner
-        Surface(
+        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
             shape = RoundedCornerShape(14.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 1.dp,
+            tonalElevation = 0.dp,
             shadowElevation = 2.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -159,10 +159,10 @@ fun FeedScreen(
         }
 
         // 2. 5 Time Blocks Feed Distribution
-        Surface(
+        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
             shape = RoundedCornerShape(14.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 1.dp,
+            tonalElevation = 0.dp,
             shadowElevation = 2.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -230,10 +230,10 @@ fun FeedScreen(
         }
 
         // 3. Conversion Cards (FCR, cFCR, Breed Standard)
-        Surface(
+        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
             shape = RoundedCornerShape(14.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 1.dp,
+            tonalElevation = 0.dp,
             shadowElevation = 2.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -354,7 +354,7 @@ fun FeedBlockRow(
                 )
             }
         } else {
-            Surface(
+            Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 shape = RoundedCornerShape(8.dp)
             ) {
@@ -378,7 +378,7 @@ fun FcrCard(
     sub: String,
     modifier: Modifier = Modifier
 ) {
-    Surface(
+    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
         modifier = modifier,
         shape = RoundedCornerShape(10.dp),
         color = MaterialTheme.colorScheme.surfaceVariant

@@ -3,6 +3,7 @@ package com.example.flock.ui.screens
 import android.graphics.Paint
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -77,7 +78,7 @@ private fun LegendSwatch(color: Color, label: String, dashed: Boolean, thick: Bo
                 pathEffect = if (dashed) PathEffect.dashPathEffect(floatArrayOf(8f, 6f)) else null)
         }
         Spacer(Modifier.width(5.dp))
-        Text(label, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = color))
+        Text(label, style = MaterialTheme.typography.labelMedium, color = color)
     }
 }
 
@@ -120,7 +121,7 @@ private fun StandardChart(
         }
         Canvas(
             Modifier.fillMaxWidth().height(180.dp)
-                .background(bg, RoundedCornerShape(12.dp))
+                .border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(12.dp))
                 .pointerInput(maxDay, fromDay) {
                     detectTapGestures { o ->
                         val padL = 48f
@@ -134,7 +135,7 @@ private fun StandardChart(
             val gw = size.width - padL; val gh = size.height - padB
             fun px(d: Int) = padL + (d - fromDay).toFloat() / (maxDay - fromDay).coerceAtLeast(1) * gw
             fun py(v: Double) = (gh - ((v.coerceIn(yMin, yMax) - yMin) / (yMax - yMin)) * gh).toFloat()
-            val lbl = Paint().apply { color = labelArgb; textSize = 27f; isAntiAlias = true }
+            val lbl = Paint().apply { color = labelArgb; textSize = 10.sp.toPx(); isAntiAlias = true }
             var t = kotlin.math.ceil(yMin / yStep) * yStep
             while (t <= yMax + 1e-9) {
                 val y = py(t)
@@ -189,7 +190,7 @@ fun BirdCharts(d: OutputData) {
     val by = d.byDay
     OutputCard(title = "Bird curves") {
         StandardsLegend()
-        Text("Tap a chart to read any day.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        
         StandardChart(
             "Body weight", "g",
             listOf(
@@ -226,7 +227,6 @@ fun BirdCharts(d: OutputData) {
             ),
             maxDay, d.day, 0.0, 7.0, 1.0, 2, companyBand = false
         )
-        Text("Mortality ideal = industry benchmark; commercial = company daily allowance added up.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -266,7 +266,5 @@ fun FeedCharts(d: OutputData) {
             ),
             maxDay, max(1, d.day - 1), 0.0, 7000.0, 1000.0, 1, companyBand = true, fromDay = 1
         )
-        Text("Feed entered on a day is what the birds ate the day before, so the present line runs one day behind.",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

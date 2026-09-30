@@ -115,7 +115,7 @@ fun FarmSettingsDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Surface(
+        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
             modifier = Modifier
                 .fillMaxWidth(0.95f)
                 .fillMaxHeight(0.9f)
@@ -124,7 +124,7 @@ fun FarmSettingsDialog(
                 .testTag("farm_settings_dialog"),
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp
+            tonalElevation = 0.dp
         ) {
             Column(
                 modifier = Modifier
@@ -388,7 +388,7 @@ fun FarmSettingsDialog(
                         )
 
                         for (ft in feedTypes) {
-                            Surface(
+                            Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                                 color = MaterialTheme.colorScheme.surfaceVariant,
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.fillMaxWidth()
@@ -425,7 +425,7 @@ fun FarmSettingsDialog(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         // Add Feed Type Form
-                        Surface(
+                        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.fillMaxWidth()
@@ -467,7 +467,7 @@ fun FarmSettingsDialog(
                                     )
                                 }
 
-                                Button(
+                                Button(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                                     onClick = {
                                         if (newFeedCode.isNotBlank() && newFeedName.isNotBlank()) {
                                             val newFt = FeedTypeEntity(
@@ -483,7 +483,7 @@ fun FarmSettingsDialog(
                                             newFeedName = ""
                                         }
                                     },
-                                    colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald),
+                                    colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
                                     enabled = newFeedCode.isNotBlank() && newFeedName.isNotBlank()
                                 ) {
                                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -502,7 +502,7 @@ fun FarmSettingsDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    Button(
+                    Button(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                         onClick = {
                             val updatedFarm = farm.copy(
                                 farmName = farmName.ifBlank { farm.farmName },
@@ -548,7 +548,7 @@ fun FarmSettingsDialog(
                             onSaveFarmSettings(updatedFarm, updatedConfig)
                             onDismiss()
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald)
+                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
                     ) {
                         Text("Save Settings")
                     }

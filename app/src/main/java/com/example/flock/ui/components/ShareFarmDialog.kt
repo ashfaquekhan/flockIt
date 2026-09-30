@@ -56,10 +56,10 @@ fun ShareFarmDialog(
     var isEditor by remember { mutableStateOf(true) }
 
     Dialog(onDismissRequest = onDismiss) {
-        Surface(
+        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp,
+            tonalElevation = 0.dp,
             modifier = Modifier
                 .fillMaxWidth(0.95f)
                 .testTag("share_farm_dialog")
@@ -126,14 +126,14 @@ fun ShareFarmDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    Button(
+                    Button(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                         onClick = {
                             if (email.isNotBlank()) {
                                 onShare(email.trim(), isEditor)
                                 onDismiss()
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald),
+                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
                         enabled = email.contains("@")
                     ) {
                         Text("Share via Drive")
@@ -159,7 +159,7 @@ fun ShareFarmDialog(
                     )
                 )
 
-                Surface(
+                Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                     shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier.fillMaxWidth()
@@ -200,7 +200,7 @@ fun ShareFarmDialog(
                 ) {
                     Icon(Icons.Default.Share, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(6.dp))
-                    Text("Share Farm Link / ID", color = BrandEmerald, fontWeight = FontWeight.Bold)
+                    Text("Share Farm Link / ID", color = androidx.compose.ui.graphics.Color(0xFFF2F2F0), fontWeight = FontWeight.Bold)
                 }
             }
         }

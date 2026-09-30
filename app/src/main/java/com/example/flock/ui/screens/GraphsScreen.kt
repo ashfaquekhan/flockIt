@@ -41,7 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.flock.data.DailyDataEntity
 import com.example.flock.engine.PhysiologicalEngine
-import com.example.ui.theme.BrandEmerald
+import com.example.ui.theme.ValuePresent
 import com.example.ui.theme.DomainFeed
 import com.example.ui.theme.DomainWater
 import com.example.ui.theme.StatusCrit
@@ -103,10 +103,10 @@ fun WeightGrowthChartCard(
     selectedDay: Int,
     onSelectDay: (Int) -> Unit
 ) {
-    Surface(
+    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
+        tonalElevation = 0.dp,
         shadowElevation = 2.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -134,7 +134,7 @@ fun WeightGrowthChartCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 LegendItem(color = Color.Gray, label = "Breed Std")
-                LegendItem(color = BrandEmerald, label = "Measured")
+                LegendItem(color = com.example.ui.theme.ValuePresent, label = "Measured")
                 LegendItem(color = StatusProjected, label = "Projected (dashed)")
             }
 
@@ -204,7 +204,7 @@ fun WeightGrowthChartCard(
                             } else {
                                 measuredPath.lineTo(x, y)
                             }
-                            drawCircle(color = BrandEmerald, radius = 4.dp.toPx(), center = Offset(x, y))
+                            drawCircle(color = com.example.ui.theme.ValuePresent, radius = 4.dp.toPx(), center = Offset(x, y))
                         } else if (r.projected) {
                             if (!hasProjStart) {
                                 projPath.moveTo(x, y)
@@ -219,7 +219,7 @@ fun WeightGrowthChartCard(
                     if (hasMeasuredStart) {
                         drawPath(
                             path = measuredPath,
-                            color = BrandEmerald,
+                            color = com.example.ui.theme.ValuePresent,
                             style = Stroke(width = 3.dp.toPx())
                         )
                     }
@@ -238,7 +238,7 @@ fun WeightGrowthChartCard(
                     // Highlight selected day
                     val selX = (selectedDay.toFloat() / maxDay) * w
                     drawLine(
-                        color = BrandEmerald.copy(alpha = 0.6f),
+                        color = com.example.ui.theme.ValuePresent.copy(alpha = 0.6f),
                         start = Offset(selX, 0f),
                         end = Offset(selX, h),
                         strokeWidth = 2.dp.toPx()
@@ -269,10 +269,10 @@ fun FeedWaterChartCard(
     selectedDay: Int,
     onSelectDay: (Int) -> Unit
 ) {
-    Surface(
+    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
+        tonalElevation = 0.dp,
         shadowElevation = 2.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -359,10 +359,10 @@ fun MortalityChartCard(
     selectedDay: Int,
     onSelectDay: (Int) -> Unit
 ) {
-    Surface(
+    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
+        tonalElevation = 0.dp,
         shadowElevation = 2.dp,
         modifier = Modifier.fillMaxWidth()
     ) {

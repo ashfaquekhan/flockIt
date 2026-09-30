@@ -86,7 +86,7 @@ fun FlocksScreen(
         flocks.sortedWith(compareBy<FlockEntity> { it.status == "closed" }.thenByDescending { it.startDate }.thenByDescending { it.createdAt })
     }
 
-    Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -157,11 +157,11 @@ fun FlocksScreen(
             }
 
             Spacer(Modifier.height(10.dp))
-            Button(
+            Button(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                 onClick = { showCreate = true },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald)
+                colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
                 Text("  New flock / batch", color = Color.White, fontWeight = FontWeight.Bold)
@@ -225,10 +225,10 @@ private fun FlockCard(
     }
     val isClosed = flock.status == "closed"
 
-    Surface(
+    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(12.dp),
-        tonalElevation = 1.dp,
+        tonalElevation = 0.dp,
         modifier = Modifier.fillMaxWidth().clickable { onOpen() }
     ) {
         Column(modifier = Modifier.padding(14.dp)) {

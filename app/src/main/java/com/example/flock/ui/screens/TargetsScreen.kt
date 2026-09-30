@@ -147,10 +147,10 @@ fun TargetsScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // Core Premise Anchor Header Card
-        Surface(
+        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
             shape = RoundedCornerShape(14.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 1.dp,
+            tonalElevation = 0.dp,
             shadowElevation = 2.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -172,7 +172,7 @@ fun TargetsScreen(
                             text = if (isProjected) "Projected" else "Ground-Truth",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontWeight = FontWeight.Bold,
-                                color = if (isProjected) StatusProjected else BrandEmerald
+                                color = if (isProjected) StatusProjected else com.example.ui.theme.ValuePresent
                             ),
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                         )
@@ -186,7 +186,7 @@ fun TargetsScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     // Calendar Day Tile
-                    Surface(
+                    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                         modifier = Modifier.weight(1f),
                         color = MaterialTheme.colorScheme.surfaceVariant,
                         shape = RoundedCornerShape(10.dp)
@@ -229,7 +229,7 @@ fun TargetsScreen(
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontSize = 10.sp,
                                     fontFamily = FontFamily.Monospace,
-                                    color = if (isProjected) StatusProjected else BrandEmerald
+                                    color = if (isProjected) StatusProjected else com.example.ui.theme.ValuePresent
                                 )
                             )
                             Spacer(modifier = Modifier.height(2.dp))
@@ -237,7 +237,7 @@ fun TargetsScreen(
                                 text = String.format("Day %.1f", weightAge),
                                 style = MaterialTheme.typography.titleLarge.copy(
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = if (isProjected) StatusProjected else BrandEmerald
+                                    color = if (isProjected) StatusProjected else com.example.ui.theme.ValuePresent
                                 )
                             )
                             Text(
@@ -264,10 +264,10 @@ fun TargetsScreen(
         }
 
         // Side-by-Side Comparison Table
-        Surface(
+        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
             shape = RoundedCornerShape(14.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 1.dp,
+            tonalElevation = 0.dp,
             shadowElevation = 2.dp,
             modifier = Modifier.fillMaxWidth()
         ) {

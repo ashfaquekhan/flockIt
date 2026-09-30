@@ -91,7 +91,7 @@ class OutputData(
     private val prevSample = rows.filter { it.dayNumber < day && it.avgWeight != null }.maxByOrNull { it.dayNumber }
     val gainMeasured: Double? = if (e.avgWeight != null && prevSample?.avgWeight != null)
         (e.avgWeight - prevSample.avgWeight) / (day - prevSample.dayNumber) else null
-    val gain: Double = gainMeasured ?: e.gainPerBird
+    val gain: Double? = gainMeasured ?: e.gainPerBird.takeIf { it > 0 }
     val gainKind = if (gainMeasured != null) ValueKind.PRESENT else ValueKind.PREDICTED
     val gainCom: Double? = CompanyStandard.gain(day)
     val gainIdeal = bwIdeal - PhysiologicalEngine.bwFromDay(max(0, day - 1).toDouble(), breed)
@@ -177,8 +177,8 @@ class OutputData(
     // ------------------------------- ventilation -------------------------------
     val plan = IbController.dayPlan(day, bw, live, farm)
     val hour = currentHour(farm)
-    val now: IbController.HouseState? =
-        if (isToday && weather != null) IbController.simulate(plan, weather.tempC, weather.rhPercent, hour, live, bw, farm) else null
+    /** No house sensors yet, so nothing inside the house is estimated from the weather. */
+    val now: IbController.HouseState? = null
     val fanCfm = plan.fanCfm
     val allFansCfm = farm.fanCount * fanCfm
     val houseVolFt3 = farm.usableLengthFt * farm.usableWidthFt * farm.heightFt
@@ -203,7 +203,7 @@ class OutputData(
     val scenarioSource: String
     val scenarios: List<VentScenario>
     init {
-        val dayPts = hourly.filter { it.date == e.date }
+        val dayPts = emptyList<com.example.flock.network.HourPoint>()   // season's typical day, not the forecast
         val cases: List<Triple<Int, Double, Double>> = if (dayPts.size >= 12) {
             val lo = dayPts.minBy { it.tempC }
             val hi = dayPts.maxBy { it.tempC }
@@ -235,8 +235,8 @@ class OutputData(
     val gridRh = listOf(40.0, 65.0, 90.0)
     fun sim(outC: Double, outRh: Double, hr: Int = 14): IbController.HouseState = IbController.simulate(plan, outC, outRh, hr, live, bw, farm)
     /** Where the fan finder dials start: the weather now if we have it, else the hottest hour. */
-    val dialStartC = weather?.tempC ?: hottestC
-    val dialStartRh = weather?.rhPercent ?: scenarios.last().outRh
+    val dialStartC = hottestC
+    val dialStartRh = scenarios.last().outRh
 
     // ------------------------------- house layout & feeding plan -------------------------------
     val feederLines = max(1, farm.feederLines)
@@ -264,87 +264,77 @@ class OutputData(
     }
     val lineGapFt = farm.usableWidthFt / max(1, lineOrder.size)
     val feederGapFt = farm.usableWidthFt / feederLines
-    /** Ross: 45–80 birds per pan (the lower figure above 3.5 kg); birds should not walk more than 2 m to feed. */
-    val birdsPerPanMax = if (bw > 3500) 45.0 else 80.0
-    val birdsPerPanMin = 45.0
-    val isHotDay = hottestC >= 33.0 || scenarios.last().state.feltC > plan.comfort + 4
-    /** Feedings the age and heat call for (farm practice + Ross: small and often while young, cool hours when hot). */
+    /** Feedings by age: small and often for chicks (Ross: top up trays/paper often in days 0–4), 2 for big birds. */
     val feedingsWanted = when {
         day <= 3 -> 5
         day <= 7 -> 4
-        day <= 21 -> if (isHotDay) 2 else 3
+        day <= 21 -> 3
         else -> 2
     }
-    val feedings = feedingsWanted
-    val bagsPerFeeding = giveBags / feedings
-    val bagsPerLinePerFeeding = bagsPerFeeding / feederLines
-    private val phaseBagKg = kgPerBag(phase)
-    /** Feed in a pan when full, from the line setting minus what the auger tube holds (~0.95 kg per metre). */
-    val tubeKgPerFt = 0.95 * 0.3048
-    val panKg = max(0.3, (bagsFullLine * phaseBagKg - tubeKgPerFt * lineLenFt) / pansPerLine)
+    /** Pans one bag fills on a line (farm setting: bags that fill one whole line). */
+    val pansPerBag = pansPerLine / bagsFullLine
+    /**
+     * Birds one pan can serve: Ross gives 45–80 for grown birds; feeder space needed grows with body size
+     * (≈ weight^⅓), so small birds can share a pan with more birds.
+     */
+    val birdsPerPanMax = if (bw > 3500) 45.0 else min(160.0, 80.0 * Math.cbrt(2000.0 / max(bw, 100.0)).coerceAtLeast(1.0))
+    val birdsPerPanMin = 45.0
 
     /** One on/off arrangement of the pans inside the birds' area (same on every line). */
-    data class PanPattern(val on: Int, val off: Int, val openPerLine: Int, val lastIdx: Int, val chargeKg: Double,
-                          val travelM: Double, val birdsPerPan: Double) {
-        val label get() = if (off == 0) "All pans open" else "$on on · $off off"
+    data class PanPattern(val on: Int, val off: Int, val openPerLine: Int, val lastIdx: Int, val travelM: Double, val birdsPerPan: Double) {
+        val label get() = if (off == 0) "All on" else "$on on · $off off"
         fun isOpen(i: Int) = (i % (on + off)) < on
     }
-    val patterns: List<PanPattern> = listOf(1 to 0, 2 to 1, 1 to 1, 1 to 2).map { (on, off) ->
+    val patterns: List<PanPattern> = listOf(1 to 0, 3 to 1, 2 to 1, 3 to 2, 1 to 1, 2 to 3, 1 to 2, 1 to 3).map { (on, off) ->
         val open = (0 until pansInArea).filter { (it % (on + off)) < on }
-        val last = open.lastOrNull() ?: -1
-        val tubeFt = (last + 1) * panSpacingFt
-        val charge = feederLines * (tubeKgPerFt * tubeFt + panKg * open.size)
         val gapM = (off + 1) * panSpacingFt * 0.3048
         val travel = Math.hypot(feederGapFt * 0.3048 / 2, gapM / 2)
-        PanPattern(on, off, open.size, last, charge, travel, if (open.isEmpty()) Double.MAX_VALUE else live.toDouble() / (feederLines * open.size))
+        PanPattern(on, off, open.size, open.lastOrNull() ?: -1, travel, if (open.isEmpty()) Double.MAX_VALUE else live.toDouble() / (feederLines * open.size))
     }
-    /** Patterns that keep every bird within 2 m of feed and each pan within its bird limit. */
-    val safePatterns = patterns.filter { it.openPerLine > 0 && it.travelM <= ALLOWED_TRAVEL_M && it.birdsPerPan <= birdsPerPanMax }
+    private fun safe(p: PanPattern) = p.openPerLine > 0 && p.travelM <= ALLOWED_TRAVEL_M && p.birdsPerPan <= birdsPerPanMax
+    /** How many pans per line one feeding of [n] feedings can fill. */
+    fun pansFilled(n: Int) = giveBags / n / feederLines * pansPerBag
     /**
-     * EACH: one feeding reaches the last open pan even from empty. CHARGE: fill the lines once (within
-     * today's ration), then top up before the pans run empty. MANUAL: no safe pattern fits today's ration.
+     * Pick the feedings and pattern: start from the age's feedings; each feeding must fully fill every
+     * open pan (open ≤ pans it can fill) with a safe pattern; if none fits, try one feeding fewer.
      */
-    val patternMode: String
+    val feedings: Int
     val feedPattern: PanPattern
+    val patternFits: Boolean
     init {
-        val perFeedKg = giveKg / feedings
-        val each = safePatterns.firstOrNull { it.chargeKg <= perFeedKg }
-        val charge = safePatterns.firstOrNull { it.chargeKg <= giveKg }
-        when {
-            day <= 3 -> { patternMode = "TRAYS"; feedPattern = patterns.first() }
-            each != null -> { patternMode = "EACH"; feedPattern = each }
-            charge != null -> { patternMode = "CHARGE"; feedPattern = charge }
-            else -> { patternMode = "MANUAL"; feedPattern = safePatterns.lastOrNull() ?: patterns.first() }
+        var chosenF = 1; var chosen: PanPattern? = null
+        for (n in feedingsWanted downTo 1) {
+            val can = pansFilled(n)
+            val p = if (can >= pansInArea) patterns.first().takeIf { safe(it) } else patterns.firstOrNull { it.openPerLine <= can && safe(it) }
+            if (p != null) { chosenF = n; chosen = p; break }
         }
+        patternFits = chosen != null
+        feedings = if (chosen != null) chosenF else 1
+        feedPattern = chosen ?: patterns.first()
     }
+    val bagsPerFeeding = giveBags / feedings
+    val bagsPerLinePerFeeding = bagsPerFeeding / feederLines
+    /** Pans one feeding fills per line, and the pans open per line. */
+    val pansFilledPerLine = pansFilled(feedings)
     val pansOpenPerLine = max(0, feedPattern.openPerLine)
     val pansOpen = pansOpenPerLine * feederLines
     val birdsPerPan = if (pansOpen > 0) live.toDouble() / pansOpen else 0.0
-    /** Length of line inside the birds' area. */
     val openLenFt = min(lineLenFt, max(0.0, barricadeFtNow - lineStartFt))
-    /** Bags to fill every open pan (and the tube up to the last one) from empty. */
-    val bagsFillOpen = feedPattern.chargeKg / phaseBagKg
+    /** Bags that fill every open pan once; what a feeding pours beyond that waits in the hopper. */
+    val bagsFillOpen = pansOpen / pansPerBag
+    val hopperBagsPerFeeding = max(0.0, bagsPerFeeding - bagsFillOpen)
     val fillsPossible: Double = if (bagsFillOpen > 0) giveBags / bagsFillOpen else 0.0
-    /** Share of the open pans one feeding reaches if they were empty, and how far along the line that is. */
-    val reachOfOpen = if (feedPattern.chargeKg > 0) (giveKg / feedings) / feedPattern.chargeKg else 1.0
-    val reachFt = min(1.0, reachOfOpen) * (feedPattern.lastIdx + 1) * panSpacingFt
+    val reachOfOpen = if (pansOpenPerLine > 0) min(1.0, pansFilledPerLine / pansOpenPerLine) else 1.0
+    val reachFt = reachOfOpen * (feedPattern.lastIdx + 1) * panSpacingFt
+    val feedTimes: List<String> = when (feedings) {
+        1 -> listOf("06:00")
+        2 -> listOf("06:00", "17:00")
+        3 -> listOf("06:00", "12:00", "18:00")
+        4 -> listOf("06:00", "10:00", "14:00", "18:00")
+        else -> listOf("06:00", "09:00", "12:00", "15:00", "18:00")
+    }
     /** Ross: let birds clear the pans once a day from day 10–12 — only workable once a day's ration can refill the empty lines. */
     val cleanOutOk = day >= 10 && giveBags >= bagsFillOpen
-    val feedTimes: String = when {
-        isHotDay && feedings == 2 -> "05:00 · 18:30"
-        isHotDay && feedings == 3 -> "04:30 · 18:00 · 21:30"
-        feedings == 1 -> "05:00"
-        feedings == 2 -> "06:00 · 17:00"
-        feedings == 3 -> "06:00 · 12:00 · 18:00"
-        feedings == 4 -> "06:00 · 10:00 · 14:00 · 18:00"
-        else -> "06:00 · 09:00 · 12:00 · 15:00 · 18:00 (+ night top-up)"
-    }
-    val feedingReason: String = when {
-        day <= 3 -> "Chicks eat from trays and paper: top up little and often (Ross). Keep the pans flooded."
-        isHotDay -> "Hot day (up to ${Fmt.n(hottestC, 1)} °C): feed in the cool hours; no feeding for ~5.0 h before the hottest hour (${String.format("%02d:00", hottestHour)})."
-        day <= 21 -> "Comfortable day: $feedings feedings for young birds."
-        else -> "$feedings feedings in the cooler morning and evening."
-    }
 
     // ------------------------------- first week equipment -------------------------------
     val chicksPlaced = entryBirds
@@ -442,8 +432,8 @@ class OutputData(
             e.waterPh?.let { ph -> if (ph < 6.0 || ph > 6.8) add(TopicAlert(1, "Water pH ${Fmt.n(ph)} outside 6.00–6.80")) }
             e.waterTempC?.let { t -> if (t > 25) add(TopicAlert(1, "Water ${Fmt.n(t, 1)} °C is warm (ideal 10.0–25.0 °C) — flush the lines")) }
             nextPhaseDay?.let { d -> if (d - day in 1..2) add(TopicAlert(1, "Feed changes to ${CompanyStandard.feedPhase(d)} on day $d")) }
-            if (patternMode == "MANUAL") add(TopicAlert(2, "No safe pan pattern fits today's ${Fmt.n(giveBags, 2)} bags — pour the far pans by hand or move the barricade in"))
-            else if (patternMode == "CHARGE") add(TopicAlert(1, "Fill the lines once with ${Fmt.n(bagsFillOpen, 2)} bags (${feedPattern.label.lowercase()}), then top up before the pans run empty"))
+            if (day >= 4 && !patternFits) add(TopicAlert(2, "Today's ${Fmt.n(giveBags, 2)} bags can't fill a safe pan pattern — feed ${Fmt.n(bagsPerFeeding, 2)} bags once"))
+            else if (day >= 4 && feedings < feedingsWanted) add(TopicAlert(1, "${feedings} feedings fit the lines today (${feedingsWanted} by age)"))
             if (birdsPerPan > birdsPerPanMax) add(TopicAlert(1, "${Fmt.n(birdsPerPan, 1)} birds per open pan — more than ${Fmt.n(birdsPerPanMax, 1)}; open more pans"))
             birdsPerNipple?.let { b -> if (b > birdsPerNippleMax) add(TopicAlert(1, "${Fmt.n(b, 1)} birds per nipple — more than ${Fmt.n(birdsPerNippleMax, 1)}")) }
             if (day <= 3 && farm.manualFeeders < traysIdeal) add(TopicAlert(1, "${farm.manualFeeders} feeder trays; Ross advises ${Fmt.n(traysIdeal, 1)} (1 per 100 chicks)"))
@@ -459,11 +449,6 @@ class OutputData(
             godownFree?.let { f -> if (f < 0) add(TopicAlert(2, "Godown over capacity by ${Fmt.n(-f, 2)} bags")) }
         })
         put(Topic.VENT, buildList {
-            now?.let { s ->
-                if (s.feltC > plan.comfort + 4) add(TopicAlert(2, "Birds feel ${Fmt.n(s.feltC, 1)} °C now — ${Fmt.n(s.feltC - plan.comfort, 1)} °C over comfort"))
-                else if (s.feltC > plan.comfort + 2) add(TopicAlert(1, "Birds feel ${Fmt.n(s.feltC, 1)} °C now — warm"))
-                else if (s.feltC < plan.comfort - 3) add(TopicAlert(1, "Birds feel ${Fmt.n(s.feltC, 1)} °C now — cold"))
-            }
             scenarios.lastOrNull()?.let { s -> if (s.state.feltC > plan.comfort + 4) add(TopicAlert(1, "Hottest hour: birds may feel ${Fmt.n(s.state.feltC, 1)} °C even with ${Fmt.n(s.state.fans, 1)} fans")) }
             scenarios.firstOrNull()?.let { s ->
                 val cap = farm.heaterCount * farm.heaterKw
@@ -476,8 +461,6 @@ class OutputData(
             e.measuredCo2?.let { v -> if (v > 3500) add(TopicAlert(2, "CO₂ ${Fmt.n(v, 1)} ppm — critical")) else if (v > e.co2Max) add(TopicAlert(1, "CO₂ ${Fmt.n(v, 1)} ppm above ${Fmt.n(e.co2Max, 1)}")) }
             e.measuredO2?.let { v -> if (v < 19.6) add(TopicAlert(1, "Oxygen ${Fmt.n(v)}% below 19.60%")) }
             e.measuredPressure?.let { v -> if (v < 15 || v > 45) add(TopicAlert(1, "Static pressure ${Fmt.n(v, 1)} Pa outside 15.0–45.0")) }
-            now?.let { s -> if (s.houseRh >= 80) add(TopicAlert(1, "House humidity about ${Fmt.n(s.houseRh, 1)}% — wet litter risk")) }
-            weather?.let { w -> if (w.tempC >= 35) add(TopicAlert(1, "Hot outside: ${Fmt.n(w.tempC, 1)} °C")) }
         })
     }
 

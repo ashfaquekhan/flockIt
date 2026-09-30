@@ -3,7 +3,7 @@ package com.example.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // Primary Domain Palette
-val BrandEmerald = Color(0xFF24463C)   // dark glass green for filled buttons (white text)
+val BrandEmerald = Color(0xFF000000)   // no colour fills: widgets are black with a white outline
 val BrandDarkEmerald = Color(0xFF0F5C4A)
 val BrandWashLight = Color(0xFFE4F0EB)
 val BrandWashDark = Color(0xFF16302A)
@@ -42,9 +42,9 @@ val MutedLight = Color(0xFF7C8378)
 val LineLight = Color(0xFFE2DED3)
 
 // Dark Backgrounds & Neutrals — neutral charcoal, calm and clearly legible
-val GroundDark = Color(0xFF040404)   // matte black
-val SurfaceDark = Color(0xFF0B0B0C)
-val Surface2Dark = Color(0xFF141416)
+val GroundDark = Color(0xFF000000)   // pure black
+val SurfaceDark = Color(0xFF000000)
+val Surface2Dark = Color(0xFF000000)
 val SunkDark = Color(0xFF000000)
 val InkDark = Color(0xFFF2F2F0)      // primary text — high contrast
 val Ink2Dark = Color(0xFFB9BCBF)     // secondary text — clearly visible
@@ -53,7 +53,7 @@ val LineDark = Color(0x55FFFFFF)     // thin white outline     // hairlines / ou
 
 // Calm accent for dark mode (not flashy) — a muted teal-emerald
 val AccentDark = Color(0xFFD9E8E1)   // light, near-white accent
-val AccentDarkWash = Color(0x1FFFFFFF)
+val AccentDarkWash = Color(0xFF000000)
 
 // Value provenance — keep the three kinds visually distinct so they're never confused:
 val ValuePresent = Color(0xFF8FE3BE)     // measured / actual (you entered it) — green
@@ -70,6 +70,6 @@ val ValueMax = Color(0xFFF7A6BF)        // upper limit — rose
 val ValueMaxWash = Color(0x14F7A6BF)
 
 // Glass panels on matte black: transparent fill, thin white outline, faint top highlight.
-val GlassFill = Color(0x0DFFFFFF)
-val GlassFillTop = Color(0x1AFFFFFF)
-val GlassLine = Color(0x4DFFFFFF)
+val GlassFill = Color(0x00000000)
+val GlassFillTop = Color(0x00000000)
+val GlassLine = Color(0x66FFFFFF)

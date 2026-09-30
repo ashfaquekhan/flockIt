@@ -69,10 +69,10 @@ fun WaterScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // 1. Water Intake Banner
-        Surface(
+        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
             shape = RoundedCornerShape(14.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 1.dp,
+            tonalElevation = 0.dp,
             shadowElevation = 2.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -144,10 +144,10 @@ fun WaterScreen(
         }
 
         // 2. Tank Refill Schedule
-        Surface(
+        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
             shape = RoundedCornerShape(14.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 1.dp,
+            tonalElevation = 0.dp,
             shadowElevation = 2.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -208,7 +208,7 @@ fun WaterScreen(
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         }
-                        Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(6.dp)) {
+                        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(6.dp)) {
                             Text(
                                 text = "${farm.drinkFillMin.toInt()} min pump",
                                 style = MaterialTheme.typography.labelSmall.copy(
@@ -227,10 +227,10 @@ fun WaterScreen(
         }
 
         // 3. Line Pressure & Height Targets
-        Surface(
+        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
             shape = RoundedCornerShape(14.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 1.dp,
+            tonalElevation = 0.dp,
             shadowElevation = 2.dp,
             modifier = Modifier.fillMaxWidth()
         ) {

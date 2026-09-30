@@ -123,13 +123,13 @@ fun ClimateEnvelope(
         )
     )
 
-    Surface(
+    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
         modifier = modifier
             .fillMaxWidth()
             .testTag("climate_envelope_card"),
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
+        tonalElevation = 0.dp,
         shadowElevation = 2.dp
     ) {
         Column(modifier = Modifier.padding(14.dp)) {

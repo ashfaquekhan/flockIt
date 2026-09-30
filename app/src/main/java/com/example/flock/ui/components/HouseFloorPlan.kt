@@ -53,13 +53,13 @@ fun HouseFloorPlan(
     val ftPerBird = entry?.ftPerBird ?: 0.0
     val minFtPerBird = entry?.minFtPerBird ?: 0.0
 
-    Surface(
+    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
         modifier = modifier
             .fillMaxWidth()
             .testTag("house_floor_plan_card"),
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
+        tonalElevation = 0.dp,
         shadowElevation = 2.dp
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -113,7 +113,7 @@ fun HouseFloorPlan(
                     // Barricade line = where to stop the chicks
                     if (!fullHouse) {
                         drawLine(
-                            color = BrandEmerald,
+                            color = androidx.compose.ui.graphics.Color(0xFFF2F2F0),
                             start = Offset(w * fractionOccupied, 0f),
                             end = Offset(w * fractionOccupied, h),
                             strokeWidth = 7f

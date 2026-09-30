@@ -1,6 +1,7 @@
 package com.example.flock.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
@@ -291,7 +292,7 @@ fun EntriesScreen(
             WeightSampleRow("Loc 5", w5, n5, weightsEnabled, { w5 = it }, { n5 = it }, "w5_input", "n5_input")
 
             Spacer(modifier = Modifier.height(8.dp))
-            Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
+            Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
@@ -310,7 +311,7 @@ fun EntriesScreen(
                             text = cvStr,
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace,
-                                color = if (liveSampleRes.cvPercent >= 12.0) StatusCrit else if (liveSampleRes.cvPercent >= 10.0) StatusWarn else BrandEmerald
+                                color = if (liveSampleRes.cvPercent >= 12.0) StatusCrit else if (liveSampleRes.cvPercent >= 10.0) StatusWarn else com.example.ui.theme.ValuePresent
                             )
                         )
                     }
@@ -572,7 +573,7 @@ fun HoldButton(
             .fillMaxWidth()
             .height(height.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(base)
+            .border(1.dp, if (enabled) com.example.ui.theme.GlassLine else com.example.ui.theme.GlassLine.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
             .then(
                 if (!enabled) Modifier
                 else Modifier.pointerInput(Unit) {
@@ -605,7 +606,7 @@ fun HoldButton(
                 modifier = Modifier
                     .fillMaxHeight()
                     .fillMaxWidth(progress)
-                    .background(Color.White.copy(alpha = 0.22f))
+                    .background(container.copy(alpha = 0.45f))
             )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -626,10 +627,10 @@ private fun Section(
     subtitle: String? = null,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
 ) {
-    Surface(
+    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(12.dp),
-        tonalElevation = 1.dp,
+        tonalElevation = 0.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

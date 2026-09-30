@@ -38,7 +38,7 @@ fun SignInScreen(
     onOffline: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Surface(
+    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
         modifier = modifier.fillMaxSize().testTag("sign_in_screen"),
         color = MaterialTheme.colorScheme.background
     ) {
@@ -65,14 +65,14 @@ fun SignInScreen(
 
             Spacer(Modifier.height(40.dp))
 
-            Button(
+            Button(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                 onClick = onSignInGoogle,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp)
                     .testTag("btn_sign_in_google"),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald)
+                colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
             ) {
                 Icon(Icons.Default.Login, contentDescription = null, tint = Color.White)
                 Spacer(Modifier.height(0.dp))
@@ -96,7 +96,7 @@ fun SignInScreen(
                 Icon(Icons.Default.CloudOff, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Text(
                     "   Use offline (local only)",
-                    color = BrandEmerald,
+                    color = androidx.compose.ui.graphics.Color(0xFFF2F2F0),
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                 )
             }

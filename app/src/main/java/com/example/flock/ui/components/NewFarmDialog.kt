@@ -40,10 +40,10 @@ fun NewFarmDialog(
     var farmName by remember { mutableStateOf("") }
 
     Dialog(onDismissRequest = onDismiss) {
-        Surface(
+        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp,
+            tonalElevation = 0.dp,
             modifier = Modifier
                 .fillMaxWidth(0.95f)
                 .testTag("new_farm_dialog")
@@ -85,14 +85,14 @@ fun NewFarmDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    Button(
+                    Button(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                         onClick = {
                             if (farmName.isNotBlank()) {
                                 onCreateFarm(farmName.trim())
                                 onDismiss()
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald),
+                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
                         enabled = farmName.isNotBlank()
                     ) {
                         Text("Create Farm")

@@ -86,10 +86,10 @@ fun InsightsScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // 1. Production Performance KPIs Banner
-        Surface(
+        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
             shape = RoundedCornerShape(14.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 1.dp,
+            tonalElevation = 0.dp,
             shadowElevation = 2.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -144,10 +144,10 @@ fun InsightsScreen(
         }
 
         // 2. Uniformity & Weight-Distribution Bands (CV%)
-        Surface(
+        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
             shape = RoundedCornerShape(14.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 1.dp,
+            tonalElevation = 0.dp,
             shadowElevation = 2.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -207,7 +207,7 @@ fun InsightsScreen(
 
                     // Majority (BrandEmerald)
                     drawRect(
-                        color = BrandEmerald,
+                        color = com.example.ui.theme.ValuePresent,
                         topLeft = Offset(underW, 0f),
                         size = Size(majW, h)
                     )
@@ -234,7 +234,7 @@ fun InsightsScreen(
                         Text(text = String.format("Small: %.1f%%", underPct), style = MaterialTheme.typography.labelSmall)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(modifier = Modifier.size(8.dp).background(BrandEmerald, RoundedCornerShape(2.dp)))
+                        Box(modifier = Modifier.size(8.dp).background(com.example.ui.theme.ValuePresent, RoundedCornerShape(2.dp)))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(text = String.format("Majority (±10%%): %.1f%%", majorityPct), style = MaterialTheme.typography.labelSmall)
                     }
@@ -248,10 +248,10 @@ fun InsightsScreen(
         }
 
         // 3. Actionable Management Insights
-        Surface(
+        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
             shape = RoundedCornerShape(14.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 1.dp,
+            tonalElevation = 0.dp,
             shadowElevation = 2.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -300,7 +300,7 @@ fun KpiTile(
     modifier: Modifier = Modifier,
     sub: String? = null
 ) {
-    Surface(
+    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
         modifier = modifier,
         color = MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(10.dp)

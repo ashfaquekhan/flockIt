@@ -53,7 +53,7 @@ fun InitialsAvatar(name: String, size: Dp) {
     Box(
         modifier = Modifier
             .size(size)
-            .background(BrandEmerald, CircleShape),
+            .background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.12f), CircleShape),
         contentAlignment = Alignment.Center
     ) {
         Text(letter, color = Color.White, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
@@ -116,11 +116,11 @@ fun RecycleBinDialog(
     onDismiss: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(
+        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
             modifier = Modifier.fillMaxWidth(0.95f).fillMaxHeight(0.85f).padding(vertical = 24.dp),
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp
+            tonalElevation = 0.dp
         ) {
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                 Row(
@@ -179,7 +179,7 @@ private fun BinHeader(text: String) {
 
 @Composable
 private fun BinRow(title: String, subtitle: String, onRestore: () -> Unit, onPurge: () -> Unit) {
-    Surface(
+    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
         color = MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(10.dp),
         modifier = Modifier.fillMaxWidth()

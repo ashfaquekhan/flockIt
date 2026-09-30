@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -62,20 +63,35 @@ fun v(value: Double?, dec: Int, kind: ValueKind, tag: String? = null) = V(Fmt.n(
 fun vt(text: String, kind: ValueKind, tag: String? = null) = V(text, kind, tag)
 fun vi(value: Int?, kind: ValueKind, tag: String? = null) = V(Fmt.i(value), if (value == null) ValueKind.NEUTRAL else kind, tag)
 
-/** A value with its coloured tag, on a tinted card with a coloured edge. */
+/** A value with its coloured tag inside a thin white outline — colour only on the tag and the number. */
 @Composable
 fun ValueChip(x: V, modifier: Modifier = Modifier, big: Boolean = false) {
     val k = if (x.text == "—") ValueKind.NEUTRAL else x.kind
     val col = kindColor(k)
-    Row(modifier.height(IntrinsicSize.Min).clip(RoundedCornerShape(8.dp)).background(kindWash(k))
-        .border(1.dp, col.copy(alpha = 0.35f), RoundedCornerShape(8.dp))) {
-        Box(Modifier.width(2.dp).fillMaxHeight().background(col.copy(alpha = 0.8f)))
-        Column(Modifier.padding(horizontal = 6.dp, vertical = 4.dp)) {
-            Text(x.tag ?: kindTag(x.kind).ifEmpty { "—" }, maxLines = 1,
-                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp), color = col.copy(alpha = 0.9f))
-            Text(x.text, maxLines = 2,
-                style = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
-                    fontSize = if (big) 16.sp else 14.sp, letterSpacing = (-0.3).sp), color = col)
+    Column(modifier.border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)).padding(horizontal = 7.dp, vertical = 4.dp)) {
+        Text(x.tag ?: kindTag(x.kind).ifEmpty { "—" }, maxLines = 1, softWrap = false,
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.sp), color = col.copy(alpha = 0.9f))
+        Text(x.text, maxLines = 1, softWrap = false,
+            style = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
+                fontSize = if (big) 16.sp else 14.sp, letterSpacing = (-0.3).sp), color = col)
+    }
+}
+
+/** Chips in rows that wrap to fit the screen (at least ~74 dp per chip). */
+@Composable
+fun ValueRow(vals: List<V>, lead: String? = null) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val leadW = if (lead != null) 56.dp else 0.dp
+        val per = ((maxWidth - leadW) / 74.dp).toInt().coerceIn(2, 4)
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            vals.chunked(per).forEachIndexed { i, row ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (lead != null) Text(if (i == 0) lead else "", modifier = Modifier.width(leadW), maxLines = 2,
+                        style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
+                    row.forEach { ValueChip(it, Modifier.weight(1f)) }
+                    repeat(per - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
         }
     }
 }
@@ -86,21 +102,12 @@ fun ValueChip(x: V, modifier: Modifier = Modifier, big: Boolean = false) {
  */
 @Composable
 fun Param(label: String, unit: String, rows: List<Pair<String?, List<V>>>, note: String? = null, strong: Boolean = false) {
-    val cols = rows.maxOfOrNull { it.second.size } ?: 0
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.Bottom) {
             Text(label, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = if (strong) FontWeight.Black else FontWeight.Bold))
-            if (unit.isNotEmpty()) Text("  $unit", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (unit.isNotEmpty()) Text("  $unit", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.55f))
         }
-        rows.forEach { (scope, vals) ->
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (scope != null) Text(scope, modifier = Modifier.width(58.dp), maxLines = 3,
-                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                vals.forEach { ValueChip(it, Modifier.weight(1f)) }
-                repeat(cols - vals.size) { Spacer(Modifier.weight(1f)) }
-            }
-        }
-        if (note != null) Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        rows.forEach { (scope, vals) -> ValueRow(vals, scope) }
     }
 }
 
@@ -109,10 +116,10 @@ fun Param(label: String, unit: String, rows: List<Pair<String?, List<V>>>, note:
 fun Param(label: String, unit: String, vararg values: V, note: String? = null, strong: Boolean = false) =
     Param(label, unit, listOf(null to values.toList()), note, strong)
 
+/** Explanatory text is kept out of the Output (numbers and pictures only). */
 @Composable
-fun Note(text: String) {
-    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-}
+@Suppress("UNUSED_PARAMETER")
+fun Note(text: String) {}
 
 @Composable
 fun SubHeader(text: String) {
@@ -144,11 +151,10 @@ fun RangeParam(
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.Bottom) {
             Text(label, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
-            if (unit.isNotEmpty()) Text("  $unit", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (unit.isNotEmpty()) Text("  $unit", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.55f))
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) { vals.forEach { ValueChip(it, Modifier.weight(1f)) } }
+        ValueRow(vals)
         RangeBar(min, ideal, max, present, presentKind, idealBand)
-        if (note != null) Note(note)
     }
 }
 
@@ -211,14 +217,13 @@ private fun status(k: Kpi): Pair<String, Color> {
         Better.LOWER -> if (pct <= 5) OkGreen else if (pct <= 10) StatusWarn else StatusCrit
         Better.CLOSER -> if (abs(pct) <= 10) OkGreen else if (abs(pct) <= 20) StatusWarn else StatusCrit
     }
-    return "$txt vs commercial" to col
+    return "$txt vs com" to col
 }
 
 @Composable
 fun KpiCard(title: String, kpis: List<Kpi>) {
     OutputCard(title = title) {
         kpis.forEach { KpiRow(it) }
-        Note("Bars: violet band = commercial ±5.0% · blue band = ideal ±5.0% · dot = your flock.")
     }
 }
 
@@ -227,13 +232,9 @@ private fun KpiRow(k: Kpi) {
     val (stTxt, stCol) = status(k)
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(k.label, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
-            if (k.unit.isNotEmpty()) Text("  " + k.unit, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.weight(1f))
-            Surface(color = stCol.copy(alpha = 0.18f), shape = RoundedCornerShape(8.dp)) {
-                Text(stTxt, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = stCol))
-            }
+            Text(k.label + if (k.unit.isNotEmpty()) "  " + k.unit else "", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
+            Text(stTxt, modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 3.dp),
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = stCol), maxLines = 1)
         }
         val micro = listOf(v(k.actual, k.decimals, k.actualKind), v(k.company, k.decimals, ValueKind.COMMERCIAL), v(k.ideal, k.decimals, ValueKind.IDEAL, k.idealLabel))
         val rows = buildList {
@@ -244,12 +245,7 @@ private fun KpiRow(k: Kpi) {
                     v(k.ideal?.times(f), k.totalDec, ValueKind.IDEAL, k.idealLabel)))
             }
         }
-        rows.forEach { (scope, vals) ->
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (scope != null) Text(scope, modifier = Modifier.width(58.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                vals.forEachIndexed { i, x -> ValueChip(x, Modifier.weight(1f), big = i == 0 && scope == rows.first().first) }
-            }
-        }
+        rows.forEach { (scope, vals) -> ValueRow(vals, scope) }
         CompareBar(k)
     }
 }
@@ -339,8 +335,8 @@ fun Knob(label: String, unit: String, value: Double, lo: Double, hi: Double, ste
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            FilledTonalIconButton(onClick = { onChange(snap(value - step)) }, modifier = Modifier.size(34.dp)) { Text("−", fontWeight = FontWeight.Black) }
-            FilledTonalIconButton(onClick = { onChange(snap(value + step)) }, modifier = Modifier.size(34.dp)) { Text("+", fontWeight = FontWeight.Black) }
+            androidx.compose.material3.OutlinedIconButton(onClick = { onChange(snap(value - step)) }, modifier = Modifier.size(34.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))) { Text("−", fontWeight = FontWeight.Black) }
+            androidx.compose.material3.OutlinedIconButton(onClick = { onChange(snap(value + step)) }, modifier = Modifier.size(34.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))) { Text("+", fontWeight = FontWeight.Black) }
         }
     }
 }
@@ -365,7 +361,7 @@ fun KeyLine(vararg items: Pair<Color, String>) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(10.dp).background(c, CircleShape))
                 Spacer(Modifier.width(4.dp))
-                Text(t, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = c)
+                Text(t, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
             }
         }
     }

@@ -76,12 +76,12 @@ fun TopFlockBar(
     onWeatherClick: () -> Unit = {}
 ) {
     val harvestAge = flock?.harvestAge ?: 42
-    Surface(
+    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
         modifier = Modifier
             .fillMaxWidth()
             .testTag("top_flock_bar"),
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 2.dp,
+        tonalElevation = 0.dp,
         shadowElevation = 3.dp
     ) {
         Column(
@@ -98,7 +98,7 @@ fun TopFlockBar(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 // Flock & Farm Chip
-                Surface(
+                Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                     modifier = Modifier
                         .weight(1f, fill = false)
                         .clip(RoundedCornerShape(12.dp))
@@ -146,7 +146,7 @@ fun TopFlockBar(
                 Spacer(modifier = Modifier.width(6.dp))
 
                 // Weather Chip (tap to refresh)
-                Surface(
+                Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
                         .clickable { onWeatherClick() }
@@ -180,7 +180,7 @@ fun TopFlockBar(
                 Spacer(modifier = Modifier.width(6.dp))
 
                 // Sync status chip
-                Surface(
+                Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
                         .clickable { onFarmClick() }
@@ -223,21 +223,21 @@ fun TopFlockBar(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.testTag("day_stepper")
                 ) {
-                    Surface(
-                        color = if (selectedDay == currentFlockDay) BrandEmerald else MaterialTheme.colorScheme.primaryContainer,
+                    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
+                        color = androidx.compose.ui.graphics.Color.Black,
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
                             text = "Day $selectedDay",
-                            color = if (selectedDay == currentFlockDay) Color.White else MaterialTheme.colorScheme.onPrimaryContainer,
+                            color = androidx.compose.ui.graphics.Color(0xFFF2F2F0),
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                         )
                     }
                     if (selectedDay != currentFlockDay) {
                         Spacer(modifier = Modifier.width(6.dp))
-                        Surface(
-                            color = BrandEmerald.copy(alpha = 0.16f),
+                        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
+                            color = androidx.compose.ui.graphics.Color.Black,
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onSelectDay(currentFlockDay) }.testTag("today_button")
                         ) {
@@ -310,9 +310,9 @@ fun TopFlockBar(
                     },
                     valueRange = 0f..harvestAge.toFloat(),
                     colors = SliderDefaults.colors(
-                        thumbColor = BrandEmerald,
-                        activeTrackColor = BrandEmerald,
-                        inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                        thumbColor = androidx.compose.ui.graphics.Color(0xFFF2F2F0),
+                        activeTrackColor = androidx.compose.ui.graphics.Color(0xFFF2F2F0),
+                        inactiveTrackColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.18f)
                     ),
                     modifier = Modifier
                         .weight(1f)

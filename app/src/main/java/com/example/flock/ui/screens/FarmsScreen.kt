@@ -78,7 +78,7 @@ fun FarmsScreen(
     var showOpenShared by remember { mutableStateOf(false) }
     var deletingFarm by remember { mutableStateOf<FarmRegistryEntity?>(null) }
 
-    Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
             // Header
             Row(
@@ -155,11 +155,11 @@ fun FarmsScreen(
 
             Spacer(Modifier.height(10.dp))
 
-            Button(
+            Button(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                 onClick = { showCreate = true },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald)
+                colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
                 Text("  New farm", color = Color.White, fontWeight = FontWeight.Bold)
@@ -170,7 +170,7 @@ fun FarmsScreen(
                 modifier = Modifier.fillMaxWidth().height(46.dp),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text("Open a shared farm", color = BrandEmerald, fontWeight = FontWeight.Bold)
+                Text("Open a shared farm", color = androidx.compose.ui.graphics.Color(0xFFF2F2F0), fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -215,10 +215,10 @@ private fun FarmCard(
     onToggleLock: () -> Unit
 ) {
     var menuOpen by remember { mutableStateOf(false) }
-    Surface(
+    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(12.dp),
-        tonalElevation = 1.dp,
+        tonalElevation = 0.dp,
         modifier = Modifier.fillMaxWidth().clickable { onOpen() }
     ) {
         Row(

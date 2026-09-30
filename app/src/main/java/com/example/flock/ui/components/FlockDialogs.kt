@@ -98,7 +98,7 @@ fun FlockManagementDialog(
 
                     flocks.forEach { f ->
                         val isSelected = f.flockId == activeFlockId
-                        Surface(
+                        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                             shape = RoundedCornerShape(10.dp),
                             color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                             modifier = Modifier
@@ -137,10 +137,10 @@ fun FlockManagementDialog(
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
-                    Button(
+                    Button(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                         onClick = { showCreateForm = true },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald)
+                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
                     ) {
                         Icon(imageVector = Icons.Default.Add, contentDescription = null)
                         Spacer(modifier = Modifier.width(6.dp))
@@ -197,7 +197,7 @@ fun FlockManagementDialog(
         },
         confirmButton = {
             if (showCreateForm) {
-                Button(
+                Button(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                     onClick = {
                         val placedInt = birdsPlaced.toIntOrNull() ?: 15000
                         val targetDbl = targetWeight.toDoubleOrNull() ?: 3200.0
@@ -205,7 +205,7 @@ fun FlockManagementDialog(
                         onCreateFlock(name, breed, startDate, placedInt, targetDbl, harvestInt, season)
                         onDismiss()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald)
+                    colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
                 ) {
                     Text("Create Batch")
                 }
@@ -364,7 +364,7 @@ fun FarmSettingsDialog(
             }
         },
         confirmButton = {
-            Button(
+            Button(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                 onClick = {
                     onSaveFarm(
                         farm.copy(
@@ -384,7 +384,7 @@ fun FarmSettingsDialog(
                     )
                     onDismiss()
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald)
+                colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
             ) {
                 Text("Save Profile")
             }

@@ -19,13 +19,17 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O10 | Breast height vs pan lip is an estimate | ≈4.0 cm at 40 g, scaling with weight^⅓; pan lip height is a farm setting. |
 | O11 | Feeding times and "hot day" (≥ 33 °C) are rules of thumb | Based on farm practice + heat-stress research (no feed ~5 h before peak heat). |
 | O12 | Feedings logged on the Output page are kept on the phone only | They drive the coop animation; the day's feed used is still entered on the Entry tab. Sync to the sheet if wanted. |
-| O13 | Pan pattern uses estimates | Auger tube ≈ 0.95 kg/m, pan fill from "bags fill 1 line", pans 0.76 m apart, first pan 5 ft from the front wall. |
+| O13 | Pan plan uses the farm's "bags fill 1 line" as a straight pans-per-bag rate | Pans 0.76 m apart, first pan 5 ft from the front wall; birds-per-pan limit scaled by weight^⅓ below 2 kg (Ross gives 45–80 for grown birds only). |
 | O14 | Lighting schedule assumes the dark period ends at 05:00 | Make it a farm setting if the farm's dark period differs. |
 | O15 | Coop environment values are ideals | No house sensors; birds behave as in comfortable air. |
+| O16 | Cooling grid and fan finder start from the season's typical temperatures | Weather is not used for inside values until house sensors exist. |
 
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v32 | Pan plan said "fill the lines once with 12 bags, then pour 5 whenever needed" | Modelled a separate tube charge; pattern not tied to each feeding | Pattern chosen so one feeding fills every open pan; feedings reduced if no safe pattern fits |
+| v32 | Inside conditions still estimated from the weather (birds feel, house RH, fan finder start) | Weather used as outside input to the house model | Removed; season's typical day used for what-if tools |
+| v32 | Grey panels, coloured fills and cramped rows on small phones / large text | Tonal elevation and coloured containers; fixed chip counts | Pure black + white outlines; wrapping chip rows; 2-column tiles on narrow screens |
 | v31 | Reception deaths counted as mortality on Output; mortality % and livability divided by birds placed | Output added reception to deaths; engine used placed as denominator | Reception only reduces the entry flock; both use placed − reception |
 | v31 | Feeder lines assumed to be as long as the house | Line length taken from house length | Line length = pans × 0.76 m; drawn from the hopper |
 | v31 | Lock, unlock and close never reached the sheet — a refresh could undo them | Only saved locally | Flock row upserted in the sheet (upsertFlock) |

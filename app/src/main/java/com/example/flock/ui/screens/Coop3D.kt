@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.ui.theme.ValueIdeal
 import com.example.ui.theme.ValueMax
 import com.example.ui.theme.ValuePredicted
@@ -212,43 +213,56 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
     val sim = remember { CoopSim() }
     sim.setup(inp)
     var tick by remember { mutableLongStateOf(0L) }
+    // lights follow the programme; "Wake" turns them on in the animation until tapped again
+    var awake by remember { androidx.compose.runtime.mutableStateOf(false) }
+    fun lightNow(): Double {
+        val z = java.time.ZonedDateTime.now(inp.zoneId)
+        return if (awake) 1.0 else inp.light.level(z.hour + z.minute / 60.0 + z.second / 3600.0)
+    }
     LaunchedEffect(Unit) {
         var last = 0L
         while (true) {
             withFrameNanos { now ->
                 val dt = if (last == 0L) 0.016 else ((now - last) / 1e9).coerceAtMost(0.05)
                 last = now
-                val z = java.time.ZonedDateTime.now(inp.zoneId)
-                sim.update(dt, inp, inp.light.level(z.hour + z.minute / 60.0 + z.second / 3600.0))
+                sim.update(dt, inp, lightNow())
                 tick = now
             }
         }
     }
+    val scheduledDark = run { val z = java.time.ZonedDateTime.now(inp.zoneId); !inp.light.isLight(z.hour + z.minute / 60.0) }
     androidx.compose.foundation.layout.Column(modifier) {
-    Canvas(Modifier.fillMaxWidth().height(320.dp)) {
-        @Suppress("UNUSED_VARIABLE") val frame = tick
-        val zNow = java.time.ZonedDateTime.now(inp.zoneId)
-        val hour = zNow.hour + zNow.minute / 60.0
-        val lightLv = inp.light.level(hour).toFloat()
-        drawCoop(sim, inp, lightLv, zNow)
-    }
-    // who is who: name, character and weight (the spread follows the flock's CV)
-    androidx.compose.material3.Text(
-        sim.birds.joinToString("   ") { "${it.name} · ${it.trait.label} · ${com.example.flock.ui.Fmt.n(it.weightG, 1)} g" },
-        style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
-        color = Color.White.copy(alpha = 0.6f),
-        modifier = Modifier.padding(start = 10.dp, end = 10.dp, bottom = 8.dp)
-    )
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val h = (maxWidth * 0.82f).coerceIn(250.dp, 440.dp)
+            Canvas(Modifier.fillMaxWidth().height(h)) {
+                @Suppress("UNUSED_VARIABLE") val frame = tick
+                drawCoop(sim, inp, lightNow().toFloat(), java.time.ZonedDateTime.now(inp.zoneId), awake)
+            }
+            if (scheduledDark || awake) {
+                androidx.compose.material3.OutlinedButton(
+                    onClick = { awake = !awake },
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 2.dp),
+                    modifier = Modifier.align(androidx.compose.ui.Alignment.TopCenter).padding(top = 6.dp).height(32.dp)
+                ) { androidx.compose.material3.Text(if (awake) "Sleep" else "Wake", color = Color.White) }
+            }
+        }
+        androidx.compose.material3.Text(
+            sim.birds.joinToString("   ") { "${it.name} ${it.trait.label} ${com.example.flock.ui.Fmt.n(it.weightG, 1)} g" },
+            style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+            color = Color.White.copy(alpha = 0.6f),
+            modifier = Modifier.padding(start = 10.dp, end = 10.dp, bottom = 8.dp)
+        )
     }
 }
 
-private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: java.time.ZonedDateTime) {
+private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: java.time.ZonedDateTime, awake: Boolean) {
     val side = sim.side
     val wallH = side * 0.45
     val c30 = cos(PI / 6); val s30 = sin(PI / 6)
-    val k = (size.width * 0.66 / ((side * 2) * c30)).toFloat()
+    val k = min((size.width * 0.62 / ((side * 2) * c30)), (size.height * 0.62 / ((side * 2) * s30 + side * 0.45))).toFloat()
     val cx = size.width / 2f
-    val top = size.height * 0.17f
+    val top = size.height * 0.15f
     fun P(x: Double, y: Double, z: Double) = Offset(cx + ((x - z) * c30 * k).toFloat(), top + ((x + z) * s30 * k - y * k).toFloat() + (wallH * k).toFloat())
     val line = Color.White.copy(alpha = 0.55f)
     val faint = Color.White.copy(alpha = 0.16f)
@@ -259,7 +273,7 @@ private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: 
     drawPath(backWall, line, style = Stroke(1.2f)); drawPath(leftWall, line, style = Stroke(1.2f))
     // floor: litter tone follows the lights (the ground is animated with the lighting programme)
     val floor = quad(P(0.0, 0.0, 0.0), P(side, 0.0, 0.0), P(side, 0.0, side), P(0.0, 0.0, side))
-    val litter = Color(0xFF3A2E22).copy(alpha = 0.25f + 0.55f * light)
+    val litter = Color(0xFF2A2218).copy(alpha = 0.20f + 0.45f * light)
     drawPath(floor, litter)
     clipPath(floor) {
         // 0.5 m grid for scale
@@ -286,51 +300,47 @@ private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: 
     }
     drawLine(line, P(fx, 0.06, fz), P(fx, wallH * 1.4, fz), 1.2f)
     val fill = inp.feeder.fillFrac.coerceIn(0.0, 1.0)
-    ellipseAt(fx, 0.0, fz, panR, Color(0xFF6B2A22).copy(alpha = 0.9f))
     ellipseAt(fx, 0.02 + 0.03 * fill, fz, panR * 0.86, Color(0xFFD8B064).copy(alpha = (0.15 + 0.85 * fill).toFloat()))
     ellipseAt(fx, 0.06, fz, panR, line, stroke = true)
     val (dx, dz) = sim.drinkerAt
     drawLine(line, P(dx, 0.08, dz), P(dx, wallH * 1.4, dz), 1.2f)
-    ellipseAt(dx, 0.05, dz, 0.13, Color(0xFF2F7EA8).copy(alpha = 0.55f))
     ellipseAt(dx, 0.08, dz, 0.13, line, stroke = true)
 
     // birds, far to near
     val sh = shapeFor(inp.age)
     sim.birds.sortedBy { it.x + it.zz }.forEach { b -> drawBird(b, sh, light, ::P, k) }
 
-    // text inside the box (small, light): ideals where there is no sensor
-    val paint = Paint().apply { isAntiAlias = true; textSize = 10f * density; typeface = Typeface.MONOSPACE }
-    fun txt(s: String, x: Float, y: Float, col: Color, align: Paint.Align = Paint.Align.LEFT) { paint.color = col.toArgb(); paint.textAlign = align; drawContext.canvas.nativeCanvas.drawText(s, x, y, paint) }
-    val lh = 13f * density; val pad = 9f * density
-    val present = ValuePresent; val ideal = ValueIdeal
-    txt("${com.example.flock.ui.Fmt.i(inp.live)} birds", pad, pad + lh * 0.8f, present)
-    txt("${com.example.flock.ui.Fmt.n(inp.meanG, 1)} g · CV ${inp.cvPct?.let { com.example.flock.ui.Fmt.n(it, 2) + "%" } ?: "—"}", pad, pad + lh * 1.8f, present)
-    txt("Day ${inp.age} · ${inp.stage}", pad, pad + lh * 2.8f, Color.White.copy(alpha = 0.7f))
-    val rx = size.width - pad
-    txt("Air ${com.example.flock.ui.Fmt.n(inp.airC, 1)}° · ${com.example.flock.ui.Fmt.n(inp.rhPct, 1)}%", rx, pad + lh * 0.8f, ideal, Paint.Align.RIGHT)
-    txt("Feels ${com.example.flock.ui.Fmt.n(inp.feelsC, 1)}° · chill ${com.example.flock.ui.Fmt.n(inp.chillC, 1)}°", rx, pad + lh * 1.8f, ideal, Paint.Align.RIGHT)
-    txt("Static ${com.example.flock.ui.Fmt.n(inp.pressurePa, 1)} Pa", rx, pad + lh * 2.8f, ideal, Paint.Align.RIGHT)
-    val by = size.height - pad
-    txt("Litter ${com.example.flock.ui.Fmt.n(inp.litterC, 1)}° · ${com.example.flock.ui.Fmt.n(inp.litterMoist, 1)}%", pad, by - lh * 2f, ideal)
-    txt("Body ${com.example.flock.ui.Fmt.n(inp.bodyC, 1)}°", pad, by - lh, ideal)
-    val lightOn = inp.light.isLight(now.hour + now.minute / 60.0)
-    txt("${if (lightOn) "Light" else "Dark"} ${hhmm(inp.light.darkStartHour)}–${hhmm(inp.light.darkEndHour)} off", pad, by, Color.White.copy(alpha = 0.75f))
-    val f = inp.feeder
-    val feederCol = when { f.levelKg <= 0 && f.hunger > 0.6 -> ValueMax; f.levelKg <= 0 -> ValuePredicted; else -> present }
-    val feederTxt = when {
-        f.lastFedAt == null -> "Feeder: log a feeding"
-        f.levelKg > 0 -> "Feed ${com.example.flock.ui.Fmt.n(f.fillFrac * 100, 1)}% · ${com.example.flock.ui.Fmt.n(f.hoursToEmpty ?: 0.0, 1)} h left"
-        else -> "Empty ${com.example.flock.ui.Fmt.n(f.emptyForH, 1)} h"
+    // text inside the box: grey labels, coloured numbers (ideal values where there is no sensor)
+    val F = com.example.flock.ui.Fmt
+    val paint = Paint().apply { isAntiAlias = true; textSize = (size.width / 38f).coerceIn(9f * density, 13f * density); typeface = Typeface.MONOSPACE }
+    val grey = Color.White.copy(alpha = 0.55f)
+    fun seg(parts: List<Pair<String, Color>>, x: Float, y: Float, right: Boolean) {
+        val widths = parts.map { paint.measureText(it.first) }
+        var cx0 = if (right) x - widths.sum() else x
+        parts.forEachIndexed { i, (t, c) -> paint.color = c.toArgb(); paint.textAlign = Paint.Align.LEFT; drawContext.canvas.nativeCanvas.drawText(t, cx0, y, paint); cx0 += widths[i] }
     }
-    txt(feederTxt, rx, by - lh * 2f, feederCol, Paint.Align.RIGHT)
-    txt("Water ${com.example.flock.ui.Fmt.n(inp.waterC.first, 1)}–${com.example.flock.ui.Fmt.n(inp.waterC.second, 1)}°", rx, by - lh, ideal, Paint.Align.RIGHT)
-    txt("pH ${com.example.flock.ui.Fmt.n(inp.waterPh.first, 2)}–${com.example.flock.ui.Fmt.n(inp.waterPh.second, 2)}", rx, by, ideal, Paint.Align.RIGHT)
-    // reach ring label and floor scale
-    val (fx2, fz2) = sim.feederAt
-    val ringLbl = P(fx2 + inp.travelM * 0.7071, 0.0, fz2 - inp.travelM * 0.7071)
-    paint.textSize = 9f * density
-    if (ringLbl.x in 0f..size.width && ringLbl.y in 0f..size.height) txt("reach ${com.example.flock.ui.Fmt.n(inp.travelM, 1)} m", ringLbl.x, ringLbl.y, ideal)
-    else txt("reach ${com.example.flock.ui.Fmt.n(inp.travelM, 1)} m covers the box · grid 0.5 m", size.width / 2, by + lh * 0.0f - lh * 3.1f, ideal, Paint.Align.CENTER)
+    val lh = paint.textSize * 1.35f; val pad = 9.dp.toPx()
+    val present = ValuePresent; val ideal = ValueIdeal
+    val rx = size.width - pad
+    seg(listOf(F.i(inp.live) to present, " birds" to grey), pad, pad + lh, false)
+    seg(listOf(F.n(inp.meanG, 1) to present, " g  CV " to grey, (inp.cvPct?.let { F.n(it, 2) } ?: "—") to present, "%" to grey), pad, pad + lh * 2, false)
+    seg(listOf("Day " to grey, "${inp.age}" to present), pad, pad + lh * 3, false)
+    seg(listOf("Air " to grey, F.n(inp.airC, 1) to ideal, "°  " to grey, F.n(inp.rhPct, 1) to ideal, "%" to grey), rx, pad + lh, true)
+    seg(listOf("Feels " to grey, F.n(inp.feelsC, 1) to ideal, "°  chill " to grey, F.n(inp.chillC, 1) to ideal, "°" to grey), rx, pad + lh * 2, true)
+    seg(listOf("Static " to grey, F.n(inp.pressurePa, 1) to ideal, " Pa" to grey), rx, pad + lh * 3, true)
+    val by = size.height - pad
+    seg(listOf("Litter " to grey, F.n(inp.litterC, 1) to ideal, "°  " to grey, F.n(inp.litterMoist, 1) to ideal, "%" to grey), pad, by - lh * 2, false)
+    seg(listOf("Body " to grey, F.n(inp.bodyC, 1) to ideal, "°" to grey), pad, by - lh, false)
+    seg(listOf(if (awake) "Lights on (woken)" to grey else ("Dark " to grey), if (awake) "" to grey else "${hhmm(inp.light.darkStartHour)}–${hhmm(inp.light.darkEndHour)}" to ideal), pad, by, false)
+    val f = inp.feeder
+    val feederCol = when { f.levelKg <= 0 && f.hunger > 0.6 -> ValueMax; f.levelKg <= 0 -> ValuePredicted; else -> ValuePredicted }
+    when {
+        f.lastFedAt == null -> seg(listOf("Feeder " to grey, "—" to grey), rx, by - lh * 2, true)
+        f.levelKg > 0 -> seg(listOf("Feeder " to grey, F.n(f.fillFrac * 100, 1) to feederCol, "%  " to grey, F.n(f.hoursToEmpty ?: 0.0, 1) to feederCol, " h" to grey), rx, by - lh * 2, true)
+        else -> seg(listOf("Empty " to grey, F.n(f.emptyForH, 1) to feederCol, " h" to grey), rx, by - lh * 2, true)
+    }
+    seg(listOf("Water " to grey, "${F.n(inp.waterC.first, 1)}–${F.n(inp.waterC.second, 1)}" to ideal, "°" to grey), rx, by - lh, true)
+    seg(listOf("pH " to grey, "${F.n(inp.waterPh.first, 2)}–${F.n(inp.waterPh.second, 2)}" to ideal), rx, by, true)
 }
 
 private fun hhmm(h: Double): String { val m = ((h % 24 + 24) % 24 * 60).toInt(); return String.format("%02d:%02d", m / 60, m % 60) }

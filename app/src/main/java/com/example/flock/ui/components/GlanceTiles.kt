@@ -55,7 +55,7 @@ fun GlanceTiles(
             GlanceTile(
                 modifier = Modifier.weight(1f),
                 label = "Sample avg",
-                accentColor = BrandEmerald,
+                accentColor = com.example.ui.theme.ValuePresent,
                 value = String.format("%.0f", (d?.avgWeight ?: d?.idealWeight) ?: 0.0),
                 unit = "g",
                 isWarning = d?.projected == true,
@@ -117,11 +117,11 @@ fun GlanceTile(
     badgeText: String? = null,
     badgeIsGood: Boolean = true
 ) {
-    Surface(
+    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
         modifier = modifier,
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
+        tonalElevation = 0.dp,
         shadowElevation = 2.dp
     ) {
         Box {
