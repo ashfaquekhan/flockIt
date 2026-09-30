@@ -86,7 +86,10 @@ fun FarmSettingsDialog(
     var drinkerLines by remember { mutableStateOf(farm.drinkerLines.toString()) }
     var nippleLineHoldL by remember { mutableStateOf(farm.nippleLineHoldL.toString()) }
     var feederLines by remember { mutableStateOf(farm.feederLines.toString()) }
-    var feederLineBags by remember { mutableStateOf(farm.feederLineBags.toString()) }
+    var lineFillBags by remember { mutableStateOf(farm.lineFillBags.toString()) }
+    var sensorPans by remember { mutableStateOf(farm.sensorPansPerLine.toString()) }
+    var panSpacingFt by remember { mutableStateOf(farm.panSpacingFt.toString()) }
+    var feederLineGapFt by remember { mutableStateOf(farm.feederLineGapFt.toString()) }
     var feederMoveMin by remember { mutableStateOf(farm.feederMoveMin.toString()) }
     var pansPerFeederLine by remember { mutableStateOf(farm.pansPerFeederLine.toString()) }
     var dieselCanL by remember { mutableStateOf(farm.dieselCanL.toString()) }
@@ -297,11 +300,18 @@ fun FarmSettingsDialog(
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(feederLines, { feederLines = it }, label = { Text("Feeder lines") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
-                            OutlinedTextField(feederLineBags, { feederLineBags = it }, label = { Text("Bags 1 feeder line holds") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                            OutlinedTextField(lineFillBags, { lineFillBags = it }, label = { Text("Bags to fill 1 line") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(feederMoveMin, { feederMoveMin = it }, label = { Text("Feeder move (min)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
-                            OutlinedTextField(pansPerFeederLine, { pansPerFeederLine = it }, label = { Text("Pans/feeder line") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                            OutlinedTextField(pansPerFeederLine, { pansPerFeederLine = it }, label = { Text("Feed pans / line") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(sensorPans, { sensorPans = it }, label = { Text("Sensor pans / line") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                            OutlinedTextField(panSpacingFt, { panSpacingFt = it }, label = { Text("Pan spacing (ft)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(feederLineGapFt, { feederLineGapFt = it }, label = { Text("Feeder line gap (ft, 0 = auto)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(nipplesPerLine, { nipplesPerLine = it }, label = { Text("Nipples/drinker line") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
@@ -526,7 +536,11 @@ fun FarmSettingsDialog(
                                 drinkerLines = drinkerLines.toIntOrNull() ?: farm.drinkerLines,
                                 nippleLineHoldL = nippleLineHoldL.toDoubleOrNull() ?: farm.nippleLineHoldL,
                                 feederLines = feederLines.toIntOrNull() ?: farm.feederLines,
-                                feederLineBags = feederLineBags.toIntOrNull() ?: farm.feederLineBags,
+                                lineFillBags = lineFillBags.replace(",", ".").toDoubleOrNull()?.takeIf { it > 0 } ?: farm.lineFillBags,
+                                feederLineBags = lineFillBags.replace(",", ".").toDoubleOrNull()?.takeIf { it > 0 }?.let { kotlin.math.round(it).toInt().coerceAtLeast(1) } ?: farm.feederLineBags,
+                                sensorPansPerLine = sensorPans.toIntOrNull()?.coerceAtLeast(0) ?: farm.sensorPansPerLine,
+                                panSpacingFt = panSpacingFt.replace(",", ".").toDoubleOrNull()?.takeIf { it > 0 } ?: farm.panSpacingFt,
+                                feederLineGapFt = feederLineGapFt.replace(",", ".").toDoubleOrNull()?.coerceAtLeast(0.0) ?: farm.feederLineGapFt,
                                 feederMoveMin = feederMoveMin.toDoubleOrNull() ?: farm.feederMoveMin,
                                 pansPerFeederLine = pansPerFeederLine.toIntOrNull() ?: farm.pansPerFeederLine,
                                 dieselCanL = dieselCanL.toDoubleOrNull() ?: farm.dieselCanL,

@@ -22,6 +22,17 @@ val MIGRATION_12_13 = object : androidx.room.migration.Migration(12, 13) {
     }
 }
 
+/** v13 → v14: feeder line layout — bags to fill a line (decimal), sensor pans, pan spacing, line gap. */
+val MIGRATION_13_14 = object : androidx.room.migration.Migration(13, 14) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE farm ADD COLUMN lineFillBags REAL NOT NULL DEFAULT 3")
+        db.execSQL("UPDATE farm SET lineFillBags = feederLineBags WHERE feederLineBags > 0")
+        db.execSQL("ALTER TABLE farm ADD COLUMN sensorPansPerLine INTEGER NOT NULL DEFAULT 2")
+        db.execSQL("ALTER TABLE farm ADD COLUMN panSpacingFt REAL NOT NULL DEFAULT 2.5")
+        db.execSQL("ALTER TABLE farm ADD COLUMN feederLineGapFt REAL NOT NULL DEFAULT 0")
+    }
+}
+
 @Database(
     entities = [
         StandardsEntity::class,
@@ -33,7 +44,7 @@ val MIGRATION_12_13 = object : androidx.room.migration.Migration(12, 13) {
         DailyDataEntity::class,
         TaskEntity::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 abstract class FlockDatabase : RoomDatabase() {
@@ -58,7 +69,7 @@ abstract class FlockDatabase : RoomDatabase() {
                     FlockDatabase::class.java,
                     "flockit_database"
                 )
-                    .addMigrations(MIGRATION_12_13)
+                    .addMigrations(MIGRATION_12_13, MIGRATION_13_14)
                     .fallbackToDestructiveMigration()
                     .addCallback(FlockDatabaseCallback(scope))
                     .build()

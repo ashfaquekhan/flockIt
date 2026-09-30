@@ -8,6 +8,35 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v34 — 2026-09-30 · Pan series from the farm's own layout, per-pan coverage, interactive coop · **DB v14 (non-destructive)**
+- **Feeder layout settings** (Farm settings → Drinkers & Feeders): bags to fill 1 line now takes decimals
+  (e.g. 3.3), feed pans per line (sensor pans not counted), sensor pans per line, pan spacing (ft),
+  feeder line gap (ft, 0 = width ÷ lines). Line length = (feed pans + sensor pans) × spacing. Synced to the
+  sheet's _Farm tab. Migration keeps every farm, flock and day (the old whole-number bags value is copied).
+- **Pan on/off series for any farm**: the day is fed in whole bags, never more (15.27 → 16). Each feeding
+  pours the same on every line; the plan picks the most open safe series of consecutive pans (all on,
+  4·1, 3·1, 2·1, 3·2, 1·1, 2·3, 1·2, 1·3) whose open pans that pour fills all the way to the last one
+  (3 % slack for the 3–3.3 bag spread), repeated from the hopper to the barricade. Safe = furthest walk
+  to an open pan ≤ 2 m (half the line gap across, half the gap between open pans along) and birds per
+  pan ≤ the size-scaled limit. Both 2 and 3 feedings are worked out; the best is marked and the other is
+  a tap away. Example shed (unit-tested): 112 + 2 pans, 3.3 bags a line, 16 bags → 2 × 8.00, 2.00 bags a
+  line, **3 on · 2 off, 68 of 112 pans**, 56.3 birds a pan, 1.87 m walk; 3 feedings → 1 on · 2 off, 38 pans.
+- **One pan covers**: the floor each open pan serves in the repeat (line gap × repeat ÷ pans on) with its
+  birds at today's density, the load (all birds ÷ open pans) against the max, and the walk against 2 m —
+  with a true-scale drawing of the series, each pan's cell with its ft² and birds, pan spacing, line gap,
+  the furthest walk and the 2 m ring. The top view shows the sensor pans at the far end.
+- Plan steps: 1 Required → 2 Day in whole bags + feedings (2 / 3) → 3 Each feeding (bags, per line, kg
+  per line) → 4 Pan series (series, on / in area / feed pans, filled %, hopper bags, top view) → 5 One pan
+  covers → 6 Times.
+- **Coop is interactive**: drag sideways to turn it (it keeps spinning a little), two fingers to tilt and
+  zoom, double-tap to square it up; the far walls follow the angle. Tap a bird (it flaps and calls; its
+  weight, % from the flock mean and fullness show), tap the floor (grains land; nearby birds come to peck,
+  the curious one from furthest), tap the feeder (it rattles, birds come), tap the drinker (ripples, the
+  nearest bird drinks). Feed runs down the tube after a feeding and the pan fills smoothly; crumbs fly
+  when birds eat, dust when they scratch; resting birds breathe; birds keep apart; names never overlap.
+- Tests: `CoopInteractionTest` (projection round-trip, grains, swipe/tap/double-tap renders), `FeedPlanTest`
+  (example shed, never more than the day's whole bags), `MigrationTest` (v12 → v13 → v14).
+
 ## v33 — 2026-09-30 · Whole-bag feeding plan, birds eat when fed, rows aligned
 - **Feeding plan in whole bags, in order**: 1 Required today (projected / commercial / ideal bags and
   g/bird) → 2 Plan (bags rounded up, feedings, extra) → 3 Each feeding (bags, bags per line, pans per

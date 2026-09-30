@@ -19,14 +19,20 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O10 | Breast height vs pan lip is an estimate | ≈4.0 cm at 40 g, scaling with weight^⅓; pan lip height is a farm setting. |
 | O11 | Feeding times and "hot day" (≥ 33 °C) are rules of thumb | Based on farm practice + heat-stress research (no feed ~5 h before peak heat). |
 | O12 | Feedings logged on the Output page are kept on the phone only | They drive the coop animation; the day's feed used is still entered on the Entry tab. Sync to the sheet if wanted. |
-| O13 | Pan plan uses the farm's "bags fill 1 line" as a straight pans-per-bag rate | Pans 0.76 m apart, first pan 5 ft from the front wall; birds-per-pan limit scaled by weight^⅓ below 2 kg (Ross gives 45–80 for grown birds only). |
+| O13 | Pan plan uses the farm's "bags to fill 1 line" as a straight pans-per-bag rate | Pan spacing and line gap are farm settings (default 2.5 ft, width ÷ lines); first pan 5 ft from the front wall; 3 % slack on the fill; birds-per-pan limit scaled by weight^⅓ below 2 kg (Ross gives 45–80 for grown birds only). |
 | O14 | Lighting schedule assumes the dark period ends at 05:00 | Make it a farm setting if the farm's dark period differs. |
 | O15 | Coop environment values are ideals | No house sensors; birds behave as in comfortable air. |
 | O16 | Cooling grid and fan finder start from the season's typical temperatures | Weather is not used for inside values until house sensors exist. |
+| O17 | Farm settings still hold the old default of 60 pans per line unless changed | Set feed pans (e.g. 112), sensor pans (2) and bags to fill a line (e.g. 3.3) in Farm settings for the plan to match the shed. |
+| O18 | Pour per line can be a fraction of a bag (e.g. 2.38 = 118.8 kg) | Shown in bags and kg; the day's total is always whole bags. |
 
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v34 | Plan could use more bags than the day needs (e.g. 20 for 18.28) | Half-bag rounding per line × 4 lines × feedings | Day fed in whole bags (ceil), split evenly; series chosen to fit the pour |
+| v34 | "Bags to fill a line" couldn't be 3.3; sensor pans, pan spacing and line gap were fixed | Integer column; constants in code | New farm columns (DB v14 migration), used by the plan and drawings |
+| v34 | "ft² per pan" didn't match the drawn cell | Chip spread the floor beyond the line ends over the pans | Cell (repeat geometry) and load (birds ÷ open pans) shown separately |
+| v34 | Coop was view-only; names overlapped | No gestures; names drawn at the head | Turn / tilt / zoom / taps; names stacked without overlap |
 | v33 | Birds in the coop didn't go to eat after "Feed" | The animation loop kept the first feeder state it saw, so new feedings never reached it; and a bird could stop 2×10⁻¹⁷ m short of its feeder spot (step = distance − stop rounded to 0) and never start eating | Loop reads the latest input (`rememberUpdatedState`); arrival allows a 0.1 mm slack and steps go the full distance; a new feeding sends every awake bird to the feeder |
 | v33 | Feeding plan said 3 feedings for 16 bags on day 11 (farm feeds 2 × 8) and showed fractions of bags per feeding | Bags split evenly by the age's feeding count, no rounding to what can be poured | Whole / half bags per line; fewest total bags, 2 feedings minimum; numbered steps in order |
 | v33 | Value chips and bars didn't line up down a card | Rows without a label started at the edge; the comparison bar used two offset lanes | Label column always kept; one-track bar under the chips |

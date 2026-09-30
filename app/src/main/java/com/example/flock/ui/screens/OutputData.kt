@@ -241,20 +241,24 @@ class OutputData(
     // ------------------------------- house layout & feeding plan -------------------------------
     val feederLines = max(1, farm.feederLines)
     val drinkerLinesN = max(0, farm.drinkerLines)
+    /** Feed pans on one line; the sensor (control) pans at the end are not counted. */
     val pansPerLine = max(1, farm.pansPerFeederLine)
-    val panSpacingFt = PAN_SPACING_FT
-    /** A feeder line is as long as its pans need (hopper → motor), not the house length. */
-    val lineLenFt = pansPerLine * panSpacingFt
+    val sensorPans = max(0, farm.sensorPansPerLine)
+    val panSpacingFt = if (farm.panSpacingFt > 0) farm.panSpacingFt else PAN_SPACING_FT
+    /** A feeder line is as long as its pans need (hopper → pans → sensor pans → motor), not the house length. */
+    val lineLenFt = (pansPerLine + sensorPans) * panSpacingFt
     val drinkerLenFt = if (farm.nipplesPerLine > 0) farm.nipplesPerLine * NIPPLE_SPACING_FT else lineLenFt
     val lineStartFt = LINE_START_FT
-    /** Bags that fill one whole line from empty (farm setting). */
-    val bagsFullLine = max(0.1, farm.feederLineBags.toDouble())
+    /** Bags that fill one whole line from empty (farm setting, e.g. 3.3). */
+    val bagsFullLine = max(0.1, farm.lineFillBags)
     val houseFloorFt2 = max(1.0, farm.usableLengthFt * farm.usableWidthFt)
     /** Brooding barricade: how far from the front the birds can go today. */
     val barricadeFtNow: Double = if (e.occupiedFt2 > 0) min(farm.usableLengthFt, e.occupiedFt2 / max(1.0, farm.usableWidthFt)) else farm.usableLengthFt
     val openFrac = (barricadeFtNow / max(1.0, farm.usableLengthFt)).coerceIn(0.05, 1.0)
     /** Pans inside the birds' area on each line. */
     val pansInArea = floor((barricadeFtNow - lineStartFt) / panSpacingFt).toInt().coerceIn(0, pansPerLine)
+    /** Floor the birds have today (up to the barricade). */
+    val areaInUseFt2 = max(1.0, barricadeFtNow * farm.usableWidthFt)
     /** Lines spread evenly across the width, drinkers between feeders: D F D F … D. */
     val lineOrder: List<Char> = buildList {
         val f = feederLines; val dl = drinkerLinesN
@@ -263,8 +267,9 @@ class OutputData(
         else { var dd = dl; repeat(f) { if (dd > 0) { add('D'); dd-- }; add('F') } }
     }
     val lineGapFt = farm.usableWidthFt / max(1, lineOrder.size)
-    val feederGapFt = farm.usableWidthFt / feederLines
-    /** Feedings by age: small and often for chicks (Ross: top up trays/paper often in days 0–4), 2 for big birds. */
+    /** Feeder line to feeder line (farm setting, else the width shared by the lines). */
+    val feederGapFt = if (farm.feederLineGapFt > 0) farm.feederLineGapFt else farm.usableWidthFt / feederLines
+    /** Feedings by age: small and often for chicks (Ross: top up trays/paper often in days 0–4), 2–3 after the first week. */
     val feedingsWanted = when {
         day <= 3 -> 5
         day <= 7 -> 4
@@ -280,51 +285,73 @@ class OutputData(
     val birdsPerPanMax = if (bw > 3500) 45.0 else min(160.0, 80.0 * Math.cbrt(2000.0 / max(bw, 100.0)).coerceAtLeast(1.0))
     val birdsPerPanMin = 45.0
 
-    /** One on/off arrangement of the pans inside the birds' area (same on every line). */
-    data class PanPattern(val on: Int, val off: Int, val openPerLine: Int, val lastIdx: Int, val travelM: Double, val birdsPerPan: Double) {
+    /**
+     * One on/off series of consecutive pans, repeated from the hopper end to the barricade on every line.
+     * [travelM] = the furthest any bird is from an open pan: half the feeder-line gap across, half the
+     * gap between open pans along. [cellFt2] / [cellBirds] = the floor one open pan serves in the repeat
+     * (line gap × repeat length ÷ pans on) and the birds on it at today's density; [birdsPerPan] = every
+     * bird shared over the open pans (the feeder-space check).
+     */
+    data class PanPattern(val on: Int, val off: Int, val openPerLine: Int, val lastIdx: Int, val travelM: Double, val birdsPerPan: Double,
+                          val cellFt2: Double, val cellBirds: Double) {
         val label get() = if (off == 0) "All on" else "$on on · $off off"
         fun isOpen(i: Int) = (i % (on + off)) < on
     }
-    val patterns: List<PanPattern> = listOf(1 to 0, 3 to 1, 2 to 1, 3 to 2, 1 to 1, 2 to 3, 1 to 2, 1 to 3).map { (on, off) ->
+    val patterns: List<PanPattern> = listOf(1 to 0, 4 to 1, 3 to 1, 2 to 1, 3 to 2, 1 to 1, 2 to 3, 1 to 2, 1 to 3).map { (on, off) ->
         val open = (0 until pansInArea).filter { (it % (on + off)) < on }
         val gapM = (off + 1) * panSpacingFt * 0.3048
         val travel = Math.hypot(feederGapFt * 0.3048 / 2, gapM / 2)
-        PanPattern(on, off, open.size, open.lastOrNull() ?: -1, travel, if (open.isEmpty()) Double.MAX_VALUE else live.toDouble() / (feederLines * open.size))
+        val n = feederLines * open.size
+        val cell = feederGapFt * (on + off) * panSpacingFt / on
+        PanPattern(on, off, open.size, open.lastOrNull() ?: -1, travel,
+            if (n == 0) Double.MAX_VALUE else live.toDouble() / n, cell, cell * live / areaInUseFt2)
     }
     private fun safe(p: PanPattern) = p.openPerLine > 0 && p.travelM <= ALLOWED_TRAVEL_M && p.birdsPerPan <= birdsPerPanMax
+
+    /** The day's feed in whole bags — never more than that (15.27 needed → 16). */
+    val dayBags: Double = if (giveBags > 0) ceil(giveBags - 1e-6) else 0.0
+
     /**
-     * Whole-bag plan, the way the lines are filled on the farm: bags are poured per line in whole (or
-     * half) bags. For 2 … the age's feedings, take the fewest half-bags per line that cover the day's
-     * need, and the most open safe pattern those bags fill completely. Keep the plan with the fewest
-     * bags in total; on a tie, the one nearest the age's feedings, then whole bags per line.
+     * One way to feed the day's bags: [feedings] a day, the same pour on every line each time, and the
+     * most open safe series whose open pans that pour fills all the way to the last one (3 % slack for
+     * the "3–3.3 bags a line" spread).
      */
-    val planBags: Double
-    val feedings: Int
-    val bagsPerLinePerFeeding: Double
-    val feedPattern: PanPattern
-    val patternFits: Boolean
-    init {
-        val cands = mutableListOf<Triple<Int, Double, PanPattern>>()
-        for (n in min(2, max(1, feedingsWanted))..max(1, feedingsWanted)) {   // never fewer than 2 feedings a day
-            val k = max(0.5, ceil(giveBags / (feederLines * n) * 2 - 1e-9) / 2.0)
-            val can = k * pansPerBag
-            val p = if (can >= pansInArea) patterns.first().takeIf { safe(it) } else patterns.firstOrNull { it.openPerLine <= can && safe(it) }
-            if (p != null) cands += Triple(n, k, p)
-        }
-        val best = cands.minWithOrNull(compareBy<Triple<Int, Double, PanPattern>>(
-            { it.second * feederLines * it.first }, { abs(it.first - feedingsWanted) }, { -it.first }, { if (it.second % 1.0 == 0.0) 0 else 1 }))
-        patternFits = best != null
-        if (best != null) {
-            feedings = best.first; bagsPerLinePerFeeding = best.second; feedPattern = best.third
-        } else {
-            feedings = feedingsWanted
-            bagsPerLinePerFeeding = max(0.5, ceil(giveBags / (feederLines * feedingsWanted) * 2 - 1e-9) / 2.0)
-            feedPattern = patterns.first()
-        }
-        planBags = bagsPerLinePerFeeding * feederLines * feedings
+    data class FeedOption(
+        val feedings: Int, val bagsPerFeeding: Double, val bagsPerLine: Double, val kgPerLine: Double,
+        val canFill: Double, val pattern: PanPattern, val safe: Boolean, val adLib: Boolean
+    ) {
+        /** Share of the open pans the pour fills (100 % = feed reaches the last open pan). */
+        val fillPct get() = if (pattern.openPerLine > 0) min(100.0, canFill / pattern.openPerLine * 100) else 0.0
+        /** Share of the pour that lands in the open pans at once; the rest waits in the hopper. */
+        val usePct get() = if (canFill > 0) min(100.0, pattern.openPerLine / canFill * 100) else 0.0
     }
-    val bagsPerFeeding = bagsPerLinePerFeeding * feederLines
-    /** Bags above the day's need that the rounding adds (they stay in the hopper for the next feeding). */
+    val feedOptions: List<FeedOption> = (2..3).map { n ->
+        val perLine = dayBags / (feederLines * n)
+        val can = perLine * pansPerBag
+        val fits = patterns.filter { safe(it) && it.openPerLine <= can * 1.03 }
+        val p = fits.maxByOrNull { it.openPerLine }
+        FeedOption(n, dayBags / n, perLine, perLine * bagKg, can, p ?: patterns.first(), p != null,
+            p != null && p.off == 0 && can >= pansInArea)
+    }
+    /**
+     * Recommended: a safe option; if the pour covers every pan (all on, the hopper tops the line up) the
+     * fewer feedings; otherwise the one whose pour goes into the pans best (5 % steps), then more pans open.
+     */
+    val recommendedOption: Int = feedOptions.indices.sortedWith(compareBy<Int>(
+        { if (feedOptions[it].safe) 0 else 1 },
+        { if (feedOptions[it].adLib) 0 else 1 },
+        { if (feedOptions[it].adLib) feedOptions[it].feedings.toDouble() else -floor(feedOptions[it].usePct / 5.0) },
+        { feedOptions[it].pattern.birdsPerPan }
+    )).first()
+    val chosen: FeedOption = feedOptions[recommendedOption]
+    val patternFits: Boolean = chosen.safe
+    /** First week: trays and paper carry the chicks, pans in the brooding area stay all on. */
+    val feedings: Int = if (!chosen.safe && day <= 7) feedingsWanted else chosen.feedings
+    val feedPattern: PanPattern = if (chosen.safe) chosen.pattern else patterns.first()
+    val planBags: Double = dayBags
+    val bagsPerFeeding: Double = if (feedings > 0) dayBags / feedings else 0.0
+    val bagsPerLinePerFeeding: Double = bagsPerFeeding / feederLines
+    /** The rounding up to whole bags. */
     val extraBags = planBags - giveBags
     /** Pans one feeding fills per line, and the pans open per line. */
     val pansFilledPerLine = bagsPerLinePerFeeding * pansPerBag
@@ -338,13 +365,14 @@ class OutputData(
     val fillsPossible: Double = if (bagsFillOpen > 0) giveBags / bagsFillOpen else 0.0
     val reachOfOpen = if (pansOpenPerLine > 0) min(1.0, pansFilledPerLine / pansOpenPerLine) else 1.0
     val reachFt = reachOfOpen * (feedPattern.lastIdx + 1) * panSpacingFt
-    val feedTimes: List<String> = when (feedings) {
+    fun feedTimesFor(n: Int): List<String> = when (n) {
         1 -> listOf("06:00")
         2 -> listOf("06:00", "17:00")
         3 -> listOf("06:00", "12:00", "18:00")
         4 -> listOf("06:00", "10:00", "14:00", "18:00")
         else -> listOf("06:00", "09:00", "12:00", "15:00", "18:00")
     }
+    val feedTimes: List<String> = feedTimesFor(feedings)
     /** Ross: let birds clear the pans once a day from day 10–12 — only workable once a day's ration can refill the empty lines. */
     val cleanOutOk = day >= 10 && giveBags >= bagsFillOpen
 
@@ -444,7 +472,7 @@ class OutputData(
             e.waterPh?.let { ph -> if (ph < 6.0 || ph > 6.8) add(TopicAlert(1, "Water pH ${Fmt.n(ph)} outside 6.00–6.80")) }
             e.waterTempC?.let { t -> if (t > 25) add(TopicAlert(1, "Water ${Fmt.n(t, 1)} °C is warm (ideal 10.0–25.0 °C) — flush the lines")) }
             nextPhaseDay?.let { d -> if (d - day in 1..2) add(TopicAlert(1, "Feed changes to ${CompanyStandard.feedPhase(d)} on day $d")) }
-            if (day >= 4 && !patternFits) add(TopicAlert(2, "No safe pan pattern for ${Fmt.n(giveBags, 2)} bags"))
+            if (day > 7 && !patternFits) add(TopicAlert(2, "No safe pan series for ${Fmt.n(dayBags, 2)} bags"))
             if (birdsPerPan > birdsPerPanMax) add(TopicAlert(1, "${Fmt.n(birdsPerPan, 1)} birds per open pan — more than ${Fmt.n(birdsPerPanMax, 1)}; open more pans"))
             birdsPerNipple?.let { b -> if (b > birdsPerNippleMax) add(TopicAlert(1, "${Fmt.n(b, 1)} birds per nipple — more than ${Fmt.n(birdsPerNippleMax, 1)}")) }
             if (day <= 3 && farm.manualFeeders < traysIdeal) add(TopicAlert(1, "${farm.manualFeeders} feeder trays; Ross advises ${Fmt.n(traysIdeal, 1)} (1 per 100 chicks)"))

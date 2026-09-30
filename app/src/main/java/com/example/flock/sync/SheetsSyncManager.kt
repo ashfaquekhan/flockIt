@@ -377,7 +377,9 @@ class SheetsSyncManager(
         listOf("waterRefillFactor", sv(farm.waterRefillFactor)), listOf("minVentFactor", sv(farm.minVentFactor)),
         listOf("godownBags", sv(farm.godownBags)), listOf("manualFeeders", sv(farm.manualFeeders)),
         listOf("manualDrinkers", sv(farm.manualDrinkers)), listOf("nipplesPerLine", sv(farm.nipplesPerLine)),
-        listOf("panLipCm", sv(farm.panLipCm))
+        listOf("panLipCm", sv(farm.panLipCm)),
+        listOf("lineFillBags", sv(farm.lineFillBags)), listOf("sensorPansPerLine", sv(farm.sensorPansPerLine)),
+        listOf("panSpacingFt", sv(farm.panSpacingFt)), listOf("feederLineGapFt", sv(farm.feederLineGapFt))
     )
     private fun kvToFarm(spreadsheetId: String, rows: List<List<Any>>, base: FarmEntity): FarmEntity {
         val m = HashMap<String, String>()
@@ -411,7 +413,10 @@ class SheetsSyncManager(
             waterRefillFactor = db("waterRefillFactor", base.waterRefillFactor), minVentFactor = db("minVentFactor", base.minVentFactor),
             godownBags = db("godownBags", base.godownBags), manualFeeders = it2("manualFeeders", base.manualFeeders),
             manualDrinkers = it2("manualDrinkers", base.manualDrinkers), nipplesPerLine = it2("nipplesPerLine", base.nipplesPerLine),
-            panLipCm = db("panLipCm", base.panLipCm)
+            panLipCm = db("panLipCm", base.panLipCm),
+            lineFillBags = num(m["lineFillBags"]) ?: num(m["feederLineBags"]) ?: base.lineFillBags,
+            sensorPansPerLine = it2("sensorPansPerLine", base.sensorPansPerLine),
+            panSpacingFt = db("panSpacingFt", base.panSpacingFt), feederLineGapFt = db("feederLineGapFt", base.feederLineGapFt)
         )
     }
 

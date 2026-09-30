@@ -18,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -168,29 +169,47 @@ private fun Step(n: Int, label: String, content: @Composable () -> Unit) {
 private fun FeedingPlanCard(d: OutputData) {
     val live = d.live.toDouble()
     val bag = d.bagKg
+    // 2 or 3 feedings: the recommended one first, the other a tap away
+    var pick by remember(d.day, d.recommendedOption, d.dayBags) { mutableIntStateOf(d.recommendedOption) }
+    val o = d.feedOptions[pick]
+    val pat = if (o.safe) o.pattern else d.patterns.first()
+    val hopper = max(0.0, o.bagsPerFeeding - d.feederLines * pat.openPerLine / d.pansPerBag)
     OutputCard(title = "Feeding plan · ${d.phase}" + (d.nextPhaseDay?.let { " → ${CompanyStandard.feedPhase(it)} day $it" } ?: "")) {
         Step(1, "Required today") {
             ValueRow(listOf(v(d.giveBags, 2, PR), v(d.comPerBird?.let { it * live / 1000 / bag }, 2, C), v(d.idealPerBird * live / 1000 / bag, 2, I)), "bags")
             ValueRow(listOf(v(d.givePerBird, 1, PR), v(d.comPerBird, 1, C), v(d.idealPerBird, 1, I)), "g/bird")
         }
-        Step(2, "Plan (whole bags)") {
-            ValueRow(listOf(v(d.planBags, 2, PR, "Bags"), vi(d.feedings, PR, "Feedings"), v(d.extraBags, 2, PR, "Extra")), "day")
+        Step(2, "Day in whole bags") {
+            ValueRow(listOf(v(d.dayBags, 2, PR, "Bags"), v(d.extraBags, 2, PR, "Rounded up")), "day")
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("feedings", modifier = Modifier.width(56.dp), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
+                d.feedOptions.forEachIndexed { i, opt ->
+                    val tag = when { !opt.safe -> "Unsafe"; i == d.recommendedOption -> "Best"; else -> "Also safe" }
+                    val kind = when { !opt.safe -> MX; i == d.recommendedOption -> P; else -> PR }
+                    ValueChip(vi(opt.feedings, kind, tag), Modifier.weight(1f)
+                        .border(if (i == pick) 2.dp else 0.dp, if (i == pick) Color.White else Color.Transparent, RoundedCornerShape(8.dp))
+                        .clickable { pick = i })
+                }
+            }
         }
         Step(3, "Each feeding") {
-            ValueRow(listOf(v(d.bagsPerFeeding, 2, PR, "Bags"), v(d.bagsPerLinePerFeeding, 2, PR, "Per line"), v(d.pansPerBag, 1, P, "Pans / bag")), "feed")
+            ValueRow(listOf(v(o.bagsPerFeeding, 2, PR, "Bags"), v(o.bagsPerLine, 2, PR, "Per line"), v(o.kgPerLine, 1, PR, "kg / line")), "pour")
         }
-        Step(4, "Pans on each line") {
-            ValueRow(listOf(vt(d.feedPattern.label, if (d.patternFits) PR else MX, "Pattern")), "line")
-            ValueRow(listOf(vi(d.pansOpenPerLine, PR, "On"), vi(d.pansInArea, P, "In area"), vi(d.pansPerLine, P, "On line")), "pans")
-            FarmTopView(d)
-            KeyLine(kindColor(PR) to "on", Color.White.copy(alpha = 0.6f) to "off", ValueIdeal to "2 m", kindColor(MN) to "drinker")
+        Step(4, "Pan series") {
+            ValueRow(listOf(vt(pat.label, if (o.safe) PR else MX, "Series")), "line")
+            ValueRow(listOf(vi(pat.openPerLine, PR, "On"), vi(d.pansInArea, P, "In area"), vi(d.pansPerLine, P, "Feed pans")), "pans")
+            ValueRow(listOf(v(o.fillPct, 1, PR, "Filled %"), v(hopper, 2, PR, "Hopper bags")), "reach")
+            FarmTopView(d, pat)
+            KeyLine(kindColor(PR) to "on", Color.White.copy(alpha = 0.6f) to "off", Color.White to "sensor", kindColor(MN) to "drinker")
         }
-        Step(5, "Check") {
-            ValueRow(listOf(v(d.feedPattern.travelM, 2, PR), v(ALLOWED_TRAVEL_M, 2, MX)), "walk m")
-            ValueRow(listOf(v(d.birdsPerPan, 1, PR), v(d.birdsPerPanMax, 1, MX)), "birds / pan")
+        Step(5, "One pan covers") {
+            ValueRow(listOf(v(pat.cellFt2, 1, PR, "ft²"), v(pat.cellBirds, 1, PR, "Birds")), "cell")
+            ValueRow(listOf(v(pat.birdsPerPan, 1, PR, "Birds / pan"), v(d.birdsPerPanMax, 1, MX, "Max")), "load")
+            ValueRow(listOf(v(pat.travelM, 2, PR), v(ALLOWED_TRAVEL_M, 2, MX)), "walk m")
+            PanCellView(d, pat)
         }
         Step(6, "Times") {
-            ValueRow(d.feedTimes.take(d.feedings).mapIndexed { i, t -> vt(t, PR, "Feed ${i + 1}") }, "time")
+            ValueRow(d.feedTimesFor(o.feedings).mapIndexed { i, t -> vt(t, PR, "Feed ${i + 1}") }, "time")
         }
     }
 }

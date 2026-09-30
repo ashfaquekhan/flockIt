@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.flock.data.FlockDatabase
 import com.example.flock.data.MIGRATION_12_13
+import com.example.flock.data.MIGRATION_13_14
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -16,14 +17,15 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * v12 → v13 must keep the live flock: build a v12-shaped database with a farm and a day row,
- * upgrade it with MIGRATION_12_13 (no destructive fallback) and check everything survived.
+ * v12 → v13 → v14 must keep the live flock: build a v12-shaped database with a farm and a day row,
+ * upgrade it with the real migrations (no destructive fallback) and check everything survived.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class MigrationTest {
 
-    private val newFarmCols = listOf("godownBags", "manualFeeders", "manualDrinkers", "nipplesPerLine", "panLipCm")
+    private val newFarmCols = listOf("godownBags", "manualFeeders", "manualDrinkers", "nipplesPerLine", "panLipCm",
+        "lineFillBags", "sensorPansPerLine", "panSpacingFt", "feederLineGapFt")
 
     @Test
     fun upgradeKeepsData() = runBlocking {
@@ -69,13 +71,17 @@ class MigrationTest {
 
         // 3. Upgrade with the real migration (no destructive fallback: a bad migration fails here).
         val db = Room.databaseBuilder(ctx, FlockDatabase::class.java, oldName)
-            .addMigrations(MIGRATION_12_13).allowMainThreadQueries().build()
+            .addMigrations(MIGRATION_12_13, MIGRATION_13_14).allowMainThreadQueries().build()
         val farm = db.farmDao().getFarm("S1")
         assertNotNull("farm kept", farm)
         assertEquals("My Farm", farm!!.farmName)
         assertEquals(0.0, farm.godownBags, 0.0)
         assertEquals(150, farm.manualFeeders)
         assertEquals(6.0, farm.panLipCm, 0.0)
+        assertEquals(3.0, farm.lineFillBags, 0.0)      // copied from the old whole-number setting
+        assertEquals(2, farm.sensorPansPerLine)
+        assertEquals(2.5, farm.panSpacingFt, 0.0)
+        assertEquals(0.0, farm.feederLineGapFt, 0.0)
         val day = db.dailyDataDao().getDayEntry("S1", "F1", 9)
         assertNotNull("day row kept", day)
         assertEquals(7, day!!.mortality)

@@ -82,7 +82,12 @@ data class FarmEntity(
     val manualFeeders: Int = 150,          // chick feeder trays used in the first week
     val manualDrinkers: Int = 0,           // supplementary (mini) drinkers used in the first days
     val nipplesPerLine: Int = 0,           // nipples on one drinker line (0 = not set)
-    val panLipCm: Double = 6.0             // height of the feeder-pan lip above the litter, cm
+    val panLipCm: Double = 6.0,            // height of the feeder-pan lip above the litter, cm
+    // Feeder line layout (v34)
+    val lineFillBags: Double = 3.0,        // bags that fill one whole feeder line from empty (e.g. 3.3)
+    val sensorPansPerLine: Int = 2,        // control (sensor) pans at the end of each line — not feed pans
+    val panSpacingFt: Double = 2.5,        // pan to pan on a line
+    val feederLineGapFt: Double = 0.0      // feeder line to feeder line (0 = usable width ÷ lines)
 )
 
 @Entity(tableName = "config")

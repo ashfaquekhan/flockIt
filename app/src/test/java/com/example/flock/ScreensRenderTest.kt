@@ -52,7 +52,7 @@ class ScreensRenderTest {
     @get:Rule val rule = createComposeRule()
 
     private val farm = FarmEntity(spreadsheetId = "t", farmName = "Maa Tarini Farm", feedBagKg = 50.0, feederLines = 4, feederLineBags = 3,
-        pansPerFeederLine = 60, manualFeeders = 150, manualDrinkers = 180, nipplesPerLine = 290, godownBags = 600.0,
+        pansPerFeederLine = 112, sensorPansPerLine = 2, lineFillBags = 3.3, feederLineGapFt = 9.75, manualFeeders = 150, manualDrinkers = 180, nipplesPerLine = 290, godownBags = 600.0,
         timeZone = java.time.ZoneOffset.ofHours(((11 - java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC).hour + 36) % 24 - 12).coerceIn(-12, 14)).id)
     private val flock = FlockEntity(spreadsheetId = "t", flockId = "f", name = "Batch #3", startDate = java.time.LocalDate.now().minusDays(11).toString(), birdsPlaced = 15700, receptionMort = 40)
     private val feedTypes = listOf(
