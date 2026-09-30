@@ -209,7 +209,7 @@ private fun FeedEntryRow(d: OutputData, feeder: FeederState, onFeed: (Double) ->
                 OutlinedButton(onClick = { submit() }, border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine)) { Text("Feed", color = MaterialTheme.colorScheme.onSurface) }
             }
             Text(
-                "Given today ${Fmt.n(feeder.givenTodayBags, 2)} of ${Fmt.n(d.giveBags, 2)} bags" +
+                "Given today ${Fmt.n(feeder.givenTodayBags, 2)} of ${Fmt.n(d.planBags, 2)} bags" +
                     (feeder.lastFedAt?.let { " · last at " + java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()).toLocalTime().withNano(0).toString().take(5) } ?: ""),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
             )

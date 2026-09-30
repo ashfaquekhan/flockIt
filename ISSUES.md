@@ -27,6 +27,9 @@ is not made twice. Newest first. Open items at the top. Update together with
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v33 | Birds in the coop didn't go to eat after "Feed" | The animation loop kept the first feeder state it saw, so new feedings never reached it; and a bird could stop 2×10⁻¹⁷ m short of its feeder spot (step = distance − stop rounded to 0) and never start eating | Loop reads the latest input (`rememberUpdatedState`); arrival allows a 0.1 mm slack and steps go the full distance; a new feeding sends every awake bird to the feeder |
+| v33 | Feeding plan said 3 feedings for 16 bags on day 11 (farm feeds 2 × 8) and showed fractions of bags per feeding | Bags split evenly by the age's feeding count, no rounding to what can be poured | Whole / half bags per line; fewest total bags, 2 feedings minimum; numbered steps in order |
+| v33 | Value chips and bars didn't line up down a card | Rows without a label started at the edge; the comparison bar used two offset lanes | Label column always kept; one-track bar under the chips |
 | v32 | Pan plan said "fill the lines once with 12 bags, then pour 5 whenever needed" | Modelled a separate tube charge; pattern not tied to each feeding | Pattern chosen so one feeding fills every open pan; feedings reduced if no safe pattern fits |
 | v32 | Inside conditions still estimated from the weather (birds feel, house RH, fan finder start) | Weather used as outside input to the house model | Removed; season's typical day used for what-if tools |
 | v32 | Grey panels, coloured fills and cramped rows on small phones / large text | Tonal elevation and coloured containers; fixed chip counts | Pure black + white outlines; wrapping chip rows; 2-column tiles on narrow screens |

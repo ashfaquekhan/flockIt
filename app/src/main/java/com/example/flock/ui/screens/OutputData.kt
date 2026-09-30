@@ -292,30 +292,42 @@ class OutputData(
         PanPattern(on, off, open.size, open.lastOrNull() ?: -1, travel, if (open.isEmpty()) Double.MAX_VALUE else live.toDouble() / (feederLines * open.size))
     }
     private fun safe(p: PanPattern) = p.openPerLine > 0 && p.travelM <= ALLOWED_TRAVEL_M && p.birdsPerPan <= birdsPerPanMax
-    /** How many pans per line one feeding of [n] feedings can fill. */
-    fun pansFilled(n: Int) = giveBags / n / feederLines * pansPerBag
     /**
-     * Pick the feedings and pattern: start from the age's feedings; each feeding must fully fill every
-     * open pan (open ≤ pans it can fill) with a safe pattern; if none fits, try one feeding fewer.
+     * Whole-bag plan, the way the lines are filled on the farm: bags are poured per line in whole (or
+     * half) bags. For 2 … the age's feedings, take the fewest half-bags per line that cover the day's
+     * need, and the most open safe pattern those bags fill completely. Keep the plan with the fewest
+     * bags in total; on a tie, the one nearest the age's feedings, then whole bags per line.
      */
+    val planBags: Double
     val feedings: Int
+    val bagsPerLinePerFeeding: Double
     val feedPattern: PanPattern
     val patternFits: Boolean
     init {
-        var chosenF = 1; var chosen: PanPattern? = null
-        for (n in feedingsWanted downTo 1) {
-            val can = pansFilled(n)
+        val cands = mutableListOf<Triple<Int, Double, PanPattern>>()
+        for (n in min(2, max(1, feedingsWanted))..max(1, feedingsWanted)) {   // never fewer than 2 feedings a day
+            val k = max(0.5, ceil(giveBags / (feederLines * n) * 2 - 1e-9) / 2.0)
+            val can = k * pansPerBag
             val p = if (can >= pansInArea) patterns.first().takeIf { safe(it) } else patterns.firstOrNull { it.openPerLine <= can && safe(it) }
-            if (p != null) { chosenF = n; chosen = p; break }
+            if (p != null) cands += Triple(n, k, p)
         }
-        patternFits = chosen != null
-        feedings = if (chosen != null) chosenF else 1
-        feedPattern = chosen ?: patterns.first()
+        val best = cands.minWithOrNull(compareBy<Triple<Int, Double, PanPattern>>(
+            { it.second * feederLines * it.first }, { abs(it.first - feedingsWanted) }, { -it.first }, { if (it.second % 1.0 == 0.0) 0 else 1 }))
+        patternFits = best != null
+        if (best != null) {
+            feedings = best.first; bagsPerLinePerFeeding = best.second; feedPattern = best.third
+        } else {
+            feedings = feedingsWanted
+            bagsPerLinePerFeeding = max(0.5, ceil(giveBags / (feederLines * feedingsWanted) * 2 - 1e-9) / 2.0)
+            feedPattern = patterns.first()
+        }
+        planBags = bagsPerLinePerFeeding * feederLines * feedings
     }
-    val bagsPerFeeding = giveBags / feedings
-    val bagsPerLinePerFeeding = bagsPerFeeding / feederLines
+    val bagsPerFeeding = bagsPerLinePerFeeding * feederLines
+    /** Bags above the day's need that the rounding adds (they stay in the hopper for the next feeding). */
+    val extraBags = planBags - giveBags
     /** Pans one feeding fills per line, and the pans open per line. */
-    val pansFilledPerLine = pansFilled(feedings)
+    val pansFilledPerLine = bagsPerLinePerFeeding * pansPerBag
     val pansOpenPerLine = max(0, feedPattern.openPerLine)
     val pansOpen = pansOpenPerLine * feederLines
     val birdsPerPan = if (pansOpen > 0) live.toDouble() / pansOpen else 0.0
@@ -432,8 +444,7 @@ class OutputData(
             e.waterPh?.let { ph -> if (ph < 6.0 || ph > 6.8) add(TopicAlert(1, "Water pH ${Fmt.n(ph)} outside 6.00–6.80")) }
             e.waterTempC?.let { t -> if (t > 25) add(TopicAlert(1, "Water ${Fmt.n(t, 1)} °C is warm (ideal 10.0–25.0 °C) — flush the lines")) }
             nextPhaseDay?.let { d -> if (d - day in 1..2) add(TopicAlert(1, "Feed changes to ${CompanyStandard.feedPhase(d)} on day $d")) }
-            if (day >= 4 && !patternFits) add(TopicAlert(2, "Today's ${Fmt.n(giveBags, 2)} bags can't fill a safe pan pattern — feed ${Fmt.n(bagsPerFeeding, 2)} bags once"))
-            else if (day >= 4 && feedings < feedingsWanted) add(TopicAlert(1, "${feedings} feedings fit the lines today (${feedingsWanted} by age)"))
+            if (day >= 4 && !patternFits) add(TopicAlert(2, "No safe pan pattern for ${Fmt.n(giveBags, 2)} bags"))
             if (birdsPerPan > birdsPerPanMax) add(TopicAlert(1, "${Fmt.n(birdsPerPan, 1)} birds per open pan — more than ${Fmt.n(birdsPerPanMax, 1)}; open more pans"))
             birdsPerNipple?.let { b -> if (b > birdsPerNippleMax) add(TopicAlert(1, "${Fmt.n(b, 1)} birds per nipple — more than ${Fmt.n(birdsPerNippleMax, 1)}")) }
             if (day <= 3 && farm.manualFeeders < traysIdeal) add(TopicAlert(1, "${farm.manualFeeders} feeder trays; Ross advises ${Fmt.n(traysIdeal, 1)} (1 per 100 chicks)"))

@@ -54,10 +54,10 @@ data class CoopInput(
 )
 
 private val NAMES = listOf("Pip", "Dot", "Hazel", "Tiko")
-private enum class Trait(val label: String) { CURIOUS("curious"), GLUTTON("big eater"), LAZY("lazy"), CHATTY("chatty") }
+internal enum class Trait(val label: String) { CURIOUS("curious"), GLUTTON("big eater"), LAZY("lazy"), CHATTY("chatty") }
 private val ZS = listOf(-1.1, 0.4, -0.35, 1.1)   // size spread (z-scores) for the CV
 
-private class Bird(val name: String, val trait: Trait, val z: Double, seed: Int) {
+internal class Bird(val name: String, val trait: Trait, val z: Double, seed: Int) {
     val rnd = Random(seed)
     var x = 0.0; var zz = 0.0; var yaw = rnd.nextDouble(0.0, 2 * PI)
     var state = "idle"; var t = 0.0; var dur = 2.0
@@ -90,7 +90,7 @@ private fun shapeFor(age: Int): Shape {
 private fun lerpColor(a: Color, b: Color, t: Double) = Color(
     (a.red + (b.red - a.red) * t.toFloat()), (a.green + (b.green - a.green) * t.toFloat()), (a.blue + (b.blue - a.blue) * t.toFloat()), 1f)
 
-private class CoopSim {
+internal class CoopSim {
     var birds: List<Bird> = emptyList()
     var side = 2.0          // floor is side × side metres
     var age = -1
@@ -113,9 +113,18 @@ private class CoopSim {
         birds.forEach { it.weightG = max(30.0, inp.meanG * (1 + cv * it.z)) }
     }
 
+    private var lastFedSeen: Long? = null
+    private var fedSeenInit = false
+
     fun update(dt: Double, inp: CoopInput, lightLevel: Double) {
         val hunger = inp.feeder.hunger
         val feedIn = inp.feeder.levelKg > 0
+        // a new feeding logged: the feeder runs and every awake bird heads for it
+        if (!fedSeenInit) { lastFedSeen = inp.feeder.lastFedAt; fedSeenInit = true }
+        else if (inp.feeder.lastFedAt != lastFedSeen) {
+            lastFedSeen = inp.feeder.lastFedAt
+            birds.forEach { b -> if (b.state != "sleep") { b.state = "goEat"; b.t = 0.0; b.dur = 20.0; b.fullness = min(b.fullness, 0.5) } }
+        }
         birds.forEach { b ->
             b.t += dt
             b.nextBlink -= dt; if (b.nextBlink < 0) { b.blink = 1.0; b.nextBlink = b.rnd.nextDouble(1.8, 4.5) }
@@ -125,21 +134,23 @@ private class CoopSim {
             val s = cbrt(b.weightG / 42.0) * 0.1
             val sh = shapeFor(inp.age)
             b.tSit = 0.0; b.tPeck = 0.0; b.tHeadYaw = 0.0; b.swing = 0.0; b.lift = 0.0
-            // fullness follows the flock's hunger, nudged by trait
-            val targetFull = (1 - hunger) * when (b.trait) { Trait.GLUTTON -> 0.85; Trait.LAZY -> 1.05; else -> 1.0 }
-            b.fullness = damp(b.fullness, targetFull.coerceIn(0.0, 1.0), 0.2, dt)
+            // fullness only rises by eating at the feeder; it drops as they digest, and an empty feeder caps it
+            b.fullness -= dt * (if (b.trait == Trait.GLUTTON) 0.016 else 0.011)
+            if (b.state == "eat" && feedIn) b.fullness += dt * 0.09
+            if (!feedIn) b.fullness = min(b.fullness, 1 - hunger * 0.9)
+            b.fullness = b.fullness.coerceIn(0.0, 1.0)
 
             if (lightLevel < 0.5 && b.state != "sleep") { b.state = "sleep"; b.t = 0.0; b.dur = 9999.0 }
             if (lightLevel >= 0.5 && b.state == "sleep") { b.state = "idle"; b.t = 0.0; b.dur = b.rnd.nextDouble(0.5, 2.0) }
 
             fun walkTo(x: Double, z: Double, stop: Double, speedMul: Double = 1.0): Boolean {
                 val dx = x - b.x; val dz = z - b.zz; val d = hypot(dx, dz)
-                if (d <= stop) return true
+                if (d <= stop + 1e-4) return true   // arrived (the slack stops a bird hanging a hair short of its spot)
                 val want = atan2(dx, dz)
                 var dy = ((want - b.yaw + PI * 3) % (2 * PI)) - PI
                 b.yaw += dy.coerceIn(-4 * dt, 4 * dt)
                 val speed = (0.25 + 0.2 * sqrt(s * 10)) * speedMul * (1 - heavy * 0.45)
-                if (abs(dy) < 1.1) { val st = min(d - stop, speed * dt); b.x += sin(b.yaw) * st; b.zz += cos(b.yaw) * st; b.step += dt * speed * 9 / (s * 10) }
+                if (abs(dy) < 1.1) { val st = min(d, speed * dt); b.x += sin(b.yaw) * st; b.zz += cos(b.yaw) * st; b.step += dt * speed * 9 / (s * 10) }
                 b.swing = sin(b.step * 2 * PI) * 0.6
                 return false
             }
@@ -154,11 +165,12 @@ private class CoopSim {
                 "rest" -> { b.tSit = 1.0; b.tPeck = 0.1 }
                 "flap" -> { b.flap = 1.0; b.jump = sin((b.t / 0.8).coerceIn(0.0, 1.0) * PI) * 0.03 * (1 - heavy) }
                 "chirp" -> { if (b.chirp <= 0) b.chirp = 0.8; b.tHeadYaw = 0.2 }
-                "goEat" -> { val a = (b.z + 2) * 1.6; if (walkTo(fx + sin(a) * rim, fz + cos(a) * rim, 0.02, 1.2)) { b.state = "eat"; b.t = 0.0; b.dur = b.rnd.nextDouble(3.0, 6.0) } }
+                "goEat" -> { val a = (b.z + 2) * 1.6; if (walkTo(fx + sin(a) * rim, fz + cos(a) * rim, 0.02, 1.4)) { b.state = "eat"; b.t = 0.0; b.dur = if (feedIn) b.rnd.nextDouble(6.0, 12.0) else b.rnd.nextDouble(3.0, 6.0) } }
                 "eat" -> {
                     b.yaw = atan2(fx - b.x, fz - b.zz)
                     val ph = (b.t * 3.0) % 1; b.tPeck = if (feedIn) (if (ph < 0.4) 0.6 + 0.4 * sin(ph / 0.4 * PI) else 0.55) else 0.45 + 0.3 * sin(b.t * 1.5)
                     if (!feedIn && b.t > 2 && b.chirp <= 0 && hunger > 0.4) b.chirp = 0.9
+                    if (feedIn && b.fullness >= (if (b.trait == Trait.GLUTTON) 0.99 else 0.95)) b.t = b.dur
                 }
                 "goDrink" -> { val a = b.z * 2.2; if (walkTo(dx0 + sin(a) * (0.13 + sh.rz * s), dz0 + cos(a) * (0.13 + sh.rz * s), 0.02)) { b.state = "drink"; b.t = 0.0; b.dur = b.rnd.nextDouble(2.5, 4.0) } }
                 "drink" -> { b.yaw = atan2(dx0 - b.x, dz0 - b.zz); val ph = (b.t * 0.9) % 1; b.tPeck = if (ph < 0.35) 0.6 else -0.6 }
@@ -212,12 +224,15 @@ private class CoopSim {
 fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
     val sim = remember { CoopSim() }
     sim.setup(inp)
+    // the frame loop starts once: read the latest input (new feedings, lights) through this, not the first one
+    val cur = androidx.compose.runtime.rememberUpdatedState(inp)
     var tick by remember { mutableLongStateOf(0L) }
     // lights follow the programme; "Wake" turns them on in the animation until tapped again
     var awake by remember { androidx.compose.runtime.mutableStateOf(false) }
     fun lightNow(): Double {
-        val z = java.time.ZonedDateTime.now(inp.zoneId)
-        return if (awake) 1.0 else inp.light.level(z.hour + z.minute / 60.0 + z.second / 3600.0)
+        val i = cur.value
+        val z = java.time.ZonedDateTime.now(i.zoneId)
+        return if (awake) 1.0 else i.light.level(z.hour + z.minute / 60.0 + z.second / 3600.0)
     }
     LaunchedEffect(Unit) {
         var last = 0L
@@ -225,7 +240,7 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
             withFrameNanos { now ->
                 val dt = if (last == 0L) 0.016 else ((now - last) / 1e9).coerceAtMost(0.05)
                 last = now
-                sim.update(dt, inp, lightNow())
+                sim.update(dt, cur.value, lightNow())
                 tick = now
             }
         }

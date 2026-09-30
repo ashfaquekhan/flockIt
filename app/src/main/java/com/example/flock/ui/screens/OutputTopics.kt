@@ -111,7 +111,7 @@ fun OverviewStats(d: OutputData, feeder: FeederState) {
         { m -> StatTile("FCR", v(e.fcr, 3, P), d.fcrCom?.let { "com ${Fmt.n(it, 3)}" }, m) },
         { m -> StatTile("Deaths today", vi(d.mortToday, P), d.mortTodayPct?.let { Fmt.pct(it, 3) }, m) },
         { m -> StatTile("Mortality %", v(d.mortTDPct, 2, P), "com ${Fmt.n(d.comCumPct, 2)}", m) },
-        { m -> StatTile("Feed bags", v(d.giveBags, 2, PR), "${d.feedings}× ${Fmt.n(d.bagsPerFeeding, 2)}", m) },
+        { m -> StatTile("Feed bags", v(d.planBags, 2, PR), "${d.feedings} × ${Fmt.n(d.bagsPerFeeding, 2)}", m) },
         { m -> StatTile("Feeder %", if (feeder.lastFedAt == null) vt("—", ValueKind.NEUTRAL) else v(feeder.fillFrac * 100, 1, if (feeder.levelKg > 0) PR else MX),
             when { feeder.lastFedAt == null -> "no feeding logged"; feeder.levelKg > 0 -> "${Fmt.n(feeder.hoursToEmpty ?: 0.0, 1)} h left"; else -> "empty ${Fmt.n(feeder.emptyForH, 1)} h" }, m) },
         { m -> StatTile("Water L", v(e.totalWaterL, 1, PR), "${Fmt.n(e.totalWaterL / d.tankL * d.refillF, 2)} tanks", m) }
@@ -149,28 +149,49 @@ fun FeedSection(d: OutputData) {
     FeedCharts(d)
 }
 
+/** A numbered step of the feeding plan: circle with the number, name, then its values. */
+@Composable
+private fun Step(n: Int, label: String, content: @Composable () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(22.dp).border(1.dp, Color.White.copy(alpha = 0.6f), RoundedCornerShape(11.dp)), contentAlignment = Alignment.Center) {
+                Text("$n", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(label, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
+        }
+        content()
+    }
+}
+
 @Composable
 private fun FeedingPlanCard(d: OutputData) {
     val live = d.live.toDouble()
     val bag = d.bagKg
     OutputCard(title = "Feeding plan · ${d.phase}" + (d.nextPhaseDay?.let { " → ${CompanyStandard.feedPhase(it)} day $it" } ?: "")) {
-        Param("Feed today", "", listOf(
-            "g/bird" to listOf(v(d.givePerBird, 1, PR), v(d.comPerBird, 1, C), v(d.idealPerBird, 1, I)),
-            "bags" to listOf(v(d.giveBags, 2, PR), v(d.comPerBird?.let { it * live / 1000 / bag }, 2, C), v(d.idealPerBird * live / 1000 / bag, 2, I))
-        ), strong = true)
-        Param("Feedings", "", vi(d.feedings, PR, "Times"), vi(d.feedingsWanted, I, "By age"))
-        ValueRow(d.feedTimes.mapIndexed { i, t -> vt(t, PR, "Feed ${i + 1}") })
-        Param("Each feeding", "", listOf(
-            "all lines" to listOf(v(d.bagsPerFeeding, 2, PR, "Bags"), v(d.hopperBagsPerFeeding, 2, PR, "Hopper")),
-            "per line" to listOf(v(d.bagsPerLinePerFeeding, 2, PR, "Bags"), v(d.pansFilledPerLine, 1, PR, "Fills pans"))
-        ), strong = true)
-        FarmTopView(d)
-        KeyLine(kindColor(PR) to "on", Color.White.copy(alpha = 0.6f) to "off", ValueIdeal to "2 m", kindColor(MN) to "drinker")
-        Param("Pans per line", "", vi(d.pansOpenPerLine, PR, "On"), vi(d.pansInArea, P, "In area"), vi(d.pansPerLine, P, "On line"), strong = true)
-        ValueChip(vt(d.feedPattern.label, if (d.patternFits) PR else MX, "Pattern"), Modifier.fillMaxWidth())
-        Param("Limits", "", v(d.feedPattern.travelM, 2, PR, "Walk m"), v(ALLOWED_TRAVEL_M, 1, MX, "Walk max"),
-            v(d.birdsPerPan, 1, PR, "Birds/pan"), v(d.birdsPerPanMax, 1, MX, "Birds max"))
-        Param("Line", "", v(d.lineLenFt, 1, P, "Length ft"), v(d.pansPerBag, 1, P, "Pans / bag"), v(d.bagsFullLine, 1, P, "Bags / line"))
+        Step(1, "Required today") {
+            ValueRow(listOf(v(d.giveBags, 2, PR), v(d.comPerBird?.let { it * live / 1000 / bag }, 2, C), v(d.idealPerBird * live / 1000 / bag, 2, I)), "bags")
+            ValueRow(listOf(v(d.givePerBird, 1, PR), v(d.comPerBird, 1, C), v(d.idealPerBird, 1, I)), "g/bird")
+        }
+        Step(2, "Plan (whole bags)") {
+            ValueRow(listOf(v(d.planBags, 2, PR, "Bags"), vi(d.feedings, PR, "Feedings"), v(d.extraBags, 2, PR, "Extra")), "day")
+        }
+        Step(3, "Each feeding") {
+            ValueRow(listOf(v(d.bagsPerFeeding, 2, PR, "Bags"), v(d.bagsPerLinePerFeeding, 2, PR, "Per line"), v(d.pansPerBag, 1, P, "Pans / bag")), "feed")
+        }
+        Step(4, "Pans on each line") {
+            ValueRow(listOf(vt(d.feedPattern.label, if (d.patternFits) PR else MX, "Pattern")), "line")
+            ValueRow(listOf(vi(d.pansOpenPerLine, PR, "On"), vi(d.pansInArea, P, "In area"), vi(d.pansPerLine, P, "On line")), "pans")
+            FarmTopView(d)
+            KeyLine(kindColor(PR) to "on", Color.White.copy(alpha = 0.6f) to "off", ValueIdeal to "2 m", kindColor(MN) to "drinker")
+        }
+        Step(5, "Check") {
+            ValueRow(listOf(v(d.feedPattern.travelM, 2, PR), v(ALLOWED_TRAVEL_M, 2, MX)), "walk m")
+            ValueRow(listOf(v(d.birdsPerPan, 1, PR), v(d.birdsPerPanMax, 1, MX)), "birds / pan")
+        }
+        Step(6, "Times") {
+            ValueRow(d.feedTimes.take(d.feedings).mapIndexed { i, t -> vt(t, PR, "Feed ${i + 1}") }, "time")
+        }
     }
 }
 

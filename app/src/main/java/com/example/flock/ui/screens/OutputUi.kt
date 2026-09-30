@@ -82,7 +82,7 @@ fun ValueChip(x: V, modifier: Modifier = Modifier, big: Boolean = false) {
 fun ValueRow(vals: List<V>, lead: String? = null) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val leadW = if (lead != null) 56.dp else 0.dp
-        val per = ((maxWidth - leadW) / 74.dp).toInt().coerceIn(2, 4)
+        val per = ((maxWidth - leadW) / 74.dp).toInt().coerceIn(2, 4).coerceAtMost(max(1, vals.size))
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             vals.chunked(per).forEachIndexed { i, row ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -245,34 +245,33 @@ private fun KpiRow(k: Kpi) {
                     v(k.ideal?.times(f), k.totalDec, ValueKind.IDEAL, k.idealLabel)))
             }
         }
-        rows.forEach { (scope, vals) -> ValueRow(vals, scope) }
+        rows.forEach { (scope, vals) -> ValueRow(vals, scope ?: "") }
         CompareBar(k)
     }
 }
 
-/** ±15 % scale around Commercial: commercial ±5 % band (upper lane), ideal ±5 % band (lower lane), flock dot. */
+/** One track: commercial ±5 % band, commercial (violet) and ideal (blue) ticks, the flock's dot. */
 @Composable
 private fun CompareBar(k: Kpi) {
     val c = k.company ?: k.ideal ?: return
-    val track = MaterialTheme.colorScheme.surfaceVariant
     val dotC = kindColor(k.actualKind)
-    Canvas(Modifier.fillMaxWidth().height(20.dp)) {
-        val span = max(abs(c) * 0.15, 0.05)
-        val lo = min(c - span, (k.ideal ?: c) - span * 0.4); val hi = max(c + span, (k.ideal ?: c) + span * 0.4)
-        fun x(v: Double) = ((v.coerceIn(lo, hi) - lo) / (hi - lo) * size.width).toFloat()
-        val h = size.height; val mid = h / 2
-        drawRoundRect(track, size = Size(size.width, h), cornerRadius = CornerRadius(10f, 10f))
-        k.company?.let { co ->
-            drawRect(kindColor(ValueKind.COMMERCIAL).copy(alpha = 0.35f), Offset(x(co * 0.95), 0f), Size(x(co * 1.05) - x(co * 0.95), mid))
-            drawLine(kindColor(ValueKind.COMMERCIAL), Offset(x(co), 0f), Offset(x(co), mid), strokeWidth = 5f)
-        }
-        k.ideal?.let { id ->
-            drawRect(kindColor(ValueKind.IDEAL).copy(alpha = 0.35f), Offset(x(id * 0.95), mid), Size(x(id * 1.05) - x(id * 0.95), mid))
-            drawLine(kindColor(ValueKind.IDEAL), Offset(x(id), mid), Offset(x(id), h), strokeWidth = 5f)
-        }
-        k.actual?.let {
-            drawCircle(dotC, h / 2.4f, Offset(x(it), mid))
-            if (it < lo || it > hi) drawCircle(Color.White, h / 6f, Offset(x(it), mid))
+    Row(Modifier.fillMaxWidth()) {
+        Spacer(Modifier.width(56.dp + 6.dp))
+        Canvas(Modifier.weight(1f).height(22.dp)) {
+            val pad = 9.dp.toPx()
+            val pts = listOfNotNull(c * 0.95, c * 1.05, k.ideal, k.actual)
+            val span = max(pts.max() - pts.min(), abs(c) * 0.1)
+            val lo = pts.min() - span * 0.08; val hi = pts.max() + span * 0.08
+            val w = size.width - pad * 2
+            fun x(v: Double) = pad + ((v.coerceIn(lo, hi) - lo) / (hi - lo) * w).toFloat()
+            val mid = size.height / 2
+            drawLine(Color.White.copy(alpha = 0.25f), Offset(pad, mid), Offset(pad + w, mid), strokeWidth = 2f)
+            k.company?.let { co ->
+                drawRect(kindColor(ValueKind.COMMERCIAL).copy(alpha = 0.28f), Offset(x(co * 0.95), mid - 5.dp.toPx()), Size(x(co * 1.05) - x(co * 0.95), 10.dp.toPx()))
+                drawLine(kindColor(ValueKind.COMMERCIAL), Offset(x(co), mid - 8.dp.toPx()), Offset(x(co), mid + 8.dp.toPx()), strokeWidth = 2.5.dp.toPx())
+            }
+            k.ideal?.let { id -> drawLine(kindColor(ValueKind.IDEAL), Offset(x(id), mid - 8.dp.toPx()), Offset(x(id), mid + 8.dp.toPx()), strokeWidth = 2.5.dp.toPx()) }
+            k.actual?.let { drawCircle(dotC, 6.dp.toPx(), Offset(x(it), mid)); drawCircle(Color.Black, 2.dp.toPx(), Offset(x(it), mid)) }
         }
     }
 }

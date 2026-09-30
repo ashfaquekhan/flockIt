@@ -8,6 +8,22 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v33 — 2026-09-30 · Whole-bag feeding plan, birds eat when fed, rows aligned
+- **Feeding plan in whole bags, in order**: 1 Required today (projected / commercial / ideal bags and
+  g/bird) → 2 Plan (bags rounded up, feedings, extra) → 3 Each feeding (bags, bags per line, pans per
+  bag) → 4 Pans on each line (pattern, on / in area / on line, top view) → 5 Check (walk and birds per pan
+  against their max) → 6 Times. Bags are poured per line in whole or half bags; the plan takes the
+  fewest bags that cover the day (2 feedings minimum, up to the age's number), then the most open safe
+  pattern those bags fill. Example (unit-tested): day 11, 15.27 bags needed → 16.00 bags = 2 × 8.00,
+  2.00 bags a line, 2 on · 1 off, 40 of 60 pans. All values still shown with decimals.
+- Overview "Feed bags" tile and "Given today … of …" show the planned (rounded) bags.
+- **Coop birds eat when feed is logged**: every awake bird heads to the feeder and fills up there;
+  fullness only rises while eating and drops as they digest.
+- **Aligned rows**: every value row keeps the label column, so chips line up down each card; the
+  comparison bar is one track (commercial ±5 % band, commercial and ideal ticks, the flock's dot) under
+  the chips.
+- Test: `CoopFeedTest` (birds go to the feeder and eat after a feeding).
+
 ## v32 — 2026-09-30 · Black and white UI, pan plan rebuilt, no weather inside
 - **Pan on/off plan rebuilt** (numbers and the top view only, no instructions):
   one bag fills (pans per line ÷ bags per line) pans — 20 on a 60-pan line that takes 3 bags. Each
