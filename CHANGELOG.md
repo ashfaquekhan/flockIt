@@ -8,6 +8,34 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v36 — 2026-09-30 · Backup & repair handles every older sheet, and updates the backup too
+- **Sheets are read by column name, not position** (`SheetSchema`): Flocks, DailyData, Tasks and
+  _FeedTypes are matched by header, ignoring case, spaces and underscores, and older names are accepted
+  (e.g. Deaths → Mortality, Feed Used → FeedBagsUsed). Columns moved, renamed, missing, or a tab with no
+  header row all read correctly. Farm and threshold keys match in any case.
+- **Missing tabs don't break anything**: the pull reads only the tabs a file has (before, one missing tab
+  made the whole farm fail to load).
+- **Older sheets are upgraded automatically**, once, the first time the farm is opened or written: the
+  sheet is rewritten in the current layout (schema 4) from its own data. Columns the app doesn't know are
+  kept at the right under their own names. A snapshot copy of the old sheet is kept in Drive, and this
+  farm's backups are upgraded too. It only runs for people who can edit the sheet.
+- **Back up & repair rebuilt**:
+  1. reads the live sheet, every backup of the farm and the phone's copy (any layout) and merges them, the
+     newest row winning (rows only a backup or the phone has are brought back; a task deleted from the
+     sheet is not brought back);
+  2. copies the live sheet as a safety snapshot;
+  3. rewrites the live sheet: missing tabs added, grids grown, all tabs written in one go, then any old
+     rows and columns beyond the new data cleared (no tab is ever left empty), and reads it back to check
+     every flock, day row and task is there;
+  4. rewrites the newest backup the same way and checks it (or makes a new one) — the backup is in the
+     current layout, named with the repair time;
+  5. only then moves the other backups and the snapshot to the Drive trash.
+  If a check fails, nothing is deleted. Feed types and thresholds are read from the sheet and never wiped
+  when the phone doesn't have them. The phone then reloads and recomputes from the repaired sheet.
+- New farm sheets: schema 4, Flocks and Tasks tabs wide enough for their headers (the Tasks header used
+  not to fit and was never written), flocks keep deletedAt.
+- Test: `SheetSchemaTest` (older layouts, headerless tab, old keys, merge rules, write-and-read-back).
+
 ## v35 — 2026-09-30 · Feed and water clocks, farm window, steady scrolling, clearer plan
 - **Feeding clock** (plan step 6) and **water clock** (Water card): 24-hour dials, midnight at the top,
   with the day's feeding or refill times on a ring. Drag the ring round and every time moves together

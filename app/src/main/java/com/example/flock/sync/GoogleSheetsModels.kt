@@ -80,7 +80,14 @@ data class DriveFile(
     val mimeType: String? = null,
     val modifiedTime: String? = null,
     val owners: List<DriveUser>? = null,
-    val appProperties: Map<String, String>? = null
+    val appProperties: Map<String, String>? = null,
+    val capabilities: DriveCapabilities? = null
+)
+
+/** What the signed-in user may do with a file (only canEdit is asked for). */
+@JsonClass(generateAdapter = true)
+data class DriveCapabilities(
+    val canEdit: Boolean? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -136,7 +143,9 @@ data class CopyFileRequest(
 /** Drive metadata PATCH body (only non-null fields are sent). */
 @JsonClass(generateAdapter = true)
 data class DriveFileUpdate(
-    val trashed: Boolean? = null
+    val trashed: Boolean? = null,
+    val appProperties: Map<String, String>? = null,
+    val name: String? = null
 )
 
 /** spreadsheets.batchUpdate — structural requests (only grid growth is used). */
@@ -147,7 +156,20 @@ data class BatchUpdateSpreadsheetRequest(
 
 @JsonClass(generateAdapter = true)
 data class SheetRequest(
-    val appendDimension: AppendDimensionRequest? = null
+    val appendDimension: AppendDimensionRequest? = null,
+    val addSheet: AddSheetRequest? = null
+)
+
+/** Adds a missing tab (older farm files lack some). */
+@JsonClass(generateAdapter = true)
+data class AddSheetRequest(
+    val properties: SheetProperties
+)
+
+/** values:batchClear — empties the given A1 ranges (formatting stays). */
+@JsonClass(generateAdapter = true)
+data class BatchClearValuesRequest(
+    val ranges: List<String>
 )
 
 @JsonClass(generateAdapter = true)

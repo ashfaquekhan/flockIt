@@ -458,6 +458,8 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
             _syncStatus.value = "syncing"
             _userMessage.value = "Backing up & repairing the sheet…"
             val res = syncManager.backupAndRepairFarm(spreadsheetId)
+            // the phone now holds the repaired data: recompute every flock from it
+            if (res.isSuccess) runCatching { repository.refreshFromCloud(spreadsheetId) }
             _syncStatus.value = if (res.isSuccess) "synced" else "offline"
             _userMessage.value = if (res.isSuccess) "Sheet repaired: ${res.getOrNull()}"
                 else "Repair failed: ${res.exceptionOrNull()?.message ?: "unknown"}"

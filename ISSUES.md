@@ -27,11 +27,19 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O18 | Pour per line can be a fraction of a bag (e.g. 2.38 = 118.8 kg) | Shown in bags and kg; the day's total is always whole bags. |
 | O19 | Clock shifts (feed and water ring positions) are kept on the phone only | Not synced to the sheet; each phone keeps its own. |
 | O20 | Farm window birds are drawn up to 320 at once | Bigger windows are offered only when they hold ≤ 320 birds at today's density. |
+| O22 | Sheet upgrade and repair are checked by unit tests, not yet against a live Google account | The layout logic is tested; the Drive/Sheets calls need a real run on the farm's sheet. |
 | O21 | Output review checklist (keep / change / drop) is waiting for the farm's choices | https://claude.ai/artifact/VDtyZmDKtLiJBu5Nxq6B3g |
 
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v36 | Back up & repair failed or scrambled data on sheets from older versions | Every tab was read by column position; older layouts put values in the wrong fields, and repair wrote that back | Tables read by header name with older names accepted; layout rules in SheetSchema |
+| v36 | Repair failed on sheets missing a tab (_Config, _FeedTypes, Tasks, ActivityLog); pull failed entirely | Writes and reads assumed every tab existed | Missing tabs are added before writing; reads use only the tabs present |
+| v36 | Old rows came back after a repair | The rewrite wrote from A1 but never cleared rows or columns beyond the new data | Leftovers beyond each block are cleared after the write |
+| v36 | Rows recovered from backups were lost again during repair | The live pull ("sheet wins") ran after merging the backups | One merge across live sheet, phone and backups, newest row winning |
+| v36 | Repair could wipe feed types / thresholds | Rewritten from the phone only, which may not have them | Read from the sheet and merged; never written empty over existing ones |
+| v36 | Backups stayed in the old layout; backup _Meta lost its schema version | Backups were only copied or trashed; the copy's _Meta was partly overwritten | Newest backup rewritten and verified in the current layout; full _Meta written and trimmed |
+| v36 | New farm sheets had no Tasks header | Tasks tab created 10 columns wide for a 15-column header | Tabs created 20 columns wide |
 | v35 | Scrolling to another day moved the page to a different section | Content above changed height between days; the scroll state was lost on days with no data | Scroll state kept for every day; the card at the top is remembered and put back after the day changes |
 | v35 | Holding a button showed nothing | The progress fill used the brand colour, which became black in v32 (black on black) | White fill with a bright edge, press-in, haptics, "Done" flash |
 | v35 | Blocks with several cards overlapped after adding scroll anchors | The anchor wrapper was a Box, which stacks its children | Anchor wrapper is a Column with the page's spacing |

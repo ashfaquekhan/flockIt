@@ -25,6 +25,14 @@ interface GoogleDriveApi {
         @Query("spaces") spaces: String = "drive"
     ): Response<DriveFileListResponse>
 
+    // A file's metadata (e.g. whether this user can edit it)
+    @GET("drive/v3/files/{fileId}")
+    suspend fun getFile(
+        @Header("Authorization") authHeader: String,
+        @Path("fileId") fileId: String,
+        @Query("fields") fields: String = "id,name,modifiedTime,appProperties,capabilities(canEdit)"
+    ): Response<DriveFile>
+
     // Read a file's raw content (used for the appDataFolder index JSON)
     @GET("drive/v3/files/{fileId}")
     suspend fun downloadFileContent(
@@ -118,6 +126,13 @@ interface GoogleSheetsApi {
         @Path("spreadsheetId") spreadsheetId: String,
         @Body request: BatchUpdateValuesRequest
     ): Response<BatchUpdateValuesResponse>
+
+    @POST("v4/spreadsheets/{spreadsheetId}/values:batchClear")
+    suspend fun batchClear(
+        @Header("Authorization") authHeader: String,
+        @Path("spreadsheetId") spreadsheetId: String,
+        @Body request: BatchClearValuesRequest
+    ): Response<ResponseBody>
 
     @POST("v4/spreadsheets/{spreadsheetId}/values/{range}:append")
     suspend fun appendValues(
