@@ -703,6 +703,14 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Save a farm setting changed from the Output page (e.g. the water refill multiplier). */
+    fun updateFarm(farm: FarmEntity) {
+        viewModelScope.launch {
+            repository.updateFarm(farm)
+            _farm.value = farm
+        }
+    }
+
     fun saveFeedType(feedType: FeedTypeEntity) {
         viewModelScope.launch {
             repository.saveFeedType(feedType)

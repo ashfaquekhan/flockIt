@@ -25,10 +25,18 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O16 | Cooling grid and fan finder start from the season's typical temperatures | Weather is not used for inside values until house sensors exist. |
 | O17 | Farm settings still hold the old default of 60 pans per line unless changed | Set feed pans (e.g. 112), sensor pans (2) and bags to fill a line (e.g. 3.3) in Farm settings for the plan to match the shed. |
 | O18 | Pour per line can be a fraction of a bag (e.g. 2.38 = 118.8 kg) | Shown in bags and kg; the day's total is always whole bags. |
+| O19 | Clock shifts (feed and water ring positions) are kept on the phone only | Not synced to the sheet; each phone keeps its own. |
+| O20 | Farm window birds are drawn up to 320 at once | Bigger windows are offered only when they hold ≤ 320 birds at today's density. |
+| O21 | Output review checklist (keep / change / drop) is waiting for the farm's choices | https://claude.ai/artifact/VDtyZmDKtLiJBu5Nxq6B3g |
 
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v35 | Scrolling to another day moved the page to a different section | Content above changed height between days; the scroll state was lost on days with no data | Scroll state kept for every day; the card at the top is remembered and put back after the day changes |
+| v35 | Holding a button showed nothing | The progress fill used the brand colour, which became black in v32 (black on black) | White fill with a bright edge, press-in, haptics, "Done" flash |
+| v35 | Blocks with several cards overlapped after adding scroll anchors | The anchor wrapper was a Box, which stacks its children | Anchor wrapper is a Column with the page's spacing |
+| v35 | Crowd piled onto the few pans in view | Every hungry bird went to the nearest pan with no limit | Each pan takes only as many birds as fit its rim; birds start at mixed fullness and digest slower |
+| v35 | 2.5 ft and 9.8 ft labels in the pan drawing sat in the wrong places | Labels placed at the band edges, not on dimension lines | Dimension lines with end ticks on one highlighted cell; labels on dark backing |
 | v34 | Plan could use more bags than the day needs (e.g. 20 for 18.28) | Half-bag rounding per line × 4 lines × feedings | Day fed in whole bags (ceil), split evenly; series chosen to fit the pour |
 | v34 | "Bags to fill a line" couldn't be 3.3; sensor pans, pan spacing and line gap were fixed | Integer column; constants in code | New farm columns (DB v14 migration), used by the plan and drawings |
 | v34 | "ft² per pan" didn't match the drawn cell | Chip spread the floor beyond the line ends over the pans | Cell (repeat geometry) and load (birds ÷ open pans) shown separately |

@@ -28,6 +28,8 @@ import com.example.ui.theme.ValueMax
 import com.example.ui.theme.ValueMin
 import com.example.ui.theme.ValuePredicted
 import kotlin.math.max
+import kotlin.math.roundToInt
+import kotlin.math.abs
 import kotlin.math.min
 
 /**
@@ -113,81 +115,102 @@ fun FarmTopView(d: OutputData, pattern: OutputData.PanPattern = d.feedPattern) {
 }
 
 /**
- * One stretch of a feeder line at true scale: the on/off series, the floor each open pan serves (to
- * halfway to the next line across, halfway to the next open pan along) with its ft² and birds, the pan
- * spacing, the line gap, and the furthest walk to an open pan against the 2 m limit.
+ * One stretch of a feeder line, two repeats of the pattern, drawn to scale. One open pan's floor is
+ * highlighted with the birds on it (dots); its length along the line is marked on top, the line gap on
+ * the right, the pan spacing under two pans, and the furthest walk to the pan against the 2 m ring.
  */
 @Composable
 fun PanCellView(d: OutputData, pattern: OutputData.PanPattern) {
     val period = pattern.on + pattern.off
-    val shownPans = max(period * 2, 8).coerceAtMost(16)
+    val shownPans = (period * 2).coerceIn(6, 12)
     val spacing = d.panSpacingFt
     val gap = d.feederGapFt
-    val birdsPerFt2 = d.live.toDouble() / d.areaInUseFt2      // birds per ft² today (same as the cell numbers)
     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
         val wDp = maxWidth.value
-        val padL = 8f; val padR = 8f
+        val padL = 6f; val padR = 74f; val padT = 30f; val padB = 34f
         val ftToDp = (wDp - padL - padR) / (shownPans * spacing).toFloat()
-        val bandDp = (gap * ftToDp).toFloat().coerceIn(70f, 190f)
-        val ftY = bandDp / gap.toFloat()                        // vertical scale (kept close to true)
-        val hDp = bandDp + 34f
-        Canvas(Modifier.fillMaxWidth().height(hDp.dp).clipToBounds()) {
+        val bandDp = (gap * ftToDp).toFloat().coerceIn(90f, 180f)
+        val ftY = bandDp / gap.toFloat()
+        Canvas(Modifier.fillMaxWidth().height((padT + bandDp + padB).dp).clipToBounds()) {
             val px = density
             fun X(ft: Double) = ((padL + ft * ftToDp) * px).toFloat()
-            val top = 4f * px
-            val midY = top + bandDp / 2 * px
-            fun Y(ftFromLine: Double) = (midY + ftFromLine * ftY * px).toFloat()
-            val paint = Paint().apply { isAntiAlias = true; textSize = 10f * px; typeface = Typeface.MONOSPACE }
-            fun text(t: String, x: Float, y: Float, c: Color, align: Paint.Align = Paint.Align.CENTER) { paint.color = c.toArgb(); paint.textAlign = align; drawContext.canvas.nativeCanvas.drawText(t, x, y, paint) }
-            // open pans (a little beyond both ends so every shown cell has its neighbours)
-            val opens = (-period until shownPans + period).filter { ((it % period) + period) % period < pattern.on }
+            val midY = (padT + bandDp / 2) * px
+            fun Y(ft: Double) = (midY + ft * ftY * px).toFloat()
+            val paint = Paint().apply { isAntiAlias = true; textSize = 11.5f * px; typeface = Typeface.MONOSPACE; textAlign = Paint.Align.CENTER }
+            fun label(t: String, x: Float, y: Float, c: Color, align: Paint.Align = Paint.Align.CENTER) {
+                paint.textAlign = align; paint.color = c.toArgb()
+                val w = paint.measureText(t); val h = paint.textSize
+                val left = when (align) { Paint.Align.CENTER -> x - w / 2; Paint.Align.LEFT -> x; else -> x - w }
+                drawRoundRect(Color.Black.copy(alpha = 0.85f), Offset(left - 3f * px, y - h * 0.85f), Size(w + 6f * px, h * 1.2f), androidx.compose.ui.geometry.CornerRadius(3f * px))
+                drawContext.canvas.nativeCanvas.drawText(t, x, y, paint)
+            }
+            fun dimLine(a: Offset, b: Offset) {
+                val c = Color.White.copy(alpha = 0.75f)
+                drawLine(c, a, b, 1.2f * px)
+                val horizontal = abs(a.y - b.y) < 1f
+                val t = 4f * px
+                for (p in listOf(a, b)) if (horizontal) drawLine(c, Offset(p.x, p.y - t), Offset(p.x, p.y + t), 1.2f * px) else drawLine(c, Offset(p.x - t, p.y), Offset(p.x + t, p.y), 1.2f * px)
+            }
             val x0 = 0.5 * spacing
             fun panFt(i: Int) = x0 + i * spacing
-            // cells: halfway to the neighbouring open pans, halfway to the next line on each side
-            val cellCols = listOf(Color.White.copy(alpha = 0.05f), Color.White.copy(alpha = 0.11f))
-            var worst: Triple<Double, Double, Double>? = null   // (x of the far corner, x of its pan, walk m)
-            opens.forEachIndexed { k, i ->
-                if (i < 0 || i >= shownPans) return@forEachIndexed
-                val left = if (k > 0) (panFt(opens[k - 1]) + panFt(i)) / 2 else panFt(i) - spacing / 2
-                val right = if (k < opens.size - 1) (panFt(i) + panFt(opens[k + 1])) / 2 else panFt(i) + spacing / 2
-                val l = max(0.0, left); val r = min(shownPans * spacing, right)
-                drawRect(cellCols[k % 2], Offset(X(l), Y(-gap / 2)), Size(X(r) - X(l), Y(gap / 2) - Y(-gap / 2)))
-                drawLine(Color.White.copy(alpha = 0.25f), Offset(X(r), Y(-gap / 2)), Offset(X(r), Y(gap / 2)), 1f)
-                val cellFt2 = (right - left) * gap
-                // ft² and birds on the first repeat, where the cell is wide enough for the numbers
-                val t1 = Fmt.n(cellFt2, 1); val t2 = Fmt.n(cellFt2 * birdsPerFt2, 1)
-                if (i < period && X(r) - X(l) > max(paint.measureText(t1), paint.measureText(t2)) + 4f * px) {
-                    text(t1, X((l + r) / 2), Y(-gap / 2) + 13f * px, ValuePredicted)
-                    text(t2, X((l + r) / 2), Y(-gap / 2) + 25f * px, ValuePresent)
-                }
-                // furthest walk, checked on the second repeat so the 2 m ring sits inside the picture
-                val farX = if (right - panFt(i) >= panFt(i) - left) right else left
-                val walk = Math.hypot(farX - panFt(i), gap / 2) * 0.3048
-                if (i >= period && i < 2 * period && (worst == null || walk > worst!!.third + 1e-9)) worst = Triple(farX, panFt(i), walk)
+            val opens = (-period until shownPans + period).filter { ((it % period) + period) % period < pattern.on }
+            fun cellOf(k: Int): Pair<Double, Double> {
+                val i = opens[k]
+                val l = if (k > 0) (panFt(opens[k - 1]) + panFt(i)) / 2 else panFt(i) - spacing / 2
+                val r = if (k < opens.size - 1) (panFt(i) + panFt(opens[k + 1])) / 2 else panFt(i) + spacing / 2
+                return l to r
             }
-            // halfway lines (where the drinker lines run) and the feeder line
-            drawLine(ValueMin.copy(alpha = 0.7f), Offset(X(0.0), Y(-gap / 2)), Offset(X(shownPans * spacing), Y(-gap / 2)), 1.2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(3f, 4f)))
-            drawLine(ValueMin.copy(alpha = 0.7f), Offset(X(0.0), Y(gap / 2)), Offset(X(shownPans * spacing), Y(gap / 2)), 1.2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(3f, 4f)))
-            drawLine(Color.White.copy(alpha = 0.55f), Offset(X(0.0), Y(0.0)), Offset(X(shownPans * spacing), Y(0.0)), 1.4f)
-            // furthest walk and the 2 m limit around that pan
-            worst?.let { (fx, panX, walk) ->
-                val corner = Offset(X(fx), Y(gap / 2)); val pan = Offset(X(panX), Y(0.0))
-                drawLine(if (walk <= ALLOWED_TRAVEL_M) ValuePresent else ValueMax, corner, pan, 1.6f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 4f)))
-                val rx = (ALLOWED_TRAVEL_M / 0.3048 * ftToDp * px).toFloat(); val ry = (ALLOWED_TRAVEL_M / 0.3048 * ftY * px).toFloat()
-                drawOval(ValueIdeal.copy(alpha = 0.6f), Offset(pan.x - rx, pan.y - ry), Size(rx * 2, ry * 2), style = Stroke(1.2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f))))
-                text(Fmt.n(walk, 2) + " m", (corner.x + pan.x) / 2 + 4f * px, (corner.y + pan.y) / 2 + 4f * px, if (walk <= ALLOWED_TRAVEL_M) ValuePresent else ValueMax, Paint.Align.LEFT)
+            // the highlighted pan: the widest cell in the second repeat
+            val hk = opens.indices.filter { opens[it] in period until 2 * period }.maxByOrNull { cellOf(it).let { (l, r) -> r - l } }
+                ?: opens.indices.first { opens[it] >= 0 }
+            val hi = opens[hk]; val (cl, cr) = cellOf(hk)
+            val bandL = X(0.0); val bandR = X(shownPans * spacing)
+            // the band between the two halfway lines (where the drinker lines run)
+            drawRect(Color.White.copy(alpha = 0.03f), Offset(bandL, Y(-gap / 2)), Size(bandR - bandL, Y(gap / 2) - Y(-gap / 2)))
+            opens.indices.forEach { k -> if (opens[k] in 0 until shownPans) { val r = cellOf(k).second; if (r < shownPans * spacing) drawLine(Color.White.copy(alpha = 0.16f), Offset(X(r), Y(-gap / 2)), Offset(X(r), Y(gap / 2)), 1f) } }
+            val cell = androidx.compose.ui.geometry.Rect(X(cl), Y(-gap / 2), X(cr), Y(gap / 2))
+            drawRect(ValuePredicted.copy(alpha = 0.14f), cell.topLeft, cell.size)
+            drawRect(ValuePredicted.copy(alpha = 0.75f), cell.topLeft, cell.size, style = Stroke(1.5f * px))
+            // birds on that floor, at today's density
+            val n = pattern.cellBirds.roundToInt().coerceIn(0, 160)
+            val rnd = java.util.Random(11)
+            repeat(n) {
+                var p: Offset
+                var tries = 0
+                do { p = Offset(cell.left + 3f * px + rnd.nextFloat() * (cell.width - 6f * px), cell.top + 3f * px + rnd.nextFloat() * (cell.height - 6f * px)); tries++ }
+                while (tries < 6 && (p - Offset(X(panFt(hi)), Y(0.0))).getDistance() < 8f * px)
+                drawCircle(Color.White.copy(alpha = 0.75f), 1.7f * px, p)
             }
+            drawLine(ValueMin.copy(alpha = 0.7f), Offset(bandL, Y(-gap / 2)), Offset(bandR, Y(-gap / 2)), 1.2f * px, pathEffect = PathEffect.dashPathEffect(floatArrayOf(3f * px, 3f * px)))
+            drawLine(ValueMin.copy(alpha = 0.7f), Offset(bandL, Y(gap / 2)), Offset(bandR, Y(gap / 2)), 1.2f * px, pathEffect = PathEffect.dashPathEffect(floatArrayOf(3f * px, 3f * px)))
+            drawLine(Color.White.copy(alpha = 0.55f), Offset(bandL, Y(0.0)), Offset(bandR, Y(0.0)), 1.4f * px)
+            // furthest walk: from the far top corner of the highlighted floor to its pan, and the 2 m ring
+            val farX = if (cr - panFt(hi) >= panFt(hi) - cl) cr else cl
+            val corner = Offset(X(farX), Y(-gap / 2)); val pan = Offset(X(panFt(hi)), Y(0.0))
+            val ok = pattern.travelM <= ALLOWED_TRAVEL_M
+            val rx = (ALLOWED_TRAVEL_M / 0.3048 * ftToDp * px).toFloat(); val ry = (ALLOWED_TRAVEL_M / 0.3048 * ftY * px).toFloat()
+            drawOval(ValueIdeal.copy(alpha = 0.65f), Offset(pan.x - rx, pan.y - ry), Size(rx * 2, ry * 2), style = Stroke(1.2f * px, pathEffect = PathEffect.dashPathEffect(floatArrayOf(7f * px, 5f * px))))
+            drawLine(if (ok) ValuePresent else ValueMax, corner, pan, 2f * px, pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f * px, 3f * px)))
             // pans
-            val r = (0.6 * ftToDp * px).toFloat().coerceIn(3f * px, 7f * px)
+            val r = (0.55 * ftToDp * px).toFloat().coerceIn(3.5f * px, 7f * px)
             for (i in 0 until shownPans) {
                 val c = Offset(X(panFt(i)), Y(0.0))
-                if (pattern.isOpen(i)) drawCircle(ValuePredicted, r, c) else { drawCircle(Color.Black, r, c); drawCircle(Color.White.copy(alpha = 0.55f), r, c, style = Stroke(1.2f)) }
+                if (pattern.isOpen(i)) drawCircle(ValuePredicted, r, c) else { drawCircle(Color.Black, r, c); drawCircle(Color.White.copy(alpha = 0.6f), r, c, style = Stroke(1.3f * px)) }
             }
-            // pan spacing and line gap
-            val yb = Y(gap / 2) + 14f * px
-            drawLine(Color.White.copy(alpha = 0.6f), Offset(X(panFt(0)), yb - 4f * px), Offset(X(panFt(1)), yb - 4f * px), 1f)
-            text(Fmt.n(spacing, 1) + " ft", X(panFt(1)) + 4f * px, yb, Color.White.copy(alpha = 0.7f), Paint.Align.LEFT)
-            text("gap " + Fmt.n(gap, 1) + " ft", X(shownPans * spacing), yb, Color.White.copy(alpha = 0.7f), Paint.Align.RIGHT)
+            label(Fmt.n(pattern.travelM, 2) + " m", (corner.x + pan.x) / 2, (corner.y + pan.y) / 2 - 4f * px, if (ok) ValuePresent else ValueMax)
+            // dimensions: floor length along the line (top), line gap (right), pan spacing (under two pans)
+            val yTop = (padT - 12f) * px
+            dimLine(Offset(cell.left, yTop), Offset(cell.right, yTop))
+            label(Fmt.n(cr - cl, 2) + " ft", cell.center.x, yTop - 6f * px, ValuePredicted)
+            val xGap = bandR + 12f * px
+            dimLine(Offset(xGap, Y(-gap / 2)), Offset(xGap, Y(gap / 2)))
+            label(Fmt.n(gap, 2) + " ft", xGap + 6f * px, midY + 4f * px, Color.White, Paint.Align.LEFT)
+            val sA = if (hi + 1 < shownPans) hi else hi - 1
+            val ySp = Y(gap / 2) + 12f * px
+            dimLine(Offset(X(panFt(sA)), ySp), Offset(X(panFt(sA + 1)), ySp))
+            label(Fmt.n(spacing, 2) + " ft", (X(panFt(sA)) + X(panFt(sA + 1))) / 2, ySp + 17f * px, Color.White)
+            // area of the highlighted floor
+            label(Fmt.n(pattern.cellFt2, 1) + " ft²", cell.center.x, Y(gap / 2) - 8f * px, ValuePredicted)
         }
     }
 }

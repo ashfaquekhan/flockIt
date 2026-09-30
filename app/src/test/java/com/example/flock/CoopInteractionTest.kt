@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
 import com.example.flock.ui.screens.Coop3D
 import com.example.flock.ui.screens.CoopCam
 import com.example.flock.ui.screens.CoopInput
@@ -33,7 +34,7 @@ import org.robolectric.annotation.GraphicsMode
 /** The coop turns, tilts back, and answers taps on birds, feeder and floor. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w400dp-h720dp")
+@Config(sdk = [34], qualifiers = "w400dp-h900dp-xhdpi")
 class CoopInteractionTest {
     @get:Rule val rule = createComposeRule()
 
@@ -56,8 +57,9 @@ class CoopInteractionTest {
     }
 
     @Test fun grainsBringBirdsOver() {
-        val sim = CoopSim(); val a = input()
+        val sim = CoopSim().apply { sideFt = 5.0; x0Ft = 60.0; y0Ft = 10.0 }; val a = input()
         sim.setup(a)
+        assertEquals("birds at the flock density", 1.31 * 25, sim.birds.size.toDouble(), 1.0)
         repeat(60) { sim.update(0.016, a, 1.0) }
         val b = sim.birds.first()                   // Pip, the curious one
         sim.dropGrains((b.x + 0.3).coerceAtMost(sim.side - 0.2), b.zz)
@@ -84,5 +86,8 @@ class CoopInteractionTest {
         rule.onNodeWithTag("coop").performTouchInput { doubleClick(center) }
         rule.mainClock.advanceTimeBy(2000)
         rule.onRoot().captureRoboImage("src/test/screenshots/coop_3_reset.png")
+        rule.onNodeWithTag("farmMap").performTouchInput { swipeRight(startX = width * 0.2f, endX = width * 0.6f) }
+        rule.mainClock.advanceTimeBy(1500)
+        rule.onRoot().captureRoboImage("src/test/screenshots/coop_4_moved.png")
     }
 }

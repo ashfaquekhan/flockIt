@@ -1,6 +1,7 @@
 package com.example.flock.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -261,7 +262,8 @@ private fun HoldCompleteButton(done: Boolean, onToggle: () -> Unit) {
     val ring = if (done) BrandEmerald else MaterialTheme.colorScheme.outline
     Box(
         modifier = Modifier.size(30.dp).clip(CircleShape)
-            .background(if (done) BrandEmerald else Color.Transparent)
+            .border(1.5.dp, if (done) Color.White else Color.White.copy(alpha = 0.45f), CircleShape)
+            .background(if (done) Color.White.copy(alpha = 0.22f) else Color.Transparent)
             .pointerInput(done) {
                 detectTapGestures(onPress = {
                     progress = 0f
@@ -282,14 +284,16 @@ private fun HoldCompleteButton(done: Boolean, onToggle: () -> Unit) {
             },
         contentAlignment = Alignment.Center
     ) {
-        if (!done && progress > 0f) {
-            Box(modifier = Modifier.size((30 * progress).dp).clip(CircleShape).background(BrandEmerald.copy(alpha = 0.35f)))
+        if (progress > 0f) {
+            androidx.compose.foundation.Canvas(Modifier.size(30.dp)) {
+                drawArc(Color.White, -90f, 360f * progress, false, style = androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))
+            }
         }
         Box(modifier = Modifier.size(30.dp).clip(CircleShape).background(Color.Transparent)) {}
         Icon(
             Icons.Default.Check,
             contentDescription = if (done) "Done" else "Hold to complete",
-            tint = if (done) Color.White else ring,
+            tint = if (done) Color.White else Color.White.copy(alpha = 0.6f),
             modifier = Modifier.size(18.dp).align(Alignment.Center)
         )
     }

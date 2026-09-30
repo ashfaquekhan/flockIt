@@ -16,6 +16,17 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipe
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import com.example.flock.data.DailyDataEntity
@@ -135,6 +146,33 @@ class ScreensRenderTest {
     @Config(qualifiers = "w360dp-h780dp-xhdpi") @Test fun outputBigText() = shoot("output_bigtext") {
         val dens = androidx.compose.ui.platform.LocalDensity.current
         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(dens.density, 1.3f)) { output() }
+    }
+    /** Changing the day keeps the card being read in place (cards above it change height between days). */
+    @Config(qualifiers = "w360dp-h780dp-xhdpi") @Test fun dayChangeKeepsSection() {
+        val all = rows(11)
+        var day by mutableStateOf(11)
+        rule.mainClock.autoAdvance = false
+        rule.setContent { MyApplicationTheme { Box(Modifier.fillMaxSize().background(Color.Black)) {
+            OutputScreen(flock, farm, all[day], all.take(day + 1), FeedStockSummary(0.0, 0.0, 0.0, emptyMap()), feedTypes, weather, emptyList(), day == 11, {})
+        } } }
+        rule.mainClock.advanceTimeBy(1000)
+        // scroll with the finger (in the page margin, clear of the map and the clocks) until the plan is near the top
+        var guard = 0
+        // slow, short swipes (no fling) until the plan's title sits in the upper half of the screen
+        while (rule.onAllNodesWithText("Feeding plan")[0].getUnclippedBoundsInRoot().top.value > 350f && guard++ < 80) {
+            rule.onRoot().performTouchInput { swipe(Offset(8f, height * 0.7f), Offset(8f, height * 0.5f), 1200) }
+            rule.mainClock.advanceTimeBy(1500)
+        }
+        val before = rule.onAllNodesWithText("Feeding plan")[0].getUnclippedBoundsInRoot().top
+        day = 4          // a first-week day: alerts and growth cards above change height
+        rule.mainClock.advanceTimeBy(900)
+        val after = rule.onAllNodesWithText("Feeding plan")[0].getUnclippedBoundsInRoot().top
+        println("feeding plan top: day 11 ${before.value} dp, day 4 ${after.value} dp")
+        assertTrue("the title is on screen, not clipped at the top", before.value in 40f..350f)
+        assertEquals(before.value, after.value, 30f)
+        day = 11
+        rule.mainClock.advanceTimeBy(900)
+        assertEquals(before.value, rule.onAllNodesWithText("Feeding plan")[0].getUnclippedBoundsInRoot().top.value, 30f)
     }
     @Config(qualifiers = "w360dp-h4200dp-xhdpi") @Test fun outputLong() = shoot("output_long") { output() }
 }

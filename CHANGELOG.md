@@ -8,6 +8,38 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v35 — 2026-09-30 · Feed and water clocks, farm window, steady scrolling, clearer plan
+- **Feeding clock** (plan step 6) and **water clock** (Water card): 24-hour dials, midnight at the top,
+  with the day's feeding or refill times on a ring. Drag the ring round and every time moves together
+  (the gaps stay the same, 15-minute steps; kept on the phone per farm). A green pointer on the rim is the
+  time now, a grey band is the lights-off period, the middle shows the next time and hours to it.
+- **Water refills × (1–4)**: refills = tanks the day's water needs × the multiplier, spread evenly; set it
+  with the chips under the water clock (saved to the farm, synced).
+- **Farm window** (the animation): a 3, 5 or 10 ft square of the real house with the real feeder lines,
+  pans on and off by the day's pattern, sensor pans, drinker lines with nipples every 0.82 ft, the
+  barricade and house walls where the window reaches them. Birds at the flock's real density (131 in
+  10 × 10 ft at 1.31 birds/ft²); sizes that would hold more than 320 birds aren't offered. Four birds are
+  named and followed in a table (weight, fullness, what they're doing); the rest are drawn simply. Pans
+  fill along the line from the hopper after a feeding; each pan takes only as many birds as fit its rim.
+  The map under it is the whole house at its real shape: drag or tap it to move the window. The view
+  size and bird count are written in the corner. Turn, tilt, zoom and taps as before.
+- **Scrolling through days keeps your place**: the card at the top of the screen stays there when the
+  day changes, even when cards above it change height (and after days with no data).
+- **Hold buttons show progress**: a white fill sweeps across with a bright edge and a %, the button
+  presses in, the phone ticks at the start and buzzes when done, and it flashes "Done". The task check
+  circle fills round in white.
+- **Feeding plan, plainer**: no feed-change note in the title; steps are Feed needed today → Bags to give
+  (full bags, above need, times a day 2 / 3 with Best / Also OK / Not safe) → Each feeding (bags, bags per
+  line, kg per line) → Pans on and off (pattern, on / in area / feed pans, pans filled %, left in hopper)
+  → One pan covers (birds vs max, floor ft², walk vs max) → Feeding clock.
+- **One pan covers drawing** redone: one highlighted cell with its birds as dots, its length marked on top,
+  the line gap on the right, the pan spacing under two pans (labels on dark backing), the furthest walk
+  and the 2 m ring.
+- Text one step larger throughout (Material sizes + 1 sp, value chips 15 sp).
+- Tests: `ScreensRenderTest.dayChangeKeepsSection` (the plan title stays put across day changes),
+  `CoopFeedTest` (window over a feeder line: pans fill to their rims), `CoopInteractionTest` (density,
+  map drag).
+
 ## v34 — 2026-09-30 · Pan series from the farm's own layout, per-pan coverage, interactive coop · **DB v14 (non-destructive)**
 - **Feeder layout settings** (Farm settings → Drinkers & Feeders): bags to fill 1 line now takes decimals
   (e.g. 3.3), feed pans per line (sensor pans not counted), sensor pans per line, pan spacing (ft),

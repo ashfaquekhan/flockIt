@@ -67,6 +67,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -566,20 +567,27 @@ fun HoldButton(
 ) {
     val holdMs = holdSeconds * 1000f
     var progress by remember { mutableStateOf(0f) }
-    val base = if (enabled) container else container.copy(alpha = 0.35f)
+    var pressed by remember { mutableStateOf(false) }
+    var doneFlash by remember { mutableStateOf(false) }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val scale by androidx.compose.animation.core.animateFloatAsState(if (pressed) 0.97f else 1f, label = "holdScale")
+    androidx.compose.runtime.LaunchedEffect(doneFlash) { if (doneFlash) { delay(900); doneFlash = false } }
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(height.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(RoundedCornerShape(12.dp))
-            .border(1.dp, if (enabled) com.example.ui.theme.GlassLine else com.example.ui.theme.GlassLine.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+            .border(if (pressed || doneFlash) 2.dp else 1.dp, if (!enabled) com.example.ui.theme.GlassLine.copy(alpha = 0.2f) else if (pressed || doneFlash) Color.White else com.example.ui.theme.GlassLine, RoundedCornerShape(12.dp))
             .then(
                 if (!enabled) Modifier
                 else Modifier.pointerInput(Unit) {
                     detectTapGestures(
                         onPress = {
                             progress = 0f
+                            pressed = true
+                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                             var fired = false
                             coroutineScope {
                                 val anim = launch {
@@ -587,33 +595,39 @@ fun HoldButton(
                                     while (true) {
                                         val elapsed = (System.nanoTime() - t0) / 1_000_000f
                                         progress = (elapsed / holdMs).coerceIn(0f, 1f)
-                                        if (progress >= 1f) { fired = true; onComplete(); break }
+                                        if (progress >= 1f) {
+                                            fired = true
+                                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                            doneFlash = true
+                                            onComplete(); break
+                                        }
                                         delay(16)
                                     }
                                 }
                                 tryAwaitRelease()
                                 anim.cancel()
                             }
-                            if (!fired) progress = 0f
+                            pressed = false
+                            progress = 0f
                         }
                     )
                 }
             ),
         contentAlignment = Alignment.Center
     ) {
-        if (progress > 0f) {
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(progress)
-                    .background(container.copy(alpha = 0.45f))
-            )
+        // the fill sweeps across while held (white, so it shows on the black button), with a bright leading edge
+        if (progress > 0f || doneFlash) {
+            Box(Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(if (doneFlash) 1f else progress)
+                .background(Color.White.copy(alpha = if (doneFlash) 0.30f else 0.22f)))
+            if (!doneFlash) Box(Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(progress)) {
+                Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(3.dp).background(Color.White))
+            }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+            Icon(if (doneFlash) Icons.Default.Check else icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = if (progress in 0.001f..0.999f) "Keep holding…" else label,
+                text = when { doneFlash -> "Done"; progress in 0.001f..0.999f -> "Keep holding… ${(progress * 100).toInt()}%"; else -> label },
                 color = Color.White,
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
             )

@@ -70,10 +70,10 @@ fun ValueChip(x: V, modifier: Modifier = Modifier, big: Boolean = false) {
     val col = kindColor(k)
     Column(modifier.border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)).padding(horizontal = 7.dp, vertical = 4.dp)) {
         Text(x.tag ?: kindTag(x.kind).ifEmpty { "—" }, maxLines = 1, softWrap = false,
-            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.sp), color = col.copy(alpha = 0.9f))
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 0.sp), color = col.copy(alpha = 0.9f))
         Text(x.text, maxLines = 1, softWrap = false,
             style = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
-                fontSize = if (big) 16.sp else 14.sp, letterSpacing = (-0.3).sp), color = col)
+                fontSize = if (big) 17.sp else 15.sp, letterSpacing = (-0.3).sp), color = col)
     }
 }
 
@@ -81,8 +81,8 @@ fun ValueChip(x: V, modifier: Modifier = Modifier, big: Boolean = false) {
 @Composable
 fun ValueRow(vals: List<V>, lead: String? = null) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val leadW = if (lead != null) 56.dp else 0.dp
-        val per = ((maxWidth - leadW) / 74.dp).toInt().coerceIn(2, 4).coerceAtMost(max(1, vals.size))
+        val leadW = if (lead != null) 62.dp else 0.dp
+        val per = ((maxWidth - leadW) / 80.dp).toInt().coerceIn(2, 4).coerceAtMost(max(1, vals.size))
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             vals.chunked(per).forEachIndexed { i, row ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -256,7 +256,7 @@ private fun CompareBar(k: Kpi) {
     val c = k.company ?: k.ideal ?: return
     val dotC = kindColor(k.actualKind)
     Row(Modifier.fillMaxWidth()) {
-        Spacer(Modifier.width(56.dp + 6.dp))
+        Spacer(Modifier.width(62.dp + 6.dp))
         Canvas(Modifier.weight(1f).height(22.dp)) {
             val pad = 9.dp.toPx()
             val pts = listOfNotNull(c * 0.95, c * 1.05, k.ideal, k.actual)

@@ -40,6 +40,9 @@ import com.example.ui.theme.StatusWarn
 import com.example.ui.theme.ValueIdeal
 import com.example.ui.theme.ValuePresent
 import kotlin.math.max
+import kotlin.math.abs
+import kotlin.math.roundToInt
+import kotlin.math.ceil
 
 private val P = ValueKind.PRESENT
 private val PR = ValueKind.PREDICTED
@@ -137,7 +140,7 @@ fun GrowthBlock(d: OutputData) {
 // =================================== FEED ===================================
 
 @Composable
-fun FeedSection(d: OutputData) {
+fun FeedSection(d: OutputData, onFarmChange: ((com.example.flock.data.FarmEntity) -> Unit)? = null) {
     FeedingPlanCard(d)
     if (d.day <= 7) FirstWeekCard(d)
     val yLive = (d.byDay[d.day - 1]?.liveBirds ?: d.live).toDouble()
@@ -146,7 +149,7 @@ fun FeedSection(d: OutputData) {
         Kpi("Till date", "g/bird", d.cumPerBird, P, d.cumPerBirdCom, d.cumPerBirdIdeal, Better.CLOSER, 1, totalFactor = d.live / 1000.0, totalUnit = "kg")
     ))
     StockBlock(d)
-    WaterCard(d)
+    WaterCard(d, onFarmChange)
     FeedCharts(d)
 }
 
@@ -169,22 +172,24 @@ private fun Step(n: Int, label: String, content: @Composable () -> Unit) {
 private fun FeedingPlanCard(d: OutputData) {
     val live = d.live.toDouble()
     val bag = d.bagKg
-    // 2 or 3 feedings: the recommended one first, the other a tap away
+    // 2 or 3 feedings a day: the best one first, the other a tap away
     var pick by remember(d.day, d.recommendedOption, d.dayBags) { mutableIntStateOf(d.recommendedOption) }
     val o = d.feedOptions[pick]
     val pat = if (o.safe) o.pattern else d.patterns.first()
     val hopper = max(0.0, o.bagsPerFeeding - d.feederLines * pat.openPerLine / d.pansPerBag)
-    OutputCard(title = "Feeding plan · ${d.phase}" + (d.nextPhaseDay?.let { " → ${CompanyStandard.feedPhase(it)} day $it" } ?: "")) {
-        Step(1, "Required today") {
+    val shift = rememberClockShift("feed_${d.farm.spreadsheetId}")
+    val light = LightProgram(d.e.lightHours)
+    OutputCard(title = "Feeding plan") {
+        Step(1, "Feed needed today") {
             ValueRow(listOf(v(d.giveBags, 2, PR), v(d.comPerBird?.let { it * live / 1000 / bag }, 2, C), v(d.idealPerBird * live / 1000 / bag, 2, I)), "bags")
             ValueRow(listOf(v(d.givePerBird, 1, PR), v(d.comPerBird, 1, C), v(d.idealPerBird, 1, I)), "g/bird")
         }
-        Step(2, "Day in whole bags") {
-            ValueRow(listOf(v(d.dayBags, 2, PR, "Bags"), v(d.extraBags, 2, PR, "Rounded up")), "day")
+        Step(2, "Bags to give") {
+            ValueRow(listOf(v(d.dayBags, 2, PR, "Full bags"), v(d.extraBags, 2, PR, "Above need")), "give")
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("feedings", modifier = Modifier.width(56.dp), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
+                Text("times a day", modifier = Modifier.width(62.dp), maxLines = 2, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
                 d.feedOptions.forEachIndexed { i, opt ->
-                    val tag = when { !opt.safe -> "Unsafe"; i == d.recommendedOption -> "Best"; else -> "Also safe" }
+                    val tag = when { !opt.safe -> "Not safe"; i == d.recommendedOption -> "Best"; else -> "Also OK" }
                     val kind = when { !opt.safe -> MX; i == d.recommendedOption -> P; else -> PR }
                     ValueChip(vi(opt.feedings, kind, tag), Modifier.weight(1f)
                         .border(if (i == pick) 2.dp else 0.dp, if (i == pick) Color.White else Color.Transparent, RoundedCornerShape(8.dp))
@@ -193,26 +198,30 @@ private fun FeedingPlanCard(d: OutputData) {
             }
         }
         Step(3, "Each feeding") {
-            ValueRow(listOf(v(o.bagsPerFeeding, 2, PR, "Bags"), v(o.bagsPerLine, 2, PR, "Per line"), v(o.kgPerLine, 1, PR, "kg / line")), "pour")
+            ValueRow(listOf(v(o.bagsPerFeeding, 2, PR, "Bags"), v(o.bagsPerLine, 2, PR, "Bags / line"), v(o.kgPerLine, 1, PR, "kg / line")), "pour")
         }
-        Step(4, "Pan series") {
-            ValueRow(listOf(vt(pat.label, if (o.safe) PR else MX, "Series")), "line")
+        Step(4, "Pans on and off") {
+            ValueRow(listOf(vt(pat.label, if (o.safe) PR else MX, "Pattern")), "line")
             ValueRow(listOf(vi(pat.openPerLine, PR, "On"), vi(d.pansInArea, P, "In area"), vi(d.pansPerLine, P, "Feed pans")), "pans")
-            ValueRow(listOf(v(o.fillPct, 1, PR, "Filled %"), v(hopper, 2, PR, "Hopper bags")), "reach")
+            ValueRow(listOf(v(o.fillPct, 1, PR, "Pans filled %"), v(hopper, 2, PR, "Left in hopper")), "fill")
             FarmTopView(d, pat)
             KeyLine(kindColor(PR) to "on", Color.White.copy(alpha = 0.6f) to "off", Color.White to "sensor", kindColor(MN) to "drinker")
         }
         Step(5, "One pan covers") {
-            ValueRow(listOf(v(pat.cellFt2, 1, PR, "ft²"), v(pat.cellBirds, 1, PR, "Birds")), "cell")
-            ValueRow(listOf(v(pat.birdsPerPan, 1, PR, "Birds / pan"), v(d.birdsPerPanMax, 1, MX, "Max")), "load")
-            ValueRow(listOf(v(pat.travelM, 2, PR), v(ALLOWED_TRAVEL_M, 2, MX)), "walk m")
+            ValueRow(listOf(v(pat.birdsPerPan, 1, PR, "Birds"), v(d.birdsPerPanMax, 1, MX, "Max")), "birds")
+            ValueRow(listOf(v(pat.cellFt2, 1, PR, "ft²")), "floor")
+            ValueRow(listOf(v(pat.travelM, 2, PR, "Walk m"), v(ALLOWED_TRAVEL_M, 2, MX, "Max m")), "walk")
             PanCellView(d, pat)
         }
-        Step(6, "Times") {
-            ValueRow(d.feedTimesFor(o.feedings).mapIndexed { i, t -> vt(t, PR, "Feed ${i + 1}") }, "time")
+        Step(6, "Feeding clock") {
+            DayClock(d.feedTimesFor(o.feedings).map { hoursOf(it) }, shift.value, { shift.value = it }, kindColor(PR),
+                light.darkStartHour to light.darkEndHour, farmZone(d.farm), tag = "feedClock")
         }
     }
 }
+
+/** The farm's time zone (the phone's if the setting can't be read). */
+fun farmZone(f: com.example.flock.data.FarmEntity): java.time.ZoneId = try { java.time.ZoneId.of(f.timeZone) } catch (e: Exception) { java.time.ZoneId.systemDefault() }
 
 @Composable
 private fun FirstWeekCard(d: OutputData) {
@@ -232,10 +241,28 @@ private fun FirstWeekCard(d: OutputData) {
 }
 
 @Composable
-private fun WaterCard(d: OutputData) {
+private fun WaterCard(d: OutputData, onFarmChange: ((com.example.flock.data.FarmEntity) -> Unit)? = null) {
     val e = d.e
     val live = d.liveSafe.toDouble()
+    val shift = rememberClockShift("water_${d.farm.spreadsheetId}")
+    val light = LightProgram(e.lightHours)
+    // tank refills: what the day's water needs, times the farm's multiplier (fresher, cooler water)
+    val standard = max(1.0, ceil(e.totalWaterL / d.tankL))
+    val factor = if (d.refillF > 0) d.refillF else 1.0
+    val refills = (standard * factor).roundToInt().coerceIn(1, 24)
     OutputCard(title = "Water") {
+        DayClock((0 until refills).map { 6.0 + it * 24.0 / refills }, shift.value, { shift.value = it }, kindColor(MN),
+            light.darkStartHour to light.darkEndHour, farmZone(d.farm), tag = "waterClock")
+        ValueRow(listOf(vi(refills, PR, "Refills"), v(standard, 1, P, "Needed"), v(e.totalWaterL / refills, 1, PR, "L each")), "tank")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("refill ×", modifier = Modifier.width(62.dp), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
+            listOf(1.0, 2.0, 3.0, 4.0).forEach { m ->
+                val on = abs(factor - m) < 0.01
+                ValueChip(vt(Fmt.n(m, 1) + "×", if (on) P else PR, if (on) "Set" else ""), Modifier.weight(1f)
+                    .border(if (on) 2.dp else 0.dp, if (on) Color.White else Color.Transparent, RoundedCornerShape(8.dp))
+                    .clickable(enabled = onFarmChange != null) { onFarmChange?.invoke(d.farm.copy(waterRefillFactor = m)) })
+            }
+        }
         Param("Water", "", listOf(
             "mL/bird" to listOf(v(e.waterPerBird, 1, PR, "Today"), v(e.waterHighL * 1000 / live, 1, PR, "Hot +3°"), v(e.waterLowL * 1000 / live, 1, PR, "Cool −3°")),
             "farm L" to listOf(v(e.totalWaterL, 1, PR, "Today"), v(e.waterHighL, 1, PR, "Hot +3°"), v(e.waterLowL, 1, PR, "Cool −3°"))

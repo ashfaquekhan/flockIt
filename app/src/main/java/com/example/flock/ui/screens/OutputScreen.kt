@@ -34,6 +34,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -117,8 +119,21 @@ fun OutputScreen(
     hourly: List<HourPoint> = emptyList(),
     isToday: Boolean = false,
     onCloseBatch: (() -> Unit)? = null,
+    onFarmChange: ((FarmEntity) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    // one scroll position for every day; the section being read stays put when the day changes
+    val scroll = rememberScrollState()
+    val anchors = remember { ScrollAnchors(scroll) }
+    val day = entry?.dayNumber ?: Int.MIN_VALUE
+    anchors.hasContent = entry != null
+    androidx.compose.runtime.SideEffect { anchors.dayShown(day) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { androidx.compose.runtime.snapshotFlow { scroll.value }.collect { anchors.capture() } }
+    androidx.compose.runtime.LaunchedEffect(day) {
+        repeat(2) { androidx.compose.runtime.withFrameNanos { } }
+        anchors.restoreTarget()?.let { scroll.scrollTo(it) }
+        anchors.settled(day)
+    }
     if (entry == null) {
         Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
@@ -148,29 +163,34 @@ fun OutputScreen(
         zoneId = zone, airC = entry.tempIdeal, rhPct = entry.rhIdeal, feelsC = d.plan.comfort,
         chillC = com.example.flock.engine.IbController.levelChill(d.minLevel, d.day, d.plan.comfort, d.fanCfm, d.plan.crossFt2),
         pressurePa = 22.5, litterC = d.litterTemp.second, litterMoist = 25.0, bodyC = d.bodyTemp.second,
-        waterC = 18.0 to 21.0, waterPh = 6.0 to 6.8, travelM = ALLOWED_TRAVEL_M
+        waterC = 18.0 to 21.0, waterPh = 6.0 to 6.8, travelM = ALLOWED_TRAVEL_M,
+        layout = FarmLayout(farm.usableLengthFt, farm.usableWidthFt, d.lineOrder, d.lineGapFt, d.lineStartFt, d.panSpacingFt, d.pansPerLine,
+            d.sensorPans, d.feedPattern.on, d.feedPattern.off, d.pansInArea, NIPPLE_SPACING_FT, d.drinkerLenFt, d.drinkerHtIn * 0.0254,
+            d.barricadeFtNow, d.live.toDouble() / d.areaInUseFt2)
     )
     var confirmClose by remember { mutableStateOf(false) }
 
+    androidx.compose.runtime.CompositionLocalProvider(LocalScrollAnchors provides anchors) {
+    Box(modifier.fillMaxSize().onGloballyPositioned { anchors.viewportTop = it.positionInRoot().y }) {
     Column(
-        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 12.dp),
+        modifier = Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal = 14.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         TagLegend()
-        GlassBox(Modifier.fillMaxWidth()) { Coop3D(coop) }
-        FeedEntryRow(d, feeder,
+        Anchored("coop") { GlassBox(Modifier.fillMaxWidth()) { Coop3D(coop) } }
+        Anchored("feedlog") { FeedEntryRow(d, feeder,
             onFeed = { bags -> events = FeedLog.add(ctx, flockKey, bags); now = System.currentTimeMillis() },
-            onUndo = { events = FeedLog.undoLast(ctx, flockKey); now = System.currentTimeMillis() })
-        AlertList(d.allAlerts)
-        OverviewStats(d, feeder)
-        GrowthBlock(d)
-        SectionLabel("Feed")
-        FeedSection(d)
-        SectionLabel("Ventilation")
+            onUndo = { events = FeedLog.undoLast(ctx, flockKey); now = System.currentTimeMillis() }) }
+        Anchored("alerts") { AlertList(d.allAlerts) }
+        Anchored("overview") { OverviewStats(d, feeder) }
+        Anchored("growth") { GrowthBlock(d) }
+        Anchored("sec_feed") { SectionLabel("Feed") }
+        FeedSection(d, onFarmChange)
+        Anchored("sec_vent") { SectionLabel("Ventilation") }
         VentSection(d)
-        SectionLabel("Mortality")
+        Anchored("sec_mort") { SectionLabel("Mortality") }
         MortalitySection(d)
-        SectionLabel("Environment")
+        Anchored("sec_env") { SectionLabel("Environment") }
         EnvironmentSection(d)
         if (onCloseBatch != null && flock?.status != "closed") {
             OutlinedButton(onClick = { confirmClose = true }, modifier = Modifier.fillMaxWidth(),
@@ -179,6 +199,8 @@ fun OutputScreen(
             }
         }
         Spacer(modifier = Modifier.height(32.dp))
+    }
+    }
     }
     if (confirmClose) {
         androidx.compose.material3.AlertDialog(
@@ -277,7 +299,8 @@ fun OutputCard(
     title: String,
     content: @Composable () -> Unit
 ) {
-    GlassBox(Modifier.fillMaxWidth()) {
+    val anchors = LocalScrollAnchors.current
+    GlassBox(Modifier.fillMaxWidth().onGloballyPositioned { anchors?.report("card:$title", it.positionInRoot().y) }) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(text = title, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface))
             content()
@@ -381,4 +404,44 @@ private fun BandChip(label: String, count: Int, color: Color, modifier: Modifier
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         }
     }
+}
+
+// =================================== scroll anchors ===================================
+
+/**
+ * Remembers which card is at the top of the screen (and how far into it) while scrolling, and puts the
+ * same card back there after the day changes — cards above it may be taller or shorter on another day.
+ */
+class ScrollAnchors(private val scroll: androidx.compose.foundation.ScrollState) {
+    var viewportTop = 0f
+    var hasContent = true
+    private val tops = HashMap<String, Float>()      // content y of each card
+    private val seen = HashMap<String, Int>()         // layout generation each card was last placed in
+    private var gen = 0
+    private var shown = Int.MIN_VALUE + 1
+    private var settledDay = Int.MIN_VALUE + 2
+    private var stack: List<Pair<String, Float>> = emptyList()   // cards at/above the top, nearest first, with the offset into each
+    fun report(key: String, rootY: Float) { tops[key] = rootY - viewportTop + scroll.value; seen[key] = gen }
+    fun dayShown(day: Int) { if (day != shown) { shown = day; gen++ } }
+    fun settled(day: Int) { settledDay = day }
+    fun capture() {
+        if (shown != settledDay || !hasContent) return
+        val v = scroll.value.toFloat()
+        stack = tops.entries.filter { seen[it.key] == gen && it.value <= v + 2f }.sortedByDescending { it.value }.map { it.key to (v - it.value) }
+    }
+    fun restoreTarget(): Int? {
+        if (!hasContent) return null
+        val (k, off) = stack.firstOrNull { seen[it.first] == gen } ?: return null
+        return ((tops[k] ?: return null) + off).toInt().coerceAtLeast(0)
+    }
+}
+
+val LocalScrollAnchors = androidx.compose.runtime.staticCompositionLocalOf<ScrollAnchors?> { null }
+
+/** A block of the Output page that the scroll position can hold on to. */
+@Composable
+fun Anchored(key: String, content: @Composable () -> Unit) {
+    val a = LocalScrollAnchors.current
+    // a column (not a box): some blocks emit several cards, which must stack, not overlap
+    Column(Modifier.fillMaxWidth().onGloballyPositioned { a?.report(key, it.positionInRoot().y) }, verticalArrangement = Arrangement.spacedBy(12.dp)) { content() }
 }
