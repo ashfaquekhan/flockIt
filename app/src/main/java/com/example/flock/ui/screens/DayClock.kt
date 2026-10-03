@@ -3,14 +3,18 @@ package com.example.flock.ui.screens
 import android.graphics.Paint
 import android.graphics.Typeface
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,7 +28,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -35,6 +38,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.flock.domain.DaySchedule
+import com.example.flock.ui.Fmt
 import com.example.ui.theme.ValueMin
 import com.example.ui.theme.ValuePredicted
 import com.example.ui.theme.ValuePresent
@@ -51,105 +55,166 @@ fun hhmmOf(h: Double): String { val m = (((h % 24) + 24) % 24 * 60).roundToInt()
 
 private val WalkColor = Color.White
 private val HotColor = Color(0xFFE5734B)
+private val SleepColor = Color(0xFF8FA8FF)
+private val SleepFill = Color(0xFF2B3A67)
+private val LightFill = Color(0xFFE9D9A8)
+
+/** One kind of thing on the clock: its picture, name, colour and times. */
+private data class Kind(val emoji: String, val name: String, val color: Color, val times: List<Double>)
+
+private fun kindsOf(plan: DaySchedule.Plan) = listOf(
+    Kind("🌾", "Feed", ValuePredicted, plan.feeds),      // 🌾
+    Kind("💧", "Water", ValueMin, plan.refills),         // 💧
+    Kind("🚶", "Walk", WalkColor, plan.walks)            // 🚶
+)
+private const val SLEEP = "😴"   // 😴
+private const val SUN = "☀️"     // ☀️
+private const val FIRE = "🔥"    // 🔥
+
+private fun fwd(a: Double, b: Double) = ((b - a) % 24 + 24) % 24
 
 /**
- * The farm's day on one 24-hour dial (midnight at the top) — to look at, not to set: the dark band, the hot
- * hours, feed loads (gold), tank refills (cyan), walks (white) and a pointer at the time now. The middle
- * says what is next and in how long. The times come from [DaySchedule].
+ * The farm's day on one 24-hour dial (midnight at the top) — to look at, not to set. The outer ring is the
+ * day in sections: sleep, light, and the hot hours. Inside it each job has its own lane: walks, feed loads,
+ * tank refills. A hand points at the time now. What is next, and every time, are listed under the dial.
+ * The times come from [DaySchedule].
  */
 @Composable
 fun FarmDayClock(plan: DaySchedule.Plan, zone: java.time.ZoneId, modifier: Modifier = Modifier) {
     var nowH by remember { mutableDoubleStateOf(hourNow(zone)) }
     LaunchedEffect(zone) { while (true) { nowH = hourNow(zone); kotlinx.coroutines.delay(30_000) } }
+    val kinds = kindsOf(plan)
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            val dia = min(maxWidth.value, 300f)
-            Canvas(Modifier.size(dia.dp).testTag("dayClock")) { drawDay(plan, nowH) }
+            val dia = min(maxWidth.value, 310f)
+            Canvas(Modifier.size(dia.dp).testTag("dayClock")) { drawDay(plan, kinds, nowH) }
         }
-        // legend: what each mark is, with its count / span
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            Legend(ValuePredicted, "Feed", "${plan.feeds.size}×")
-            Legend(ValueMin, "Water", "${plan.refills.size}×")
-            Legend(WalkColor, "Walk", "${plan.walks.size}×")
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            Legend(Color.White.copy(alpha = 0.35f), "Dark", "${hhmmOf(plan.darkStart)}–${hhmmOf(plan.darkEnd)}")
-            Legend(HotColor, "Hot", "${hhmmOf(plan.hotFrom)}–${hhmmOf(plan.hotTo)}")
-        }
+        NextUp(kinds, plan, nowH)
+        kinds.forEach { TimesRow(it, nowH) }
+        SpanRow(SLEEP, "Sleep", SleepColor, plan.darkStart, plan.darkEnd)
+        SpanRow(FIRE, "Hot", HotColor, plan.hotFrom, plan.hotTo)
     }
 }
 
+/** What comes next and in how long — under the dial, not inside it. Wraps to a second line at large text sizes. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Legend(c: Color, label: String, value: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Canvas(Modifier.size(9.dp)) { drawCircle(c) }
-        Spacer(Modifier.width(5.dp))
-        Text("$label ", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
-        Text(value, style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold), color = if (c == WalkColor) Color.White else c)
+private fun NextUp(kinds: List<Kind>, plan: DaySchedule.Plan, nowH: Double) {
+    data class Ev(val h: Double, val emoji: String, val what: String, val col: Color)
+    val evs = kinds.flatMap { k -> k.times.map { Ev(it, k.emoji, k.name, k.color) } } +
+        Ev(plan.darkStart, SLEEP, "Lights off", SleepColor) + Ev(plan.darkEnd, SUN, "Lights on", LightFill)
+    val e = evs.minByOrNull { fwd(nowH, it.h) } ?: return
+    FlowRow(Modifier.fillMaxWidth().border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp).testTag("clockNext"),
+        horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text("Next", Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), maxLines = 1, softWrap = false)
+        Text(e.emoji, Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.titleMedium, maxLines = 1, softWrap = false)
+        Text(e.what, Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = Color.White, maxLines = 1, softWrap = false)
+        Text(hhmmOf(e.h), Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold), color = e.col, maxLines = 1, softWrap = false)
+        Text("in " + Fmt.n(fwd(nowH, e.h), 1) + " h", Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace), color = Color.White.copy(alpha = 0.65f), maxLines = 1, softWrap = false)
     }
 }
 
-private fun DrawScope.drawDay(plan: DaySchedule.Plan, nowH: Double) {
+/** One job: its picture, name, how many times, and every time (the next one bright, the ones gone by dim). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TimesRow(k: Kind, nowH: Double) {
+    val next = k.times.minByOrNull { fwd(nowH, it) }
+    val fs = androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceIn(1f, 1.5f)
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        Text(k.emoji, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(28.dp * fs))
+        Text(k.name, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = Color.White.copy(alpha = 0.85f), modifier = Modifier.width(52.dp * fs), maxLines = 1, softWrap = false)
+        Text("${k.times.size}×", style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold), color = k.color, modifier = Modifier.width(30.dp * fs), maxLines = 1, softWrap = false)
+        FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            k.times.sorted().forEach { t ->
+                val isNext = t == next
+                Text(hhmmOf(t), style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = if (isNext) FontWeight.Bold else FontWeight.Medium),
+                    color = if (isNext) k.color else k.color.copy(alpha = if (t < nowH) 0.4f else 0.75f), maxLines = 1, softWrap = false)
+            }
+        }
+    }
+}
+
+/** A stretch of the day (sleep, the hot hours): from – to and how long, lined up with the times above. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SpanRow(emoji: String, name: String, color: Color, from: Double, to: Double) {
+    val fs = androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceIn(1f, 1.5f)
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        Text(emoji, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(28.dp * fs))
+        Text(name, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = Color.White.copy(alpha = 0.85f), modifier = Modifier.width((52.dp + 30.dp) * fs), maxLines = 1, softWrap = false)
+        FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("${hhmmOf(from)} – ${hhmmOf(to)}", style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold), color = color, maxLines = 1, softWrap = false)
+            Text(Fmt.n(fwd(from, to), 1) + " h", style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium), color = color.copy(alpha = 0.75f), maxLines = 1, softWrap = false)
+        }
+    }
+}
+
+private fun DrawScope.drawDay(plan: DaySchedule.Plan, kinds: List<Kind>, nowH: Double) {
     val c = Offset(size.width / 2f, size.height / 2f)
-    val r = min(size.width, size.height) * 0.33f
     val px = density
+    val rOut = min(size.width, size.height) / 2f
+    val ringW = 20f * px
+    val rDay = rOut - 30f * px                       // middle of the day ring
+    // one lane per job, biggest circle for the job with the most times
+    val lanes = listOf(rDay - 28f * px, rDay - 55f * px, rDay - 82f * px)   // walk, feed, water
     fun at(h: Double, rad: Float): Offset { val a = h / 24 * 2 * PI; return Offset(c.x + rad * sin(a).toFloat(), c.y - rad * cos(a).toFloat()) }
     fun arc(fromH: Double, toH: Double, rad: Float, w: Float, col: Color) {
-        val start = (fromH / 24 * 360 - 90).toFloat(); var sweep = (((toH - fromH) % 24 + 24) % 24 / 24 * 360).toFloat(); if (sweep == 0f) sweep = 360f
+        val start = (fromH / 24 * 360 - 90).toFloat(); var sweep = (fwd(fromH, toH) / 24 * 360).toFloat(); if (sweep == 0f) sweep = 360f
         drawArc(col, start, sweep, false, Offset(c.x - rad, c.y - rad), Size(rad * 2, rad * 2), style = Stroke(w, cap = StrokeCap.Butt))
     }
-    val paint = Paint().apply { isAntiAlias = true; typeface = Typeface.MONOSPACE; textAlign = Paint.Align.CENTER }
-    fun text(t: String, p: Offset, sp: Float, col: Color, bold: Boolean = false, align: Paint.Align = Paint.Align.CENTER) {
-        paint.textSize = sp * px; paint.color = col.toArgb(); paint.isFakeBoldText = bold; paint.textAlign = align
-        drawContext.canvas.nativeCanvas.drawText(t, p.x, p.y + paint.textSize * 0.35f, paint)
+    val mono = Paint().apply { isAntiAlias = true; typeface = Typeface.MONOSPACE; textAlign = Paint.Align.CENTER }
+    val emoji = Paint().apply { isAntiAlias = true; textAlign = Paint.Align.CENTER }
+    fun text(t: String, p: Offset, sp: Float, col: Color, bold: Boolean = false) {
+        mono.textSize = sp * px; mono.color = col.toArgb(); mono.isFakeBoldText = bold
+        drawContext.canvas.nativeCanvas.drawText(t, p.x, p.y + mono.textSize * 0.35f, mono)
     }
-    // the day: light ring with the dark band and the hot hours outside it
-    arc(plan.darkEnd, plan.darkStart, r, 12f * px, Color(0xFFE9D9A8).copy(alpha = 0.30f))
-    arc(plan.darkStart, plan.darkEnd, r, 12f * px, Color(0xFF3A4A6A).copy(alpha = 0.55f))
-    arc(plan.hotFrom, plan.hotTo, r + 12f * px, 5f * px, HotColor.copy(alpha = 0.85f))
-    drawCircle(Color.White.copy(alpha = 0.35f), r - 6f * px, c, style = Stroke(1f * px))
-    drawCircle(Color.White.copy(alpha = 0.35f), r + 6f * px, c, style = Stroke(1f * px))
+    fun pic(e: String, p: Offset, sp: Float) {
+        emoji.textSize = sp * px
+        drawContext.canvas.nativeCanvas.drawText(e, p.x, p.y + emoji.textSize * 0.36f, emoji)
+    }
+
+    // the day in sections: sleep, light, hot — cut apart at their edges
+    arc(plan.darkEnd, plan.darkStart, rDay, ringW, LightFill.copy(alpha = 0.30f))
+    arc(plan.darkStart, plan.darkEnd, rDay, ringW, SleepFill)
+    arc(plan.hotFrom, plan.hotTo, rDay, ringW, HotColor.copy(alpha = 0.75f))
+    listOf(plan.darkStart, plan.darkEnd, plan.hotFrom, plan.hotTo).forEach { h ->
+        drawLine(Color.Black, at(h, rDay - ringW / 2 - 1f * px), at(h, rDay + ringW / 2 + 1f * px), 3.5f * px)
+    }
+    drawCircle(Color.White.copy(alpha = 0.4f), rDay + ringW / 2, c, style = Stroke(1f * px))
+    drawCircle(Color.White.copy(alpha = 0.4f), rDay - ringW / 2, c, style = Stroke(1f * px))
+    pic(SLEEP, at(plan.darkStart + fwd(plan.darkStart, plan.darkEnd) / 2, rDay), 13f)
+    pic(FIRE, at(plan.hotFrom + fwd(plan.hotFrom, plan.hotTo) / 2, rDay), 13f)
+    // the sun in the longer light stretch (before or after the hot hours)
+    val before = fwd(plan.darkEnd, plan.hotFrom); val after = fwd(plan.hotTo, plan.darkStart)
+    pic(SUN, at(if (before >= after) plan.darkEnd + before / 2 else plan.hotTo + after / 2, rDay), 13f)
+
+    // hours round the outside
     for (h in 0 until 24) {
-        val major = h % 6 == 0
-        drawLine(Color.White.copy(alpha = if (major) 0.7f else 0.3f), at(h.toDouble(), r - 6f * px - (if (major) 6f else 3f) * px), at(h.toDouble(), r - 6f * px), if (major) 1.6f * px else 1f * px)
+        val major = h % 3 == 0
+        drawLine(Color.White.copy(alpha = if (major) 0.75f else 0.35f), at(h.toDouble(), rDay + ringW / 2), at(h.toDouble(), rDay + ringW / 2 + (if (major) 6f else 3.5f) * px), (if (major) 1.6f else 1f) * px)
+        if (major) text(String.format("%02d", h), at(h.toDouble(), rOut - 8f * px), 10.5f, Color.White.copy(alpha = if (h % 6 == 0) 0.8f else 0.5f))
     }
-    listOf(0, 6, 12, 18).forEach { h -> text(String.format("%02d", h), at(h.toDouble(), r * 0.68f), 11f, Color.White.copy(alpha = 0.55f)) }
-    // a crescent in the dark, a sun in the light
-    val darkMid = plan.darkStart + (((plan.darkEnd - plan.darkStart) % 24 + 24) % 24) / 2
-    val moon = at(darkMid, r * 0.45f)
-    drawCircle(Color.White.copy(alpha = 0.7f), 6f * px, moon); drawCircle(Color.Black, 5f * px, Offset(moon.x + 3f * px, moon.y - 2f * px))
-    val lightMid = plan.darkEnd + (((plan.darkStart - plan.darkEnd) % 24 + 24) % 24) / 2
-    val sun = at(lightMid, r * 0.45f)
-    drawCircle(Color(0xFFF2D17A).copy(alpha = 0.8f), 4.5f * px, sun)
-    for (k in 0 until 8) { val a = k * PI / 4; drawLine(Color(0xFFF2D17A).copy(alpha = 0.6f), Offset(sun.x + (7 * px * cos(a)).toFloat(), sun.y + (7 * px * sin(a)).toFloat()), Offset(sun.x + (10 * px * cos(a)).toFloat(), sun.y + (10 * px * sin(a)).toFloat()), 1.2f * px) }
-    // walks: small white ticks inside the ring
-    plan.walks.forEach { w -> drawLine(WalkColor, at(w, r - 18f * px), at(w, r - 11f * px), 2.2f * px, StrokeCap.Round) }
-    // refills: cyan drops just inside the ring
-    plan.refills.forEach { t ->
-        val p = at(t, r - 2f * px)
-        drawCircle(ValueMin, 4.2f * px, Offset(p.x, p.y + 1.5f * px))
-        drawPath(Path().apply { moveTo(p.x, p.y - 5f * px); lineTo(p.x + 3.5f * px, p.y); lineTo(p.x - 3.5f * px, p.y); close() }, ValueMin)
+
+    // lanes: walk, feed, water — a faint circle each, the job's picture at every time
+    val order = listOf(kinds[2], kinds[0], kinds[1])
+    order.forEachIndexed { i, k ->
+        val r = lanes[i]
+        drawCircle(k.color.copy(alpha = 0.22f), r, c, style = Stroke(1f * px))
+        k.times.forEach { t ->
+            val p = at(t, r)
+            drawCircle(Color.Black, 9.5f * px, p)
+            drawCircle(k.color.copy(alpha = 0.9f), 9.5f * px, p, style = Stroke(1.3f * px))
+            pic(k.emoji, p, 11.5f)
+        }
     }
-    // feeds: gold dots on the ring with their times outside
-    plan.feeds.forEach { t ->
-        drawCircle(Color.Black, 7.5f * px, at(t, r)); drawCircle(ValuePredicted, 6f * px, at(t, r))
-        val sa = sin(t / 24 * 2 * PI)
-        val align = when { sa > 0.35 -> Paint.Align.LEFT; sa < -0.35 -> Paint.Align.RIGHT; else -> Paint.Align.CENTER }
-        text(hhmmOf(t), at(t, r + (if (align == Paint.Align.CENTER) 30f else 22f) * px), 11.5f, ValuePredicted, align = align)
-    }
-    // now
-    val tip = at(nowH, r + 6f * px); val base = at(nowH, r + 19f * px); val a = nowH / 24 * 2 * PI
-    val side = Offset(cos(a).toFloat(), sin(a).toFloat()) * (5f * px)
-    drawPath(Path().apply { moveTo(tip.x, tip.y); lineTo(base.x + side.x, base.y + side.y); lineTo(base.x - side.x, base.y - side.y); close() }, ValuePresent)
-    // middle: the next thing to do and how long until it
-    data class Ev(val h: Double, val what: String, val col: Color)
-    val evs = plan.feeds.map { Ev(it, "Feed", ValuePredicted) } + plan.refills.map { Ev(it, "Water", ValueMin) } + plan.walks.map { Ev(it, "Walk", WalkColor) }
-    evs.minByOrNull { ((it.h - nowH) % 24 + 24) % 24 }?.let { e ->
-        val wait = ((e.h - nowH) % 24 + 24) % 24
-        text(e.what, Offset(c.x, c.y - 17f * px), 11f, e.col)
-        text(hhmmOf(e.h), c, 17f, e.col, bold = true)
-        text(com.example.flock.ui.Fmt.n(wait, 1) + " h", Offset(c.x, c.y + 18f * px), 11f, Color.White.copy(alpha = 0.7f))
-    }
+
+    // the time now: a hand from the middle to the ring, and a bright bar across the ring
+    drawLine(ValuePresent.copy(alpha = 0.5f), at(nowH, 20f * px), at(nowH, rDay - ringW / 2), 1.4f * px, StrokeCap.Round)
+    drawLine(Color.Black, at(nowH, rDay - ringW / 2 - 3f * px), at(nowH, rDay + ringW / 2 + 3f * px), 6.5f * px, StrokeCap.Round)
+    drawLine(ValuePresent, at(nowH, rDay - ringW / 2 - 3f * px), at(nowH, rDay + ringW / 2 + 3f * px), 3.2f * px, StrokeCap.Round)
+    drawCircle(Color.Black, 19f * px, c)
+    drawCircle(ValuePresent.copy(alpha = 0.7f), 19f * px, c, style = Stroke(1.2f * px))
+    text(hhmmOf(nowH), c, 10.5f, ValuePresent, bold = true)
 }
 
 private fun hourNow(zone: java.time.ZoneId): Double { val z = java.time.ZonedDateTime.now(zone); return z.hour + z.minute / 60.0 }

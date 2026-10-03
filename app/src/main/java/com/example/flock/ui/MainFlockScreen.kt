@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +35,7 @@ import com.example.flock.ui.components.TopFlockBar
 import com.example.flock.ui.components.WeatherForecastDialog
 import com.example.flock.ui.screens.EntriesScreen
 import com.example.flock.ui.screens.OutputScreen
+import com.example.flock.ui.screens.StockScreen
 import com.example.flock.ui.screens.TasksScreen
 import com.example.ui.theme.BrandEmerald
 import java.time.LocalDate
@@ -43,11 +45,13 @@ import java.util.Locale
 
 enum class FlockNavTab(val label: String, val icon: ImageVector) {
     ENTRY("ENTRY", Icons.Default.EditNote),
-    OUTPUT("OUTPUT", Icons.Default.Dashboard)
+    OUTPUT("OUTPUT", Icons.Default.Dashboard),
+    STOCK("STOCK", Icons.Default.Inventory2),
+    TASKS("TASKS", Icons.Default.CheckCircle)
 }
 
 /**
- * The single-flock dashboard: ENTRY / OUTPUT / TASKS. Reached by opening a flock from the
+ * The single-flock dashboard: ENTRY / OUTPUT / STOCK / TASKS. Reached by opening a flock from the
  * Flocks screen. The top bar's farm/flock taps navigate back up the stack.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -211,22 +215,26 @@ fun MainFlockScreen(
                     hourly = hourly,
                     isToday = selectedDay == currentFlockDay,
                     onCloseBatch = activeFlock?.let { f -> { viewModel.closeFlock(f.flockId) } },
-                    onFarmChange = { viewModel.updateFarm(it) },
-                    tasksContent = {
-                        TasksScreen(
-                            allTasks = tasks,
-                            dayNumber = selectedDay,
-                            harvestAge = activeFlock?.harvestAge ?: 42,
-                            onSaveTask = { id, block, label, time, s, e, rec, n, alert, kind ->
-                                viewModel.saveTask(id, block, label, time, s, e, rec, n, alert, kind)
-                            },
-                            onDeleteTask = { taskId -> viewModel.deleteTask(taskId) },
-                            onToggleComplete = { id, day, done -> viewModel.toggleTaskComplete(id, day, done) },
-                            onToggleAlert = { id, en -> viewModel.toggleTaskAlert(id, en) },
-                            onCopyToRange = { id, f, t -> viewModel.copyTaskToRange(id, f, t) },
-                            scrollable = false
-                        )
-                    }
+                    onFarmChange = { viewModel.updateFarm(it) }
+                )
+                FlockNavTab.STOCK -> StockScreen(
+                    flock = activeFlock,
+                    farm = farm,
+                    entry = currentDayEntry,
+                    dailyRows = dailyRows,
+                    feedTypes = feedTypes
+                )
+                FlockNavTab.TASKS -> TasksScreen(
+                    allTasks = tasks,
+                    dayNumber = selectedDay,
+                    harvestAge = activeFlock?.harvestAge ?: 42,
+                    onSaveTask = { id, block, label, time, s, e, rec, n, alert, kind ->
+                        viewModel.saveTask(id, block, label, time, s, e, rec, n, alert, kind)
+                    },
+                    onDeleteTask = { taskId -> viewModel.deleteTask(taskId) },
+                    onToggleComplete = { id, day, done -> viewModel.toggleTaskComplete(id, day, done) },
+                    onToggleAlert = { id, en -> viewModel.toggleTaskAlert(id, en) },
+                    onCopyToRange = { id, f, t -> viewModel.copyTaskToRange(id, f, t) }
                 )
             }
         }

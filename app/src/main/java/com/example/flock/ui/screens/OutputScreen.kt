@@ -120,7 +120,6 @@ fun OutputScreen(
     isToday: Boolean = false,
     onCloseBatch: (() -> Unit)? = null,
     onFarmChange: ((FarmEntity) -> Unit)? = null,
-    tasksContent: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     // one scroll position for every day; the section being read stays put when the day changes
@@ -190,16 +189,15 @@ fun OutputScreen(
         Anchored("kpis") { KeyKpis(d, feeder) }
         Anchored("alerts") { AlertList(d.allAlerts) }
         var tab by rememberSaveable { androidx.compose.runtime.mutableIntStateOf(0) }
-        Anchored("tabs") { OutputTabs(listOf("Birds", "Vent", "Feed & water", "Stock & tasks"), tab) { tab = it } }
+        Anchored("tabs") { OutputTabs(listOf("Birds", "Ventilation", "Feed & water"), tab.coerceIn(0, 2)) { tab = it } }
         when (tab) {
             0 -> BirdsTab(d)
             1 -> VentTab(d)
-            2 -> FeedTab(d, feedPick, { feedPick = it }, onFarmChange) {
+            else -> FeedTab(d, feedPick, { feedPick = it }, onFarmChange) {
                 FeedEntryRow(d, feeder,
                     onFeed = { bags -> events = FeedLog.add(ctx, flockKey, bags); now = System.currentTimeMillis() },
                     onUndo = { events = FeedLog.undoLast(ctx, flockKey); now = System.currentTimeMillis() })
             }
-            else -> StockTab(d, tasksContent)
         }
         if (onCloseBatch != null && flock?.status != "closed") {
             OutlinedButton(onClick = { confirmClose = true }, modifier = Modifier.fillMaxWidth(),
@@ -219,6 +217,29 @@ fun OutputScreen(
             confirmButton = { androidx.compose.material3.TextButton(onClick = { confirmClose = false; onCloseBatch?.invoke() }) { Text("Close batch") } },
             dismissButton = { androidx.compose.material3.TextButton(onClick = { confirmClose = false }) { Text("Cancel") } }
         )
+    }
+}
+
+/** The feed store on its own page: what came in, what was used and what is left, by feed type. */
+@Composable
+fun StockScreen(
+    flock: FlockEntity?, farm: FarmEntity, entry: DailyDataEntity?, dailyRows: List<DailyDataEntity>,
+    feedTypes: List<FeedTypeEntity> = emptyList(), modifier: Modifier = Modifier
+) {
+    if (entry == null) {
+        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("No data for this day. Enter data in the ENTRY tab.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        return
+    }
+    val d = remember(flock, farm, entry, dailyRows, feedTypes) { OutputData(flock, farm, entry, dailyRows, feedTypes, null, emptyList(), false) }
+    Column(
+        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        AlertList(d.stockAlerts)
+        StockBlock(d)
+        Spacer(modifier = Modifier.height(32.dp))
     }
 }
 

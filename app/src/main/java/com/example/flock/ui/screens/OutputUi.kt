@@ -79,17 +79,29 @@ fun ValueChip(x: V, modifier: Modifier = Modifier, big: Boolean = false) {
     }
 }
 
-/** Chips in rows that wrap to fit the screen (at least ~74 dp per chip). */
+/** Width of the label in front of a row of chips: one short word, never broken (grows with the system text size). */
+@Composable
+fun leadWidth(): androidx.compose.ui.unit.Dp = 64.dp * androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceIn(1f, 1.5f)
+
+/** The label in front of a row of chips. */
+@Composable
+fun LeadLabel(text: String) {
+    Text(text, modifier = Modifier.width(leadWidth()), maxLines = 1, softWrap = false,
+        style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
+}
+
+/** Chips in rows that wrap to fit the screen (at least ~80 dp per chip), split evenly: four make 2 + 2, not 3 + 1. */
 @Composable
 fun ValueRow(vals: List<V>, lead: String? = null) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val leadW = if (lead != null) 62.dp else 0.dp
-        val per = ((maxWidth - leadW) / 80.dp).toInt().coerceIn(2, 4).coerceAtMost(max(1, vals.size))
+        val leadW = if (lead != null) leadWidth() else 0.dp
+        val fit = ((maxWidth - leadW) / 78.dp).toInt().coerceIn(2, 4).coerceAtMost(max(1, vals.size))
+        val lines = (vals.size + fit - 1) / fit
+        val per = if (lines <= 0) 1 else (vals.size + lines - 1) / lines
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            vals.chunked(per).forEachIndexed { i, row ->
+            vals.chunked(max(1, per)).forEachIndexed { i, row ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (lead != null) Text(if (i == 0) lead else "", modifier = Modifier.width(leadW), maxLines = 2,
-                        style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
+                    if (lead != null) LeadLabel(if (i == 0) lead else "")
                     row.forEach { ValueChip(it, Modifier.weight(1f)) }
                     repeat(per - row.size) { Spacer(Modifier.weight(1f)) }
                 }
@@ -253,22 +265,26 @@ fun KpiLine(k: Kpi) {
     SlimCompareBar(k)
 }
 
-/** Name and unit on the left (with an optional second line), trend marker and value on the right, references under the value. */
+/**
+ * First line: the name (all the width the value leaves, so words are never split), the trend marker, the
+ * value and its unit. Second line: an optional note on the left and the references (com, ideal, min, max)
+ * on the right; the references wrap as whole items when the text is large.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun CompactLine(label: String, unit: String, sub: String?, value: V, trend: TrendMark?, refs: List<Pair<String, Color>>) {
-    Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), maxLines = 2)
-            if (sub != null) Text(sub, style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace), color = Color.White.copy(alpha = 0.6f), maxLines = 1)
+    Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, Modifier.weight(1f).padding(end = 8.dp), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), maxLines = 2)
+            if (trend != null) { TrendIcon(trend); Spacer(Modifier.width(5.dp)) }
+            Text(value.text, style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+                color = kindColor(if (value.text == "—") ValueKind.NEUTRAL else value.kind), maxLines = 1, softWrap = false)
+            if (unit.isNotEmpty()) Text(" $unit", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), maxLines = 1, softWrap = false)
         }
-        Column(horizontalAlignment = Alignment.End) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (trend != null) { TrendIcon(trend); Spacer(Modifier.width(5.dp)) }
-                Text(value.text, style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
-                    color = kindColor(if (value.text == "—") ValueKind.NEUTRAL else value.kind), maxLines = 1, softWrap = false)
-                if (unit.isNotEmpty()) Text(" $unit", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), maxLines = 1, softWrap = false)
-            }
-            if (refs.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (sub != null || refs.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
+            if (sub != null) Text(sub, Modifier.padding(end = 8.dp), style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                color = Color.White.copy(alpha = 0.6f), maxLines = 1, softWrap = false)
+            androidx.compose.foundation.layout.FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                 refs.forEach { (t, c) -> Text(t, style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace), color = c, maxLines = 1, softWrap = false) }
             }
         }
@@ -389,7 +405,7 @@ data class MMRow(val label: String, val house: V?, val line: V?, val pan: V?)
 fun MacroMicroTable(rows: List<MMRow>, heads: List<String> = listOf("House", "Line", "Pan")) {
     val mono = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp)
     val grey = Color.White.copy(alpha = 0.6f)
-    val wts = listOf(1.3f, 1.1f, 0.85f)
+    val wts = listOf(1.25f, 1.1f, 0.8f)
     Column(Modifier.fillMaxWidth().border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Row(Modifier.fillMaxWidth()) {
@@ -398,7 +414,7 @@ fun MacroMicroTable(rows: List<MMRow>, heads: List<String> = listOf("House", "Li
         }
         rows.forEach { r ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(r.label, Modifier.weight(1.05f), style = MaterialTheme.typography.labelMedium, color = grey, maxLines = 2)
+                Text(r.label, Modifier.weight(1.05f), style = MaterialTheme.typography.labelMedium, color = grey, maxLines = 1, softWrap = false)
                 listOf(r.house, r.line, r.pan).forEachIndexed { i, c ->
                     Text(c?.text ?: "", Modifier.weight(wts[i]).padding(start = 4.dp), style = mono, color = c?.let { kindColor(if (it.text == "—") ValueKind.NEUTRAL else it.kind) } ?: grey,
                         textAlign = androidx.compose.ui.text.style.TextAlign.End, maxLines = 1, softWrap = false)

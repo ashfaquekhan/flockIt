@@ -46,7 +46,7 @@ object InfoTopics {
             "Moving the window on the map, the day, the barricade, feedings logged.",
             "Temperatures, gases and breathing shown in the box are the targets for this age (no house sensors yet), not readings. Min vent / bird = the day's minimum-ventilation cfm per bird; house = × live birds. Breaths: resting rate at the ideal temperature (30–50 a minute in week 1, 20–40 after); over 60 a minute the birds are panting — too hot or short of air."),
         "clock" to InfoTopic("Day clock",
-            "When it is dark, when to load the feeders, refill the tank and walk the house.",
+            "When it is dark, when to load the feeders, refill the tank and walk the house. The outer ring is the day in sections (sleep, light, hot hours); inside it each job has its own lane: walks, feed, water. The bar on the ring is the time now.",
             "Dark = one unbroken block ending at 05:00, as long as 24 − light hours. First feeding at lights on; the last ends 2 h before the dark (birds fill the crop for the night). Extra feedings go to the coolest light hours, never in the hottest 4 hours or the 2 h before them. Tank refills: before the birds wake, before the heat, then evenly. Walks: after lights on, an hour after each feeding, at the peak heat, before the dark.",
             "Light hours (Entry), times a day (feeding plan), refills (water multiplier), outside temperature through the day (forecast if there is one, else the season's typical day).",
             "Light hours, the feeding count, the refill multiplier, the season or forecast.",
@@ -142,11 +142,11 @@ object InfoTopics {
             "Age, heat, the multiplier.",
             "Water 18–21 °C, pH 6.0–6.8; a sudden drop in drinking is often the first sign of trouble."),
         "stock" to InfoTopic("Feed store",
-            "Feed in the godown by type, and what to order.",
-            "In store = received − used, per type. Needed = the plan to harvest. To order = needed − in store. Days left = in store ÷ today's feed.",
-            "Feed received (Entry, Section 3) and used by type.",
+            "Feed in the godown by type: what came in, what was used, what is left.",
+            "Received = all deliveries entered for that type. Used = all bags entered as used for that type. In store = received − used. Godown free = what it holds − in store.",
+            "Feed received (Entry, Section 3) and feed used by type (Entry).",
             "Deliveries and daily use.",
-            "Order when days left falls under the delivery lead time.")
+            "Count the bags in the godown now and then; a negative figure means a delivery was not entered.")
     )
 }
 

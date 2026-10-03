@@ -699,8 +699,6 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
                 ) { Text(if (awake) "Sleep" else "Wake", color = Color.White) }
             }
         }
-        // the birds' and the house's numbers for today, under the window
-        CoopStats(inp)
         // window size, and the whole house with the window on it
         Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             (0..2).forEach { m ->
@@ -718,6 +716,8 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
             }
         }
         FarmMiniMap(L, x0, y0, lenFt, widFt, Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) { nx, ny -> x0 = nx; if (!full) y0 = ny }
+        // the birds' and the house's numbers for today, under the window's size and map
+        CoopStats(inp)
         // the four followed birds, in one table
         @Suppress("UNUSED_VARIABLE") val refresh = slow
         val named = sim.birds.filter { !it.lite }
@@ -761,7 +761,7 @@ private fun CoopStats(inp: CoopInput) {
     val num = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
     Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp).testTag("coopStats"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Text("Day ${inp.age} · weight measured, the rest are targets", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.weight(1f))
+            Text("Day ${inp.age} · targets (weight is measured)", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.weight(1f))
             InfoButton("window")
         }
         cells.chunked(2).forEach { row ->

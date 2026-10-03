@@ -499,11 +499,6 @@ class OutputData(
         })
         put(Topic.STOCK, buildList {
             stockCodes.forEach { code -> if (stockBags(code) < -0.001) add(TopicAlert(2, "$code stock is negative (${Fmt.n(stockBags(code))} bags) — a delivery is missing")) }
-            lastsDays?.takeIf { stockKgTotal > 0 }?.let { d ->
-                if (stockCodes.isNotEmpty() && d < 1) add(TopicAlert(2, "Feed in store lasts only ${Fmt.n(d, 1)} day"))
-                else if (stockCodes.isNotEmpty() && d < 2) add(TopicAlert(1, "Feed in store lasts ${Fmt.n(d, 1)} days — order now"))
-            }
-            if (stockCodes.isNotEmpty() && stockBags(phase) <= 0.0) add(TopicAlert(1, "No $phase (current phase) in store"))
             if (stockCodes.isEmpty() && day >= 1) add(TopicAlert(1, "No feed deliveries logged yet"))
             godownFree?.let { f -> if (f < 0) add(TopicAlert(2, "Godown over capacity by ${Fmt.n(-f, 2)} bags")) }
         })
@@ -525,7 +520,9 @@ class OutputData(
 
     /** Growth stage name for the day. */
     val stage = when { day <= 3 -> "Day-old chick"; day <= 10 -> "Starter chick"; day <= 21 -> "Grower"; day <= 35 -> "Finisher"; else -> "Market weight" }
-    val allAlerts: List<TopicAlert> get() = alerts.values.flatten()
+    /** shown on the Output page; the store's own alerts sit on the Stock page */
+    val allAlerts: List<TopicAlert> get() = alerts.filterKeys { it != Topic.STOCK }.values.flatten()
+    val stockAlerts: List<TopicAlert> get() = alerts[Topic.STOCK].orEmpty()
 
     fun worst(t: Topic): Int = alerts[t].orEmpty().maxOfOrNull { it.level } ?: 0
 }

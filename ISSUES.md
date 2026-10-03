@@ -34,11 +34,18 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O26 | Breaths a minute in the animation box are typical resting rates, not measured | 30–50 in week 1, 20–40 later; panting over 60. |
 | O27 | Access token cached in plain preferences and app backup allowed | See ARCHITECTURE.md §10; fix with the P6 sign-in change. |
 | O28 | Larger refactor (use cases, DI, Gradle modules) is planned, not done | Steps listed in ARCHITECTURE.md §9; done gradually so each release installs over a live flock. |
+| O29 | App icon and loading animation not chosen yet | Twelve options in design/icon-options.png; the current icon stays and the loader is a plain ring until one is picked. |
+| O30 | Stock page does not plan orders | By request: received, used and in store only. Needed / to order / days left can come back later. |
 | O21 | Output review checklist (keep / change / drop) is waiting for the farm's choices | https://claude.ai/artifact/VDtyZmDKtLiJBu5Nxq6B3g |
 
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v39 | Words broken mid-word although there was room (Temperature, Humidity, Static pressure…) | The name shared its width with the long line of references under the value, leaving it a few characters | Name gets the whole first line beside the value; references on their own line |
+| v39 | Chip rows ended with one chip alone on a second line | Rows were filled three at a time | Rows are split evenly (2 + 2) |
+| v39 | "Add task" button text invisible | Button content colour was the brand colour, which is black | White text and icon |
+| v39 | Stock and tasks were hard to reach inside Output | v38 put them in an Output tab | Own tabs in the bottom bar |
+| v39 | Next task in the middle of the clock crowded the dial | Text drawn in the centre | Shown under the dial; the centre shows the time now |
 | v38 | Ideal and commercial highlights on the bars overlapped | Both bands drawn on the centre line | Ideal above the line, commercial below |
 | v38 | Ventilation ranges had no dot and units sat by the name | Range bars drew a dot only for a reading; unit placed after the label | Ring dot at the ideal when there is no reading; unit after the value |
 | v38 | Orange dash for "on par" read as a warning | Orange is the warning colour | "=" in grey (green when good) |

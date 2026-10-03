@@ -107,8 +107,7 @@ fun KeyKpis(d: OutputData, feeder: FeederState) {
         KpiLine(Kpi("Mortality till date", "%", d.mortTDPct, P, d.comCumPct, d.ceilingPct, Better.LOWER, 2,
             totalFactor = d.entryBirds / 100.0, totalUnit = "birds", totalDec = 0))
         KpiLine(Kpi("Feed today", "bags", d.giveBags, PR, d.comPerBird?.let { it * live / 1000 / bag }, d.idealPerBird * live / 1000 / bag, Better.CLOSER, 2))
-        ValueRow(listOf(vi(d.live, P, "Live birds"), v(d.dayBags, 2, PR, "Bags to load"), v(e.totalWaterL, 1, PR, "Water L"),
-            if (feeder.lastFedAt == null) vt("—", ValueKind.NEUTRAL, "Feeder %") else v(feeder.fillFrac * 100, 1, if (feeder.levelKg > 0) PR else MX, "Feeder %")))
+        ValueRow(listOf(vi(d.live, P, "Live birds"), v(d.dayBags, 2, PR, "Bags to load"), v(e.totalWaterL, 1, PR, "Water L")))
     }
 }
 
@@ -185,7 +184,7 @@ private fun UniformityCard(d: OutputData) {
         Text("Light: more than 10 % under the average · Even: within ±10 % · Heavy: more than 10 % over",
             style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.55f))
         if (measured) ValueRow(listOf(v(singles.min(), 1, P, "Lightest"), v(mean, 1, P, "Average"), v(singles.max(), 1, P, "Heaviest")), "weight g")
-        else ValueRow(listOf(vi(singles.size, P, "Weighed"), vi(PhysiologicalEngine.MIN_BIRDS_FOR_CV, MN, "Needed")), "one by one")
+        else ValueRow(listOf(vi(singles.size, P, "Weighed"), vi(PhysiologicalEngine.MIN_BIRDS_FOR_CV, MN, "Needed")), "singles")
         if (e.locSpreadPct != null) Param("Spread between locations", "%", v(e.locSpreadPct, 2, P, "Bulk weighing"))
     }
 }
@@ -256,13 +255,6 @@ fun FeedTab(d: OutputData, pick: Int, onPick: (Int) -> Unit, onFarmChange: ((com
     WaterCard(d, onFarmChange)
 }
 
-/** Stock and tasks: the feed store, then the day's tasks. */
-@Composable
-fun StockTab(d: OutputData, tasks: (@Composable () -> Unit)?) {
-    StockBlock(d)
-    tasks?.invoke()
-}
-
 /** Boxes joined by arrows, two to a row: the plan read left to right. */
 @Composable
 private fun PlanFlow(steps: List<Triple<String, V, String?>>) {
@@ -302,7 +294,7 @@ private fun FeedingPlanCard(d: OutputData, pick: Int, onPick: (Int) -> Unit) {
             Triple("Pans", vt(pat.label, if (o.safe) PR else MX), "${pat.openPerLine} of ${d.pansInArea} on")
         ))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("times a day", modifier = Modifier.width(62.dp), maxLines = 2, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
+            LeadLabel("times")
             d.feedOptions.forEachIndexed { i, opt ->
                 val tag = when { !opt.safe -> "Not safe"; i == d.recommendedOption -> "Best"; else -> "Also OK" }
                 val kind = when { !opt.safe -> MX; i == d.recommendedOption -> P; else -> PR }
@@ -333,15 +325,16 @@ private fun FeedingPlanCard(d: OutputData, pick: Int, onPick: (Int) -> Unit) {
         }
         ValueRow(listOf(v(o.fillPct, 1, PR, "Pans filled %"), v(hopper, 2, PR, "Hopper bags")), "fill")
         // macro and micro: the whole house next to one line and one pan, per feeding
+        Text("Each feeding: the whole house, one line, one pan", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.65f))
         MacroMicroTable(listOf(
-            MMRow("Bags / feeding", v(o.bagsPerFeeding, 2, PR), v(o.bagsPerLine, 2, PR), null),
-            MMRow("kg / feeding", v(o.bagsPerFeeding * bag, 1, PR), v(o.kgPerLine, 1, PR), v(if (pat.openPerLine > 0) o.kgPerLine / pat.openPerLine else null, 2, PR)),
+            MMRow("Bags", v(o.bagsPerFeeding, 2, PR), v(o.bagsPerLine, 2, PR), null),
+            MMRow("kg", v(o.bagsPerFeeding * bag, 1, PR), v(o.kgPerLine, 1, PR), v(if (pat.openPerLine > 0) o.kgPerLine / pat.openPerLine else null, 2, PR)),
             MMRow("Pans on", vi(pat.openPerLine * lines, PR), vi(pat.openPerLine, PR), null),
             MMRow("Birds", vi(d.live, P), v(live / lines, 1, P), v(pat.birdsPerPan, 1, if (pat.birdsPerPan <= d.birdsPerPanMax) PR else MX)),
             MMRow("Floor ft²", v(d.areaInUseFt2, 1, P), v(d.areaInUseFt2 / lines, 1, P), v(pat.cellFt2, 1, PR)),
-            MMRow("Travel to pan m", null, null, v(pat.travelM, 2, if (pat.travelM <= ALLOWED_TRAVEL_M) PR else MX))
+            MMRow("Travel m", null, null, v(pat.travelM, 2, if (pat.travelM <= ALLOWED_TRAVEL_M) PR else MX))
         ))
-        ValueRow(listOf(v(d.birdsPerPanMax, 1, MX, "Max birds / pan"), v(ALLOWED_TRAVEL_M, 2, MX, "Max travel to pan m")), "limits")
+        ValueRow(listOf(v(d.birdsPerPanMax, 1, MX, "Max birds / pan"), v(ALLOWED_TRAVEL_M, 2, MX, "Max travel m")), "limits")
         FarmTopView(d, pat)
         KeyLine(kindColor(PR) to "on", Color.White.copy(alpha = 0.6f) to "off", Color.White to "sensor", kindColor(MN) to "drinker")
         PanCellView(d, pat)
@@ -377,8 +370,9 @@ private fun EatenCard(d: OutputData) {
     OutputCard(title = "Eaten", info = "eaten") {
         KpiLine(Kpi("Yesterday", "g/bird", d.usedPerBirdY, P, d.comPerBirdY, d.idealPerBirdY, Better.CLOSER, 1, totalFactor = yLive / 1000, totalUnit = "kg"))
         KpiLine(Kpi("Till date", "g/bird", d.cumPerBird, P, d.cumPerBirdCom, d.cumPerBirdIdeal, Better.CLOSER, 1, totalFactor = d.live / 1000.0, totalUnit = "kg"))
-        ValueRow(codes.map { v(d.usedByCode[it], 2, P, it) } + v(d.usedBagsTD, 2, P, "Total"), "bags so far")
-        ValueRow(codes.map { v((d.usedByCode[it] ?: 0.0) * d.kgPerBag(it), 1, P, it) } + v(d.usedKgTD, 1, P, "Total"), "kg so far")
+        Text("Used till date, by feed type", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.65f))
+        ValueRow(codes.map { v(d.usedByCode[it], 2, P, it) } + v(d.usedBagsTD, 2, P, "Total"), "bags")
+        ValueRow(codes.map { v((d.usedByCode[it] ?: 0.0) * d.kgPerBag(it), 1, P, it) } + v(d.usedKgTD, 1, P, "Total"), "kg")
     }
 }
 
@@ -424,7 +418,7 @@ private fun WaterCard(d: OutputData, onFarmChange: ((com.example.flock.data.Farm
         TankPicture(d.tankL, refills, e.totalWaterL)
         ValueRow(listOf(v(d.tankL, 1, P, "Tank L"), v(d.waterTanksNeeded, 1, P, "Fills needed"), v(e.totalWaterL / refills, 1, PR, "L each")), "tank")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("refill ×", modifier = Modifier.width(62.dp), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
+            LeadLabel("refill ×")
             listOf(1.0, 2.0, 3.0, 4.0).forEach { m ->
                 val on = abs(factor - m) < 0.01
                 ValueChip(vt(Fmt.n(m, 1) + "×", if (on) P else PR, if (on) "Set" else ""), Modifier.weight(1f)
@@ -453,11 +447,10 @@ fun StockBlock(d: OutputData) {
             FillBar(d.stockBagsTotal / f.godownBags, Color.White.copy(alpha = 0.7f))
             Param("Godown", "bags", v(d.stockBagsTotal, 2, P, "In store"), v(f.godownBags, 1, MX, "Holds"), v(d.godownFree, 2, PR, "Free"))
         }
-        val maxBags = d.allCodes.maxOfOrNull { max(d.recByCode[it] ?: 0.0, d.stockBags(it)) } ?: 0.0
+        val maxBags = d.stockCodes.maxOfOrNull { max(d.recByCode[it] ?: 0.0, d.stockBags(it)) } ?: 0.0
         val unit = listOf(1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0).firstOrNull { maxBags / it <= 20 } ?: 200.0
-        d.allCodes.forEach { code -> FeedTypeBlock(d, code, unit) }
-        Param("All types", "bags", v(d.stockBagsTotal, 2, P, "In store"), v(d.needByCode.values.sum(), 2, PR, "Needed"),
-            v(d.allCodes.sumOf { d.orderBags(it) }, 2, PR, "To order"), v(d.lastsDays?.takeIf { d.stockKgTotal > 0 }, 1, PR, "Days"), strong = true)
+        d.stockCodes.forEach { code -> FeedTypeBlock(d, code, unit) }
+        Param("All types", "bags", v(d.recBagsTD, 2, P, "Received"), v(d.usedBagsTD, 2, P, "Used"), v(d.stockBagsTotal, 2, P, "In store"), strong = true)
         val canL = f.dieselCanL
         Param("Diesel", "L", v(d.e.dieselCansUsed * canL, 1, P, "Today"), v(d.dieselTD * canL, 1, P, "Till date"))
     }
@@ -469,17 +462,15 @@ private fun FeedTypeBlock(d: OutputData, code: String, unit: Double) {
     val rec = d.recByCode[code] ?: 0.0
     val used = d.usedByCode[code] ?: 0.0
     val stock = d.stockBags(code)
-    val isPhase = code == d.phase
     Column(Modifier.fillMaxWidth().border(1.dp, GlassLine.copy(alpha = 0.35f), RoundedCornerShape(10.dp)).padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("$code · ${ft?.name ?: "Feed"}" + if (isPhase) " · now" else "", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
+            Text("$code · ${ft?.name ?: "Feed"}", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
             Text(Fmt.n(stock, 2), style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black),
                 color = if (stock < 0) StatusCrit else kindColor(P))
         }
         if (rec > 0 || used > 0) SackStrip(max(0.0, stock) / unit, kotlin.math.min(used, rec) / unit, Color.White.copy(alpha = 0.8f))
-        ValueRow(listOf(v(d.needByCode[code] ?: 0.0, 2, PR, "Needed"), v(d.orderBags(code), 2, PR, "To order"),
-            v(if (isPhase && d.giveKg > 0 && stock > 0) stock * d.kgPerBag(code) / d.giveKg else null, 1, PR, "Days")))
+        ValueRow(listOf(v(rec, 2, P, "Received"), v(used, 2, P, "Used"), v(stock, 2, if (stock < 0) MX else P, "In store")))
     }
 }
 

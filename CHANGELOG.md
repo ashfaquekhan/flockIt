@@ -8,6 +8,30 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v39 — 2026-10-03 · No broken words, Stock and Tasks as their own tabs, clock with pictures · installs over a live flock
+- **Broken words fixed**: names such as Temperature, Humidity, Moisture and Static pressure were split
+  across lines although there was room. The name now has the whole first line beside its value; the
+  references (com, ideal, min, max) sit on the line under it and wrap as whole items at large text sizes.
+  Labels in front of chip rows are one short word and never break; four chips make 2 + 2 instead of 3 + 1;
+  the house / line / pan table has one-word row names; the Ventilation tab has its full name back.
+- **Bottom bar: Entry · Output · Stock · Tasks.** Stock and Tasks are their own pages again, no longer
+  inside Output. Output tabs are Birds · Ventilation · Feed & water.
+- **Stock keeps stock only**: for each feed type Received, Used and In store, the same for all types, the
+  godown and diesel. "Needed", "To order" and "Days" are gone, and so are the "order now" and "no B1 in
+  store" alerts; the store's own alerts (negative stock, godown over capacity, no deliveries entered)
+  show on the Stock page.
+- **Day clock**: the outer ring is the day in sections (sleep, light, hot hours) cut apart at their
+  edges, with a picture in each; inside it every job has its own lane with its picture at each time —
+  walks, feed, water. A bar on the ring marks the time now. Under the dial: what is next (not in the
+  middle any more), then one line per job with all its times (next one bright, past ones dim), and the
+  sleep and hot hours with how long they last.
+- **Animation box order**: the window, then the width buttons and the house map, then the numbers, then
+  the named birds.
+- **Add task** button was drawn black on black; it is white now.
+- **Loading animation** is a plain thin ring until the app's mark is chosen. Twelve icon options are in
+  `design/icon-options.png` (source `design/make_icon_options.py`, one SVG each in `design/icons/`).
+- Tests: `ScreensRenderTest` renders the Stock page and the whole Output page at 130 % text.
+
 ## v38 — 2026-10-03 · Output reordered, day clock, uniformity histogram, ⓘ explanations, new icon · installs over a live flock
 - **Output page order**: the animation, then the day clock, then **Today** (weight, FCR, mortality, feed with
   commercial and ideal; live birds, bags to load, water, feeder %), alerts, then the tabs for detail:

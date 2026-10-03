@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -105,7 +106,7 @@ class ScreensRenderTest {
             topBar = { TopFlockBar(farm.farmName, flock, 11, 11, "30 Sep 2026", lock, weather, "synced", {}, {}, {}, {}, {}) },
             bottomBar = {
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                    listOf("Entry" to Icons.Default.Edit, "Output" to Icons.Default.Insights).forEachIndexed { i, (l, ic) ->
+                    listOf("Entry" to Icons.Default.Edit, "Output" to Icons.Default.Insights, "Stock" to Icons.Default.Inventory2, "Tasks" to Icons.Default.Checklist).forEachIndexed { i, (l, ic) ->
                         NavigationBarItem(selected = i == tab, onClick = {}, icon = { Icon(ic, null) }, label = { Text(l) })
                     }
                 }
@@ -126,13 +127,13 @@ class ScreensRenderTest {
     }
     @Composable private fun output() = Dash(1) {
         val r = rows(11)
-        OutputScreen(flock, farm, r.last(), r, FeedStockSummary(0.0, 0.0, 0.0, emptyMap()), feedTypes, weather, emptyList(), true, {},
-            tasksContent = {
-                TasksScreen(listOf(TaskEntity(spreadsheetId = "t", taskId = "1", flockId = "f", block = "Morning", label = "Check drinkers", time = "06:00")),
-                    11, 42, { _, _, _, _, _, _, _, _, _, _ -> }, {}, { _, _, _ -> }, { _, _ -> }, { _, _, _ -> }, scrollable = false)
-            })
+        OutputScreen(flock, farm, r.last(), r, FeedStockSummary(0.0, 0.0, 0.0, emptyMap()), feedTypes, weather, emptyList(), true, {})
     }
-    @Composable private fun tasks() = Dash(1) {
+    @Composable private fun stock() = Dash(2) {
+        val r = rows(11)
+        com.example.flock.ui.screens.StockScreen(flock, farm, r.last(), r, feedTypes)
+    }
+    @Composable private fun tasks() = Dash(3) {
         TasksScreen(listOf(TaskEntity(spreadsheetId = "t", taskId = "1", flockId = "f", block = "Morning", label = "Check drinkers", time = "06:00")),
             11, 42, { _, _, _, _, _, _, _, _, _, _ -> }, {}, { _, _, _ -> }, { _, _ -> }, { _, _, _ -> })
     }
@@ -188,10 +189,15 @@ class ScreensRenderTest {
         rule.mainClock.advanceTimeBy(900)
         assertEquals(before.value, rule.onAllNodesWithText("Feeding plan")[0].getUnclippedBoundsInRoot().top.value, 30f)
     }
-    @Config(qualifiers = "w360dp-h5600dp-xhdpi") @Test fun outputLong() = shoot("output_long") { output() }
+    @Config(qualifiers = "w360dp-h6000dp-xhdpi") @Test fun outputLong() = shoot("output_long") { output() }
+    /** System text at 130 %: nothing may break mid-word. */
+    @Config(qualifiers = "w360dp-h7000dp-xhdpi") @Test fun outputLongBigText() = shoot("output_long_bigtext") {
+        val dens = androidx.compose.ui.platform.LocalDensity.current
+        androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(dens.density, 1.3f)) { output() }
+    }
     @Config(qualifiers = "w360dp-h5200dp-xhdpi") @Test fun outputLongVent() = shootTab(1, "output_long_vent")
-    @Config(qualifiers = "w360dp-h6800dp-xhdpi") @Test fun outputLongFeed() = shootTab(2, "output_long_feed")
-    @Config(qualifiers = "w360dp-h3600dp-xhdpi") @Test fun outputLongStock() = shootTab(3, "output_long_stock")
+    @Config(qualifiers = "w360dp-h7200dp-xhdpi") @Test fun outputLongFeed() = shootTab(2, "output_long_feed")
+    @Config(qualifiers = "w360dp-h1500dp-xhdpi") @Test fun stockSmall() = shoot("stock_small") { stock() }
     /** The quarter-width window and its stats grid. */
     @Config(qualifiers = "w360dp-h1500dp-xhdpi") @Test fun outputQuarter() {
         rule.mainClock.autoAdvance = false
