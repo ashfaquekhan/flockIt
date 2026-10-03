@@ -8,6 +8,19 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v40 — 2026-10-03 · New app icon and loading animation (the leaning F rooster) · installs over a live flock
+- **App icon**: option 45 from the icon sheets — the letter F built from three white bars, leaning
+  forward, its stem a rooster with a red comb, an orange beak and an eye, on pure black. Adaptive icon
+  (foreground, black background, a one-colour version for themed icons) and the bitmaps for older phones,
+  all generated from one description in `design/make_app_icon.py`.
+- **Loading animation**: the mark is put together from its six separate parts, each moved into place
+  whole — the stem rises, the top arm and the middle arm slide in from the right, the comb is set down on
+  top, the beak comes in from the left, the eye last — held for a moment, then cleared and built again.
+  Nothing is cut up, stretched or redrawn. Used for pull-to-refresh (pulling down puts the mark together
+  as far as the pull has gone; while refreshing it builds over and over) and for the weather forecast.
+- **Start-up screen** is black with the mark (it used the phone's default background).
+- Tests: `ScreensRenderTest.loaderFrames` renders the animation frame by frame.
+
 ## v39 — 2026-10-03 · No broken words, Stock and Tasks as their own tabs, clock with pictures · installs over a live flock
 - **Broken words fixed**: names such as Temperature, Humidity, Moisture and Static pressure were split
   across lines although there was room. The name now has the whole first line beside its value; the

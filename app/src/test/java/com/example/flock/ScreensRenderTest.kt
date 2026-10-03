@@ -17,6 +17,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import androidx.compose.ui.graphics.Color
@@ -206,6 +207,14 @@ class ScreensRenderTest {
         rule.onNodeWithTag("coopWidth_2").performClick()
         rule.mainClock.advanceTimeBy(1200)
         rule.onRoot().captureRoboImage("src/test/screenshots/screen_output_quarter.png")
+    }
+    /** The loading animation frame by frame: the mark put together part by part (stem, arms, comb, beak, eye). */
+    @Config(qualifiers = "w520dp-h120dp-xhdpi") @Test fun loaderFrames() {
+        rule.setContent { MyApplicationTheme { androidx.compose.foundation.layout.Row(Modifier.fillMaxSize().background(Color.Black),
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceEvenly, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            listOf(0.12f, 0.3f, 0.5f, 0.68f, 0.84f, 0.94f, 1f).forEach { com.example.flock.ui.components.FlockMark(progress = it, size = 64.dp) }
+        } } }
+        rule.onRoot().captureRoboImage("src/test/screenshots/loader_frames.png")
     }
     /** The ⓘ by a card opens its explanation. */
     @Config(qualifiers = "w360dp-h2400dp-xhdpi") @Test fun infoDialog() {
