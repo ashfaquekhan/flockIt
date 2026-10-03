@@ -8,6 +8,37 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v37 — 2026-10-03 · Output in three tabs, trend markers, true CV, real numbers in the sheet · **DB v15 (non-destructive)**
+- **Output tabs** below the animation, feed log and alerts: **Birds** (flock and deaths, start and
+  removals, growth, uniformity, comfort, curves), **Ventilation** (house air, air quality, litter, minimum
+  ventilation, fan finder, fans by outside air, controller), **Feed · water · stock** (feeding plan, first
+  week, eaten, feed curves, water, store). Related numbers sit together; the overview tiles are gone.
+- **Trend markers** on every KPI and every reading with a range: ▲ / ▼ for above / below the commercial
+  standard (or ideal / safe range), coloured by whether that is good — green good, orange a little off,
+  red well off — and an orange dash when on par (±3 %). Ranges: green dash inside, orange / red outside.
+- **Compact KPI lines**: name (and the whole-flock figure), trend marker and value, then commercial and
+  ideal in small type, with the slim comparison bar. Commercial and ideal now show for every KPI; ranges
+  show min · ideal · max. About a third of the old height.
+- **Feeding plan, macro and micro**: feed needed and per bird (vs commercial / ideal), full bags, times a
+  day, the pan pattern (filled %, hopper), then one table — House | Line | Pan — for bags and kg per
+  feeding, pans on, birds, floor and walk, with the limits; top view, pan drawing and feeding clock.
+- **CV checked and corrected**: the old "CV" was the spread between the 5 bucket averages, which hides
+  most of the bird-to-bird spread (a 9 % flock read about 2–3 %). Now: an optional field for birds weighed
+  one by one (10 or more) gives the true CV and uniformity (birds within ±10 % of the mean); bulk weighing
+  shows "spread between locations" under its own name. CV alerts use the true CV only.
+- **Entry**: saved values stay on screen and readable (no more grey on black). "Unlock day" (was Revert)
+  opens the day with every value kept, so only the wrong ones need changing; **Clear all entries** is a
+  separate hold button.
+- **Feed varieties kept apart**: the daily recalculation now uses the per-type split you enter (it used to
+  put all of a day's bags on the first type) and each type's own bag weight (FCR and stock).
+- **Sheet (schema 5)**: numbers and true/false are written as real cell values (no text with a leading '),
+  one "Used B1 / Used B2 / …" bags column per feed variety (a hand edit there changes the split and the
+  total), and an IndividualWeights column. Older sheets and their backups upgrade automatically once.
+- **Animation views**: full width × 10 ft and half width × 10 ft (the half view can be moved across the
+  house on the map). Seen from higher, long side left to right; big crowds drawn more simply to stay smooth.
+- Tests: `SheetSchemaTest` (per-variety columns, typed cells, true CV), `MigrationTest` (v12 → v15),
+  `ScreensRenderTest` (tab renders; scroll position kept in the Feed tab).
+
 ## v36 — 2026-09-30 · Backup & repair handles every older sheet, and updates the backup too
 - **Sheets are read by column name, not position** (`SheetSchema`): Flocks, DailyData, Tasks and
   _FeedTypes are matched by header, ignoring case, spaces and underscores, and older names are accepted

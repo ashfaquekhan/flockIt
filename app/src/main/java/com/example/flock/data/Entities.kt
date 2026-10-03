@@ -278,7 +278,13 @@ data class DailyDataEntity(
     val waterHighL: Double = 0.0,           // total water at hotter day (+3°C)
     // Local edit not yet written to the sheet. While true, a refresh keeps this row and
     // re-sends it; otherwise the sheet's row always wins (so direct sheet edits are picked up).
-    val dirty: Boolean = false
+    val dirty: Boolean = false,
+    // Birds weighed one by one, grams, comma separated — the only way to get the true CV (v37)
+    val indivWeights: String = "",
+    // Spread between the 5 location averages, % (bulk weighing: not the bird-to-bird CV)
+    val locSpreadPct: Double? = null,
+    // Birds within ±10 % of the mean, % (needs individual weights)
+    val uniformityPct: Double? = null
 )
 
 @Entity(

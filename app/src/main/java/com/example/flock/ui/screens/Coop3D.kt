@@ -103,10 +103,10 @@ data class FarmLayout(
 }
 
 internal const val FT = 0.3048
-/** Most birds drawn at once; a view that would hold more is not offered. */
-internal const val MAX_BIRDS = 320
-/** Window sizes offered, ft. */
-internal val VIEW_SIZES = listOf(3.0, 5.0, 10.0)
+/** Most birds drawn at once (brooding densities can exceed it in a full-width view; the half-width view is offered then). */
+internal const val MAX_BIRDS = 1800
+/** The window is always this long along the house (ft); across it is the full or half house width. */
+internal const val VIEW_LEN_FT = 10.0
 
 private val NAMES = listOf("Pip", "Dot", "Hazel", "Tiko")
 internal enum class Trait(val label: String) { CURIOUS("curious"), GLUTTON("big eater"), LAZY("lazy"), CHATTY("chatty"), PLAIN("") }
@@ -152,10 +152,13 @@ private fun lerpColor(a: Color, b: Color, t: Double) = Color(
 internal class CoopSim {
     var birds: List<Bird> = emptyList()
     var layout: FarmLayout = FarmLayout.DEMO
-    /** window size and corner in the farm, ft */
-    var sideFt = 10.0
+    /** window: [lenFt] along the house × [widFt] across it, corner at ([x0Ft], [y0Ft]) in the farm, ft */
+    var lenFt = VIEW_LEN_FT
+    var widFt = 39.0
     var x0Ft = 0.0; var y0Ft = 0.0
-    val side get() = sideFt * FT
+    /** window size in metres: x along the house, z across it */
+    val sx get() = lenFt * FT
+    val sz get() = widFt * FT
     val panR = 0.165
     val tubeH = 0.42
     var nippleH = 0.16
@@ -168,7 +171,7 @@ internal class CoopSim {
     var lines: List<Line> = emptyList()
     /** birds stay short of the barricade (window x, m) */
     var birdMaxX = 0.0
-    /** house walls inside the window: front (x = 0), back (x = side), near side (z = 0), far side (z = side) */
+    /** house walls inside the window: front (x = 0), back (x = sx), near side (z = 0), far side (z = sz) */
     var walls = BooleanArray(4)
 
     // ---- interaction and effects ----
@@ -188,63 +191,63 @@ internal class CoopSim {
     fun setup(inp: CoopInput) {
         val L = inp.layout
         layout = L
-        sideFt = sideFt.coerceIn(2.0, max(2.0, min(L.lengthFt, L.widthFt)))
-        x0Ft = x0Ft.coerceIn(0.0, max(0.0, L.lengthFt - sideFt)); y0Ft = y0Ft.coerceIn(0.0, max(0.0, L.widthFt - sideFt))
+        lenFt = lenFt.coerceIn(2.0, max(2.0, L.lengthFt)); widFt = widFt.coerceIn(2.0, max(2.0, L.widthFt))
+        x0Ft = x0Ft.coerceIn(0.0, max(0.0, L.lengthFt - lenFt)); y0Ft = y0Ft.coerceIn(0.0, max(0.0, L.widthFt - widFt))
         nippleH = L.drinkerHtM.coerceIn(0.10, 0.55)
         shape = shapeFor(inp.age)
-        val key = listOf(L, sideFt, x0Ft, y0Ft, inp.age)
+        val key = listOf(L, lenFt, widFt, x0Ft, y0Ft, inp.age)
         if (key != builtKey) { builtKey = key; build(inp) }
         val cv = (inp.cvPct ?: 8.0) / 100.0
         birds.forEach { it.weightG = max(30.0, inp.meanG * (1 + cv * it.z)) }
     }
 
     /** Birds the window would hold at the flock's density (before the cap). */
-    fun birdsFor(L: FarmLayout, sFt: Double, x0: Double): Int {
-        val reach = (min(x0 + sFt, L.barricadeFt) - x0).coerceIn(0.0, sFt)
-        return (L.birdsPerFt2 * reach * sFt).roundToInt()
+    fun birdsFor(L: FarmLayout, lenFt: Double, widFt: Double, x0: Double): Int {
+        val reach = (min(x0 + lenFt, L.barricadeFt) - x0).coerceIn(0.0, lenFt)
+        return (L.birdsPerFt2 * reach * widFt).roundToInt()
     }
 
     private fun build(inp: CoopInput) {
         val L = inp.layout
-        val s = side
+        val sx = sx; val sz = sz
         fun lx(ft: Double) = (ft - x0Ft) * FT
         fun lz(ft: Double) = (ft - y0Ft) * FT
         val ls = mutableListOf<Line>(); val ps = mutableListOf<Pan>(); val ns = mutableListOf<Nipple>()
         L.lineOrder.forEachIndexed { i, k ->
             val z = lz(L.lineY(i))
-            if (z < -0.05 || z > s + 0.05) return@forEachIndexed
+            if (z < -0.05 || z > sz + 0.05) return@forEachIndexed
             val a = L.lineStartFt
             if (k == 'F') {
                 val total = L.pansPerLine + L.sensorPans
                 val x1 = lx(a); val x2 = lx(a + total * L.panSpacingFt)
-                if (x2 > 0 && x1 < s) ls += Line(z, max(x1, 0.0), min(x2, s), true)
+                if (x2 > 0 && x1 < sx) ls += Line(z, max(x1, 0.0), min(x2, sx), true)
                 val first = max(0, floor((x0Ft - a) / L.panSpacingFt).toInt() - 1)
-                val last = min(total - 1, ceil((x0Ft + sideFt - a) / L.panSpacingFt).toInt() + 1)
+                val last = min(total - 1, ceil((x0Ft + lenFt - a) / L.panSpacingFt).toInt() + 1)
                 for (p in first..last) {
                     val x = lx(a + (p + 0.5) * L.panSpacingFt)
-                    if (x < panR * 0.5 || x > s - panR * 0.5) continue
+                    if (x < panR * 0.5 || x > sx - panR * 0.5) continue
                     val sensor = p >= L.pansPerLine
                     ps += Pan(p, x, z, sensor || L.panOpen(p), sensor)
                 }
             } else {
                 val x1 = lx(a); val x2 = lx(a + L.drinkerLenFt)
-                if (x2 > 0 && x1 < s) {
-                    ls += Line(z, max(x1, 0.0), min(x2, s), false)
+                if (x2 > 0 && x1 < sx) {
+                    ls += Line(z, max(x1, 0.0), min(x2, sx), false)
                     val first = max(0, floor((x0Ft - a) / L.nippleSpacingFt).toInt())
-                    val last = ceil((x0Ft + sideFt - a) / L.nippleSpacingFt).toInt()
+                    val last = ceil((x0Ft + lenFt - a) / L.nippleSpacingFt).toInt()
                     for (q in first..last) {
                         val ft = a + (q + 0.5) * L.nippleSpacingFt
                         val x = lx(ft)
-                        if (ft <= a + L.drinkerLenFt && x in 0.03..(s - 0.03)) ns += Nipple(x, z)
+                        if (ft <= a + L.drinkerLenFt && x in 0.03..(sx - 0.03)) ns += Nipple(x, z)
                     }
                 }
             }
         }
         lines = ls; pans = ps; nipples = ns
-        birdMaxX = lx(L.barricadeFt).coerceIn(0.0, s)
-        walls = booleanArrayOf(x0Ft <= 0.01, x0Ft + sideFt >= L.lengthFt - 0.01, y0Ft <= 0.01, y0Ft + sideFt >= L.widthFt - 0.01)
+        birdMaxX = lx(L.barricadeFt).coerceIn(0.0, sx)
+        walls = booleanArrayOf(x0Ft <= 0.01, x0Ft + lenFt >= L.lengthFt - 0.01, y0Ft <= 0.01, y0Ft + widFt >= L.widthFt - 0.01)
         // birds at the flock's real density on the floor they can reach in this window
-        val n = birdsFor(L, sideFt, x0Ft).coerceIn(0, MAX_BIRDS)
+        val n = birdsFor(L, lenFt, widFt, x0Ft).coerceIn(0, MAX_BIRDS)
         val rnd = Random(1234)
         val list = birds.toMutableList()
         while (list.size > n) list.removeAt(list.size - 1)
@@ -254,7 +257,7 @@ internal class CoopSim {
             else Bird("", Trait.PLAIN, gauss(rnd).coerceIn(-2.5, 2.5), 1000 + i).also { it.x = -1.0 }
         }
         list.forEach { b ->
-            if (b.x < 0.06 || b.x > birdMaxX - 0.06 || b.zz < 0.06 || b.zz > s - 0.06) place(b)
+            if (b.x < 0.06 || b.x > birdMaxX - 0.06 || b.zz < 0.06 || b.zz > sz - 0.06) place(b)
             b.panI = -1; b.nipI = -1
             if (b.state.startsWith("go") || b.state == "eat" || b.state == "drink" || b.state == "peckGrain") { b.state = "idle"; b.t = 0.0; b.dur = b.rnd.nextDouble(0.5, 2.0) }
         }
@@ -266,10 +269,9 @@ internal class CoopSim {
     private fun gauss(r: Random): Double { val u = max(1e-9, r.nextDouble()); val v = r.nextDouble(); return sqrt(-2 * kotlin.math.ln(u)) * cos(2 * PI * v) }
 
     private fun place(b: Bird) {
-        val s = side
-        if (birdMaxX < 0.12) { b.x = 0.06; b.zz = s / 2; return }
+        if (birdMaxX < 0.12) { b.x = 0.06; b.zz = sz / 2; return }
         repeat(10) {
-            b.x = b.rnd.nextDouble(0.06, birdMaxX - 0.06); b.zz = b.rnd.nextDouble(0.06, s - 0.06)
+            b.x = b.rnd.nextDouble(0.06, birdMaxX - 0.06); b.zz = b.rnd.nextDouble(0.06, sz - 0.06)
             if (pans.none { hypot(it.x - b.x, it.z - b.zz) < panR + 0.04 }) return
         }
     }
@@ -282,7 +284,7 @@ internal class CoopSim {
     }
     /** Tap on the floor: a few grains land there; birds close enough (the curious one from further) come to peck. */
     fun dropGrains(x: Double, z: Double) {
-        repeat(6) { grains += Grain((x + fxRnd.nextDouble(-0.05, 0.05)).coerceIn(0.05, side - 0.05), (z + fxRnd.nextDouble(-0.05, 0.05)).coerceIn(0.05, side - 0.05), 12.0) }
+        repeat(6) { grains += Grain((x + fxRnd.nextDouble(-0.05, 0.05)).coerceIn(0.05, sx - 0.05), (z + fxRnd.nextDouble(-0.05, 0.05)).coerceIn(0.05, sz - 0.05), 12.0) }
         repeat(8) { particles += Particle(x, 0.25, z, fxRnd.nextDouble(-0.25, 0.25), 0.0, fxRnd.nextDouble(-0.25, 0.25), 0.6, 0) }
         birds.forEach { b ->
             val reach = when (b.trait) { Trait.CURIOUS -> 2.0; Trait.GLUTTON -> 1.2; Trait.LAZY -> 0.45; else -> 0.6 }
@@ -303,7 +305,7 @@ internal class CoopSim {
         n.ripple = 1.0
         birds.filter { it.state != "sleep" }.minByOrNull { hypot(it.x - n.x, it.zz - n.z) }?.let { it.state = "goDrink"; it.nipI = i; it.t = 0.0; it.dur = 20.0 }
     }
-    val feederAt: Pair<Double, Double> get() = pans.firstOrNull { it.open && !it.sensor }?.let { it.x to it.z } ?: (side / 2 to side / 2)
+    val feederAt: Pair<Double, Double> get() = pans.firstOrNull { it.open && !it.sensor }?.let { it.x to it.z } ?: (sx / 2 to sz / 2)
 
     private var lastFedSeen: Long? = null
     private var fedSeenInit = false
@@ -398,7 +400,7 @@ internal class CoopSim {
             if (b.t >= b.dur) choose(b, inp, hunger, feedIn, heavy)
             b.sit = damp(b.sit, b.tSit, 6.0, dt); b.peck = damp(b.peck, b.tPeck, 14.0, dt); b.headYaw = damp(b.headYaw, b.tHeadYaw, 6.0, dt)
             // stay on the floor of the window, short of the barricade, and out of the pans
-            b.x = b.x.coerceIn(0.06, max(0.06, birdMaxX - 0.06)); b.zz = b.zz.coerceIn(0.06, side - 0.06)
+            b.x = b.x.coerceIn(0.06, max(0.06, birdMaxX - 0.06)); b.zz = b.zz.coerceIn(0.06, sz - 0.06)
             for (p in pans) {
                 val dx = b.x - p.x; val dz = b.zz - p.z; val d = hypot(dx, dz)
                 if (d < panR * 0.85 && d > 1e-6) { b.x = p.x + dx / d * panR * 0.85; b.zz = p.z + dz / d * panR * 0.85 }
@@ -500,9 +502,9 @@ internal class CoopSim {
         when (b.state) {
             "walk" -> {
                 // a short wander, within the allowed travel radius and inside the window
-                val rad = min(inp.travelM, side * 0.5) * (if (b.trait == Trait.CURIOUS) 1.0 else 0.5)
+                val rad = min(inp.travelM, min(sx, sz) * 0.5) * (if (b.trait == Trait.CURIOUS) 1.0 else 0.5)
                 val a = b.rnd.nextDouble(0.0, 2 * PI); val d = b.rnd.nextDouble(0.1, 1.0) * rad
-                b.tx = (b.x + sin(a) * d).coerceIn(0.1, max(0.1, birdMaxX - 0.1)); b.tz = (b.zz + cos(a) * d).coerceIn(0.1, side - 0.1); b.dur = 15.0
+                b.tx = (b.x + sin(a) * d).coerceIn(0.1, max(0.1, birdMaxX - 0.1)); b.tz = (b.zz + cos(a) * d).coerceIn(0.1, sz - 0.1); b.dur = 15.0
             }
             "rest" -> b.dur = b.rnd.nextDouble(4.0, 8.0) + heavy * 8
             "goDrink" -> { b.nipI = pickNipple(b); if (b.nipI < 0) { b.state = "idle"; b.dur = 2.0 } else b.dur = 20.0 }
@@ -514,13 +516,15 @@ internal class CoopSim {
 
 /** View of the window: turned by [yaw], looked at from [elev] above the floor, [zoom] × the fitted size. */
 internal class CoopCam {
-    var yaw = 0.0; var elev = ISO_ELEV; var zoom = 1.0
+    /** home view: the window's long side (across the house) runs left to right, seen from fairly high */
+    val homeYaw = PI / 4; val homeElev = 0.95
+    var yaw = homeYaw; var elev = homeElev; var zoom = 1.0
     var yawVel = 0.0
     var resetting = false
     fun step(dt: Double) {
         if (resetting) {
-            yaw = damp(yaw, 0.0, 6.0, dt); elev = damp(elev, ISO_ELEV, 6.0, dt); zoom = damp(zoom, 1.0, 6.0, dt)
-            if (abs(yaw) < 1e-3 && abs(elev - ISO_ELEV) < 1e-3 && abs(zoom - 1.0) < 1e-3) { yaw = 0.0; elev = ISO_ELEV; zoom = 1.0; resetting = false }
+            yaw = damp(yaw, homeYaw, 6.0, dt); elev = damp(elev, homeElev, 6.0, dt); zoom = damp(zoom, 1.0, 6.0, dt)
+            if (abs(yaw - homeYaw) < 1e-3 && abs(elev - homeElev) < 1e-3 && abs(zoom - 1.0) < 1e-3) { yaw = homeYaw; elev = homeElev; zoom = 1.0; resetting = false }
         } else if (abs(yawVel) > 1e-3) { yaw += yawVel * dt; yawVel *= kotlin.math.exp(-3.0 * dt) }
     }
 }
@@ -528,19 +532,26 @@ internal const val ISO_ELEV = 0.6154797      // atan(1/√2): true isometric
 private const val SQRT2 = 1.4142135623730951
 
 /** World (x, y, z in metres, floor = y 0) to screen, for one frame's size and camera; and back onto the floor. */
-internal class CoopProj(val side: Double, val wallH: Double, w: Float, h: Float, cam: CoopCam) {
+internal class CoopProj(val sx: Double, val sz: Double, val wallH: Double, w: Float, h: Float, cam: CoopCam) {
     private val cy = cos(cam.yaw); private val sy = sin(cam.yaw)
     private val se = sin(cam.elev); private val ce = cos(cam.elev)
-    private val c = side / 2
-    /** px per metre */
-    val S: Double = cam.zoom * min(w * 0.8 / (side * SQRT2), h * 0.66 / (side * SQRT2 * se + wallH * ce))
+    private val c = sx / 2
+    private val cz = sz / 2
+    /** px per metre: the window fits the canvas in the home view (turning keeps the scale; the canvas clips) */
+    val S: Double = run {
+        val hy = cam.homeYaw; val hc = cos(hy); val hs = sin(hy)
+        val corners = listOf(-c to -cz, c to -cz, c to cz, -c to cz).map { (dx, dz) -> val xr = dx * hc - dz * hs; val zr = dx * hs + dz * hc; (xr - zr) / SQRT2 to (xr + zr) / SQRT2 }
+        val wSpan = corners.maxOf { it.first } - corners.minOf { it.first }
+        val vSpan = (corners.maxOf { it.second } - corners.minOf { it.second }) * se + wallH * ce
+        cam.zoom * min(w * 0.92 / wSpan, h * 0.6 / vSpan)
+    }
     private val ox = w / 2.0
     private val oy = h * 0.52 + S * wallH * ce * 0.45
     /** vertical squash of circles lying on the floor */
     val flat = se
     /** world direction toward the viewer (x, z) */
     val camX = (cy + sy) / SQRT2; val camZ = (cy - sy) / SQRT2
-    private fun rot(x: Double, z: Double): Pair<Double, Double> { val dx = x - c; val dz = z - c; return Pair(dx * cy - dz * sy, dx * sy + dz * cy) }
+    private fun rot(x: Double, z: Double): Pair<Double, Double> { val dx = x - c; val dz = z - cz; return Pair(dx * cy - dz * sy, dx * sy + dz * cy) }
     fun P(x: Double, y: Double, z: Double): Offset {
         val (xr, zr) = rot(x, z)
         val u = (xr - zr) / SQRT2; val v = (xr + zr) / SQRT2
@@ -551,7 +562,7 @@ internal class CoopProj(val side: Double, val wallH: Double, w: Float, h: Float,
     fun floorAt(p: Offset): Pair<Double, Double> {
         val u = (p.x - ox) / S; val v = (p.y - oy) / S / se
         val xr = (u + v) / SQRT2; val zr = (v - u) / SQRT2
-        return Pair(c + xr * cy + zr * sy, c - xr * sy + zr * cy)
+        return Pair(c + xr * cy + zr * sy, cz - xr * sy + zr * cy)
     }
 }
 
@@ -562,7 +573,7 @@ private fun stateWord(s: String) = when (s) {
 }
 
 /**
- * A square window onto the house (3, 5 or 10 ft a side) with the real feeder and drinker lines, the
+ * A window onto the house — 10 ft along it, the full or half width across — with the real feeder and drinker lines, the
  * pans on and off, feed running down the line after a feeding, and the birds at the flock's real
  * density; four of them are named and followed. Drag sideways to turn it, two fingers to tilt and
  * zoom, double-tap to square it up; tap a bird, a pan, a nipple or the floor. The map under it is the
@@ -572,16 +583,18 @@ private fun stateWord(s: String) = when (s) {
 fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
     val sim = remember { CoopSim() }
     val L = inp.layout
-    // the window: size and corner in the farm (ft); starts on the middle feeder line, a quarter into the birds' area
-    var sideFt by rememberSaveable { mutableDoubleStateOf(10.0) }
+    // the window: 10 ft along the house, the full or half width across; starts a quarter into the birds' area
+    var full by rememberSaveable { androidx.compose.runtime.mutableStateOf(true) }
     val midF = L.lineOrder.withIndex().filter { it.value == 'F' }.let { it.getOrNull(it.size / 2)?.index ?: 0 }
     var x0 by rememberSaveable { mutableDoubleStateOf(-1.0) }
     var y0 by rememberSaveable { mutableDoubleStateOf(-1.0) }
-    if (x0 < 0) x0 = (min(L.barricadeFt, L.lengthFt) * 0.25 - sideFt / 2).coerceIn(0.0, max(0.0, L.lengthFt - sideFt))
-    if (y0 < 0) y0 = (L.lineY(midF) - sideFt / 2).coerceIn(0.0, max(0.0, L.widthFt - sideFt))
-    // a size that would hold too many birds to draw is not offered; drop to one that fits
-    if (sim.birdsFor(L, sideFt, x0) > MAX_BIRDS) sideFt = VIEW_SIZES.lastOrNull { sim.birdsFor(L, it, x0) <= MAX_BIRDS } ?: VIEW_SIZES.first()
-    sim.sideFt = sideFt; sim.x0Ft = x0; sim.y0Ft = y0
+    // a full-width view that would hold too many birds to draw (dense brooding) falls back to half width
+    if (full && sim.birdsFor(L, VIEW_LEN_FT, L.widthFt, max(0.0, x0)) > MAX_BIRDS) full = false
+    val lenFt = min(VIEW_LEN_FT, L.lengthFt)
+    val widFt = if (full) L.widthFt else L.widthFt / 2
+    if (x0 < 0) x0 = (min(L.barricadeFt, L.lengthFt) * 0.25 - lenFt / 2).coerceIn(0.0, max(0.0, L.lengthFt - lenFt))
+    if (full) y0 = 0.0 else if (y0 < 0) y0 = (L.lineY(midF) - widFt / 2).coerceIn(0.0, max(0.0, L.widthFt - widFt))
+    sim.lenFt = lenFt; sim.widFt = widFt; sim.x0Ft = x0; sim.y0Ft = y0
     sim.setup(inp)
     // the frame loop starts once: read the latest input (new feedings, lights) through this, not the first one
     val cur = androidx.compose.runtime.rememberUpdatedState(inp)
@@ -610,7 +623,7 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
     val scheduledDark = run { val z = java.time.ZonedDateTime.now(inp.zoneId); !inp.light.isLight(z.hour + z.minute / 60.0) }
     Column(modifier) {
         androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val h = (maxWidth * 0.84f).coerceIn(260.dp, 460.dp)
+            val h = (maxWidth * (if (full) 0.72f else 0.82f)).coerceIn(250.dp, 460.dp)
             Canvas(
                 Modifier.fillMaxWidth().height(h).clipToBounds().testTag("coop")
                     // two fingers: tilt (up/down), zoom (pinch) and turn; one finger up/down still scrolls the page
@@ -641,7 +654,7 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
                         detectTapGestures(
                             onDoubleTap = { cam.yawVel = 0.0; cam.resetting = true },
                             onTap = { at ->
-                                val pr = CoopProj(sim.side, 0.5, size.width.toFloat(), size.height.toFloat(), cam)
+                                val pr = CoopProj(sim.sx, sim.sz, 0.5, size.width.toFloat(), size.height.toFloat(), cam)
                                 val sh = shapeFor(cur.value.age)
                                 val bird = sim.birds.map { b ->
                                     val sc = cbrt(b.weightG / 42.0) * 0.1
@@ -657,7 +670,7 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
                                     nip != null -> sim.tapNipple(nip)
                                     else -> {
                                         val (x, z) = pr.floorAt(at)
-                                        if (x in 0.05..sim.side - 0.05 && z in 0.05..sim.side - 0.05) sim.dropGrains(x, z)
+                                        if (x in 0.05..sim.sx - 0.05 && z in 0.05..sim.sz - 0.05) sim.dropGrains(x, z)
                                     }
                                 }
                             }
@@ -665,7 +678,7 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
                     }
             ) {
                 @Suppress("UNUSED_VARIABLE") val frame = tick
-                val pr = CoopProj(sim.side, 0.5, size.width, size.height, cam)
+                val pr = CoopProj(sim.sx, sim.sz, 0.5, size.width, size.height, cam)
                 drawCoop(sim, inp, lightNow().toFloat(), java.time.ZonedDateTime.now(inp.zoneId), awake, pr)
             }
             if (scheduledDark || awake) {
@@ -679,20 +692,21 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
         }
         // window size, and the whole house with the window on it
         Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            VIEW_SIZES.forEach { s ->
-                val n = sim.birdsFor(L, s, x0)
+            listOf(true, false).forEach { isFull ->
+                val w = if (isFull) L.widthFt else L.widthFt / 2
+                val n = sim.birdsFor(L, lenFt, w, x0)
                 val fits = n <= MAX_BIRDS
-                val on = abs(s - sideFt) < 0.01
-                ValueChip(vt(Fmt.n(s, 1) + " ft", if (!fits) ValueKind.MAX else if (on) ValueKind.PRESENT else ValueKind.PREDICTED, if (fits) "${Fmt.i(n)} birds" else "too many"),
+                val on = isFull == full
+                ValueChip(vt("${Fmt.n(w, 1)} × ${Fmt.n(lenFt, 1)} ft", if (!fits) ValueKind.MAX else if (on) ValueKind.PRESENT else ValueKind.PREDICTED,
+                    (if (isFull) "Full width" else "Half width") + " · " + (if (fits) "${Fmt.i(n)} birds" else "too many")),
                     Modifier.weight(1f).border(if (on) 2.dp else 0.dp, if (on) Color.White else Color.Transparent, RoundedCornerShape(8.dp))
                         .clickable(enabled = fits) {
-                            val cx = x0 + sideFt / 2; val cy = y0 + sideFt / 2
-                            sideFt = s
-                            x0 = (cx - s / 2).coerceIn(0.0, max(0.0, L.lengthFt - s)); y0 = (cy - s / 2).coerceIn(0.0, max(0.0, L.widthFt - s))
+                            if (isFull) { full = true; y0 = 0.0 }
+                            else { full = false; y0 = (L.lineY(midF) - w / 2).coerceIn(0.0, max(0.0, L.widthFt - w)) }
                         })
             }
         }
-        FarmMiniMap(L, x0, y0, sideFt, Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) { nx, ny -> x0 = nx; y0 = ny }
+        FarmMiniMap(L, x0, y0, lenFt, widFt, Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) { nx, ny -> x0 = nx; if (!full) y0 = ny }
         // the four followed birds, in one table
         @Suppress("UNUSED_VARIABLE") val refresh = slow
         val named = sim.birds.filter { !it.lite }
@@ -714,24 +728,24 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
 
 /** The whole house at its real shape: feeder and drinker lines, the barricade, and the window (drag or tap to move it). */
 @Composable
-private fun FarmMiniMap(L: FarmLayout, x0: Double, y0: Double, sideFt: Double, modifier: Modifier = Modifier, onMove: (Double, Double) -> Unit) {
+private fun FarmMiniMap(L: FarmLayout, x0: Double, y0: Double, lenFt: Double, widFt: Double, modifier: Modifier = Modifier, onMove: (Double, Double) -> Unit) {
     val cx by androidx.compose.runtime.rememberUpdatedState(x0)
     val cy by androidx.compose.runtime.rememberUpdatedState(y0)
     androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth()) {
         val wDp = maxWidth.value
         val hDp = (wDp * L.widthFt / L.lengthFt).toFloat().coerceIn(40f, 120f)
-        fun clampMove(nx: Double, ny: Double) = onMove(nx.coerceIn(0.0, max(0.0, L.lengthFt - sideFt)), ny.coerceIn(0.0, max(0.0, L.widthFt - sideFt)))
+        fun clampMove(nx: Double, ny: Double) = onMove(nx.coerceIn(0.0, max(0.0, L.lengthFt - lenFt)), ny.coerceIn(0.0, max(0.0, L.widthFt - widFt)))
         Canvas(
             Modifier.fillMaxWidth().height(hDp.dp).testTag("farmMap")
-                .pointerInput(sideFt, L) {
+                .pointerInput(lenFt, widFt, L) {
                     detectDragGestures { change, drag ->
                         change.consume()
                         val ftPerPx = L.lengthFt / size.width
                         clampMove(cx + drag.x * ftPerPx, cy + drag.y * L.widthFt / size.height)
                     }
                 }
-                .pointerInput(sideFt, L) {
-                    detectTapGestures { at -> clampMove(at.x / size.width * L.lengthFt - sideFt / 2, at.y / size.height * L.widthFt - sideFt / 2) }
+                .pointerInput(lenFt, widFt, L) {
+                    detectTapGestures { at -> clampMove(at.x / size.width * L.lengthFt - lenFt / 2, at.y / size.height * L.widthFt - widFt / 2) }
                 }
         ) {
             val sx = size.width / L.lengthFt.toFloat(); val sy = size.height / L.widthFt.toFloat()
@@ -744,7 +758,7 @@ private fun FarmMiniMap(L: FarmLayout, x0: Double, y0: Double, sideFt: Double, m
                 else drawLine(ValueMin.copy(alpha = 0.6f), Offset((L.lineStartFt * sx).toFloat(), y), Offset(((L.lineStartFt + L.drinkerLenFt) * sx).toFloat(), y), 1f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(3f, 3f)))
             }
             val wx = (x0 * sx).toFloat(); val wy = (y0 * sy).toFloat()
-            val ww = max(6f, (sideFt * sx).toFloat()); val wh = max(6f, (sideFt * sy).toFloat())
+            val ww = max(6f, (lenFt * sx).toFloat()); val wh = max(6f, (widFt * sy).toFloat())
             drawRect(Color.White.copy(alpha = 0.18f), Offset(wx, wy), Size(ww, wh))
             drawRect(Color.White, Offset(wx, wy), Size(ww, wh), style = Stroke(2f))
         }
@@ -752,7 +766,7 @@ private fun FarmMiniMap(L: FarmLayout, x0: Double, y0: Double, sideFt: Double, m
 }
 
 private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: java.time.ZonedDateTime, awake: Boolean, pr: CoopProj) {
-    val side = sim.side
+    val sx = sim.sx; val sz = sim.sz
     fun P(x: Double, y: Double, z: Double) = pr.P(x, y, z)
     val S = pr.S
     val line = Color.White.copy(alpha = 0.55f)
@@ -761,24 +775,26 @@ private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: 
     // house walls that fall inside the window
     val wallH = 0.55
     listOf(
-        Triple(0.0 to 0.0, 0.0 to side, sim.walls[0]), Triple(side to 0.0, side to side, sim.walls[1]),
-        Triple(0.0 to 0.0, side to 0.0, sim.walls[2]), Triple(0.0 to side, side to side, sim.walls[3])
+        Triple(0.0 to 0.0, 0.0 to sz, sim.walls[0]), Triple(sx to 0.0, sx to sz, sim.walls[1]),
+        Triple(0.0 to 0.0, sx to 0.0, sim.walls[2]), Triple(0.0 to sz, sx to sz, sim.walls[3])
     ).filter { it.third }.forEach { (p0, p1, _) ->
         drawPath(quad(P(p0.first, 0.0, p0.second), P(p1.first, 0.0, p1.second), P(p1.first, wallH, p1.second), P(p0.first, wallH, p0.second)), line, style = Stroke(1.2f))
     }
     // floor: litter tone follows the lights; past the barricade it's darker (no birds there)
-    val floor = quad(P(0.0, 0.0, 0.0), P(side, 0.0, 0.0), P(side, 0.0, side), P(0.0, 0.0, side))
+    val floor = quad(P(0.0, 0.0, 0.0), P(sx, 0.0, 0.0), P(sx, 0.0, sz), P(0.0, 0.0, sz))
     drawPath(floor, Color(0xFF2A2218).copy(alpha = 0.20f + 0.45f * light))
     clipPath(floor) {
-        if (sim.birdMaxX < side) drawPath(quad(P(sim.birdMaxX, 0.0, 0.0), P(side, 0.0, 0.0), P(side, 0.0, side), P(sim.birdMaxX, 0.0, side)), Color.Black.copy(alpha = 0.55f))
+        if (sim.birdMaxX < sx) drawPath(quad(P(sim.birdMaxX, 0.0, 0.0), P(sx, 0.0, 0.0), P(sx, 0.0, sz), P(sim.birdMaxX, 0.0, sz)), Color.Black.copy(alpha = 0.55f))
         // a line every foot for scale
         var g = FT
-        while (g < side - 1e-6) { drawLine(faint, P(g, 0.0, 0.0), P(g, 0.0, side), 1f); drawLine(faint, P(0.0, 0.0, g), P(side, 0.0, g), 1f); g += FT }
+        while (g < sx - 1e-6) { drawLine(faint, P(g, 0.0, 0.0), P(g, 0.0, sz), 1f); g += FT }
+        g = FT
+        while (g < sz - 1e-6) { drawLine(faint, P(0.0, 0.0, g), P(sx, 0.0, g), 1f); g += FT }
         val rnd = Random(7)
-        repeat(120) { val p = P(rnd.nextDouble(0.02, side - 0.02), 0.0, rnd.nextDouble(0.02, side - 0.02)); drawCircle(Color(0xFFC9A36B).copy(alpha = 0.10f + 0.22f * light), 1.3f, p) }
+        repeat(160) { val p = P(rnd.nextDouble(0.02, sx - 0.02), 0.0, rnd.nextDouble(0.02, sz - 0.02)); drawCircle(Color(0xFFC9A36B).copy(alpha = 0.10f + 0.22f * light), 1.3f, p) }
         sim.grains.forEach { gr -> drawCircle(Color(0xFFE2BC6A).copy(alpha = (0.4f + 0.6f * light) * min(1.0, gr.life / 2).toFloat()), max(1.8f, (0.012 * S).toFloat()), P(gr.x, 0.0, gr.z)) }
         // allowed walk around the pan nearest the middle of the window
-        sim.pans.filter { it.open && !it.sensor }.minByOrNull { hypot(it.x - side / 2, it.z - side / 2) }?.let { p ->
+        sim.pans.filter { it.open && !it.sensor }.minByOrNull { hypot(it.x - sx / 2, it.z - sz / 2) }?.let { p ->
             val ring = Path(); val R = inp.travelM
             for (i in 0..72) { val a = i / 72.0 * 2 * PI; val q = P(p.x + sin(a) * R, 0.0, p.z + cos(a) * R); if (i == 0) ring.moveTo(q.x, q.y) else ring.lineTo(q.x, q.y) }
             drawPath(ring, ValueIdeal.copy(alpha = 0.45f), style = Stroke(1.3f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f))))
@@ -786,11 +802,11 @@ private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: 
     }
     drawPath(floor, line, style = Stroke(1.2f))
     // barricade: a low fence
-    if (sim.birdMaxX < side - 0.01) {
+    if (sim.birdMaxX < sx - 0.01) {
         val bx = sim.birdMaxX
-        drawLine(ValuePredicted.copy(alpha = 0.8f), P(bx, 0.25, 0.0), P(bx, 0.25, side), 2f)
+        drawLine(ValuePredicted.copy(alpha = 0.8f), P(bx, 0.25, 0.0), P(bx, 0.25, sz), 2f)
         var zf = 0.0
-        while (zf <= side + 1e-6) { drawLine(ValuePredicted.copy(alpha = 0.6f), P(bx, 0.0, zf), P(bx, 0.25, zf), 1.2f); zf += 0.3 }
+        while (zf <= sz + 1e-6) { drawLine(ValuePredicted.copy(alpha = 0.6f), P(bx, 0.0, zf), P(bx, 0.25, zf), 1.2f); zf += 0.3 }
     }
 
     fun ellipseAt(x: Double, y: Double, z: Double, r: Double, col: Color, stroke: Boolean = false, w: Float = 1.2f) {
@@ -830,8 +846,10 @@ private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: 
     val sel = sim.selected
     if (sel != null) ellipseAt(sel.x, 0.0, sel.zz, 0.07 * cbrt(sel.weightG / 42.0), ValuePresent.copy(alpha = 0.9f), stroke = true, w = 1.8f)
     val nameAt = mutableListOf<Pair<Bird, Offset>>()
+    // big crowds are drawn more simply so the view stays smooth
+    val lod = when { sim.birds.size <= 350 -> 2; sim.birds.size <= 900 -> 1; else -> 0 }
     sim.birds.sortedBy { pr.depth(it.x, it.zz) }.forEach { b ->
-        val at = drawBird(b, sh, light, ::P, k, pr.camX, pr.camZ, pr.flat)
+        val at = drawBird(b, sh, light, ::P, k, pr.camX, pr.camZ, pr.flat, lod)
         if (!b.lite) nameAt += b to at
     }
     // names above the named heads, nudged up so two never overlap
@@ -882,7 +900,7 @@ private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: 
     val lh = paint.textSize * 1.35f; val pad = 9.dp.toPx()
     val ideal = ValueIdeal
     val rx = size.width - pad
-    seg(listOf("View " to grey, "${Fmt.n(sim.sideFt, 1)} × ${Fmt.n(sim.sideFt, 1)}" to Color.White, " ft" to grey), pad, pad + lh, false)
+    seg(listOf("View " to grey, "${Fmt.n(sim.widFt, 1)} × ${Fmt.n(sim.lenFt, 1)}" to Color.White, " ft" to grey), pad, pad + lh, false)
     seg(listOf(Fmt.i(sim.birds.size) to ValuePresent, " birds" to grey), pad, pad + lh * 2, false)
     seg(listOf(Fmt.n(inp.layout.birdsPerFt2, 2) to ValuePresent, " /ft²" to grey), pad, pad + lh * 3, false)
     seg(listOf("Air " to grey, Fmt.n(inp.airC, 1) to ideal, "°  " to grey, Fmt.n(inp.rhPct, 1) to ideal, "%" to grey), rx, pad + lh, true)
@@ -906,8 +924,10 @@ private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: 
 private fun hhmm(h: Double): String { val m = ((h % 24 + 24) % 24 * 60).toInt(); return String.format("%02d:%02d", m / 60, m % 60) }
 
 /** Draws one bird and returns where its name goes. [lite] birds (the crowd) get shadow, body, head and beak only. */
-private fun DrawScope.drawBird(b: Bird, sh: Shape, light: Float, P: (Double, Double, Double) -> Offset, k: Float, camX: Double, camZ: Double, flat: Double): Offset {
+private fun DrawScope.drawBird(b: Bird, sh: Shape, light: Float, P: (Double, Double, Double) -> Offset, k: Float, camX: Double, camZ: Double, flat: Double, lod: Int = 2): Offset {
     val lite = b.lite
+    val lean = lite && lod < 2      // no shadow or beak
+    val flatBody = lite && lod < 1  // body not turned with the bird
     val s = cbrt(b.weightG / 42.0) * 0.1        // metres per base unit
     val fx = sin(b.yaw); val fz = cos(b.yaw)
     val rxv = cos(b.yaw); val rzv = -sin(b.yaw)
@@ -920,7 +940,7 @@ private fun DrawScope.drawBird(b: Bird, sh: Shape, light: Float, P: (Double, Dou
     // shadow
     val sc = P(b.x, 0.0, b.zz); val shR = (sh.rz * s * k * 1.1).toFloat()
     val sq = (0.78 * flat).toFloat()
-    drawOval(Color.Black.copy(alpha = 0.45f), Offset(sc.x - shR, sc.y - shR * sq), Size(shR * 2, shR * sq * 2))
+    if (!lean) drawOval(Color.Black.copy(alpha = 0.45f), Offset(sc.x - shR, sc.y - shR * sq), Size(shR * 2, shR * sq * 2))
     // legs
     if (!lite && b.sit < 0.7) {
         for (sd in listOf(-1.0, 1.0)) {
@@ -947,7 +967,8 @@ private fun DrawScope.drawBird(b: Bird, sh: Shape, light: Float, P: (Double, Dou
     val minor = (sh.ry * s * k * breathe).toFloat()
     val major = max(alen, (sh.rx * s * k).toFloat())
     val ang = if (alen > (sh.rx * s * k * 0.6).toFloat()) Math.toDegrees(atan2(ay.toDouble(), ax.toDouble())).toFloat() else 0f
-    rotate(ang, c) {
+    if (flatBody) drawOval(bodyCol, Offset(c.x - major, c.y - minor), Size(major * 2, minor * 2))
+    else rotate(ang, c) {
         drawOval(ink, Offset(c.x - major - 1f, c.y - minor - 1f), Size((major + 1f) * 2, (minor + 1f) * 2))
         drawOval(bodyCol, Offset(c.x - major, c.y - minor), Size(major * 2, minor * 2))
     }
@@ -967,7 +988,9 @@ private fun DrawScope.drawBird(b: Bird, sh: Shape, light: Float, P: (Double, Dou
     val headY = bodyY + (sh.ry * 0.35 + sh.neckY * (1 - b.peck * 1.35)) * s
     val hc = P(b.x + hfx * reach, max(sh.hr * s, headY), b.zz + hfz * reach)
     val hr = (sh.hr * s * k).toFloat()
-    drawCircle(ink, hr + 1f, hc); drawCircle(bodyCol, hr, hc)
+    if (!lean) drawCircle(ink, hr + 1f, hc)
+    drawCircle(bodyCol, hr, hc)
+    if (lean) return Offset(hc.x, hc.y - hr * 2.2f - 4f)
     if (!lite && sh.comb > 0.05) for (i in -1..1) { val cc = P(b.x + hfx * (reach + i * sh.hr * 0.3 * s), max(sh.hr * s, headY) + sh.hr * 0.95 * s, b.zz + hfz * (reach + i * sh.hr * 0.3 * s)); drawCircle(Color(0xFFD8443A).copy(alpha = dim), (hr * 0.28f * sh.comb.toFloat()) + 0.5f, cc) }
     // beak
     val beakTip = P(b.x + hfx * (reach + sh.hr * 1.55 * s), max(sh.hr * s, headY) - sh.hr * 0.1 * s, b.zz + hfz * (reach + sh.hr * 1.55 * s))

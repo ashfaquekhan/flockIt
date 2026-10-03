@@ -108,6 +108,7 @@ fun EntriesScreen(
     onSave: (DailyInputs) -> Unit,
     onToggleLockTimer: () -> Unit,
     onRevertDay: () -> Unit,
+    onClearDay: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var w1 by remember { mutableStateOf("") }
@@ -120,6 +121,8 @@ fun EntriesScreen(
     var n4 by remember { mutableStateOf("") }
     var w5 by remember { mutableStateOf("") }
     var n5 by remember { mutableStateOf("") }
+    // birds weighed one by one (grams) — gives the true CV and uniformity
+    var singles by remember { mutableStateOf("") }
 
     var mortality by remember { mutableStateOf("") }
 
@@ -155,7 +158,7 @@ fun EntriesScreen(
 
     fun currentValues(): Map<String, String> = mapOf(
         "w1" to w1, "n1" to n1, "w2" to w2, "n2" to n2, "w3" to w3, "n3" to n3,
-        "w4" to w4, "n4" to n4, "w5" to w5, "n5" to n5,
+        "w4" to w4, "n4" to n4, "w5" to w5, "n5" to n5, "indiv" to singles,
         "mort" to mortality,
         "feed" to feedUse.joinToString(";") { "${it.type}=${it.bags}" },
         "lift" to birdsLifted, "liftKg" to weightLifted, "lame" to lameSeparated,
@@ -171,6 +174,7 @@ fun EntriesScreen(
         w3 = entry?.w3?.fmt() ?: ""; n3 = entry?.n3?.toString() ?: ""
         w4 = entry?.w4?.fmt() ?: ""; n4 = entry?.n4?.toString() ?: ""
         w5 = entry?.w5?.fmt() ?: ""; n5 = entry?.n5?.toString() ?: ""
+        singles = entry?.indivWeights ?: ""
 
         mortality = if ("M" in saved) (entry?.mortality ?: 0).toString()
             else entry?.mortality?.let { if (it > 0) it.toString() else "" } ?: ""
@@ -203,7 +207,7 @@ fun EntriesScreen(
         if ("W" !in saved) {
             d["w1"]?.let { w1 = it }; d["n1"]?.let { n1 = it }; d["w2"]?.let { w2 = it }; d["n2"]?.let { n2 = it }
             d["w3"]?.let { w3 = it }; d["n3"]?.let { n3 = it }; d["w4"]?.let { w4 = it }; d["n4"]?.let { n4 = it }
-            d["w5"]?.let { w5 = it }; d["n5"]?.let { n5 = it }
+            d["w5"]?.let { w5 = it }; d["n5"]?.let { n5 = it }; d["indiv"]?.let { singles = it }
             // Bird counts per location rarely change: carry the last weighing's counts forward.
             val counts = listOf(n1, n2, n3, n4, n5).toMutableList()
             for (i in 0 until 5) if (counts[i].isBlank()) previousCounts.getOrNull(i)?.let { counts[i] = it.toString() }
@@ -242,7 +246,7 @@ fun EntriesScreen(
         PhysiologicalEngine.LocationSample(w4.toDoubleOrNull() ?: 0.0, n4.toIntOrNull() ?: 0),
         PhysiologicalEngine.LocationSample(w5.toDoubleOrNull() ?: 0.0, n5.toIntOrNull() ?: 0)
     )
-    val liveSampleRes = PhysiologicalEngine.computeWeightSamples(liveSamples)
+    val liveSampleRes = PhysiologicalEngine.computeWeightSamples(liveSamples, PhysiologicalEngine.parseWeights(singles))
 
     Column(
         modifier = modifier
@@ -292,29 +296,42 @@ fun EntriesScreen(
             WeightSampleRow("Loc 4", w4, n4, weightsEnabled, { w4 = it }, { n4 = it }, "w4_input", "n4_input")
             WeightSampleRow("Loc 5", w5, n5, weightsEnabled, { w5 = it }, { n5 = it }, "w5_input", "n5_input")
 
-            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                colors = entryFieldColors(),
+                value = singles, onValueChange = { singles = it },
+                label = { Text("Birds weighed one by one (g)") },
+                placeholder = { Text("352, 361, 340, 355 …") },
+                supportingText = { Text("${PhysiologicalEngine.parseWeights(singles).size} birds · ${PhysiologicalEngine.MIN_BIRDS_FOR_CV}+ give the true CV") },
+                enabled = weightsEnabled, minLines = 2,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                modifier = Modifier.fillMaxWidth().testTag("singles_input")
+            )
+            Spacer(modifier = Modifier.height(4.dp))
             Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val mono = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                     Column {
-                        Text("Flock Avg (ΣW / ΣN)", style = MaterialTheme.typography.labelSmall)
-                        Text(
-                            text = if (liveSampleRes.hasSample) String.format("%.1f g", liveSampleRes.flockAvgG) else "No sample",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                        )
+                        Text("Average", style = MaterialTheme.typography.labelSmall)
+                        Text(if (liveSampleRes.hasSample) String.format("%.1f g", liveSampleRes.flockAvgG) else "—", style = mono)
                     }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("Uniformity CV%", style = MaterialTheme.typography.labelSmall)
-                        val cvStr = if (liveSampleRes.hasSample && liveSampleRes.totalWeighed >= 2) String.format("%.1f%%", liveSampleRes.cvPercent) else "—"
-                        Text(
-                            text = cvStr,
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace,
-                                color = if (liveSampleRes.cvPercent >= 12.0) StatusCrit else if (liveSampleRes.cvPercent >= 10.0) StatusWarn else com.example.ui.theme.ValuePresent
-                            )
-                        )
+                    val cv = liveSampleRes.birdCv
+                    if (cv != null) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("CV (birds)", style = MaterialTheme.typography.labelSmall)
+                            Text(String.format("%.2f%%", cv), style = mono.copy(color = if (cv >= 12.0) StatusCrit else if (cv >= 10.0) StatusWarn else com.example.ui.theme.ValuePresent))
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("Uniformity ±10%", style = MaterialTheme.typography.labelSmall)
+                            Text(String.format("%.1f%%", liveSampleRes.uniformityPct ?: 0.0), style = mono.copy(color = com.example.ui.theme.ValuePresent))
+                        }
+                    } else {
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("Spread between locations", style = MaterialTheme.typography.labelSmall)
+                            Text(liveSampleRes.locSpreadPct?.let { String.format("%.2f%%", it) } ?: "—", style = mono)
+                        }
                     }
                 }
             }
@@ -331,6 +348,7 @@ fun EntriesScreen(
         // SECTION 2: Mortality & Feed used (multi-type)
         Section(title = "2. Mortality & feed used") {
             OutlinedTextField(
+                colors = entryFieldColors(),
                 value = mortality,
                 onValueChange = { mortality = it },
                 label = { Text("Mortality (chicks dead today)") },
@@ -355,6 +373,7 @@ fun EntriesScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         OutlinedTextField(
+                            colors = entryFieldColors(),
                             value = row.bags,
                             onValueChange = { row.bags = it },
                             label = { Text("Bags · $yesterdayDate") },
@@ -404,12 +423,14 @@ fun EntriesScreen(
         Section(title = "4. Harvest lifting & culls") {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
+                    colors = entryFieldColors(),
                     value = birdsLifted, onValueChange = { birdsLifted = it },
                     label = { Text("Birds lifted") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     enabled = !isHardLocked, modifier = Modifier.weight(1f).testTag("birds_lifted_input")
                 )
                 OutlinedTextField(
+                    colors = entryFieldColors(),
                     value = weightLifted, onValueChange = { weightLifted = it },
                     label = { Text("Lift weight (kg)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -417,6 +438,7 @@ fun EntriesScreen(
                 )
             }
             OutlinedTextField(
+                colors = entryFieldColors(),
                 value = lameSeparated, onValueChange = { lameSeparated = it },
                 label = { Text("Lame / culls separated") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -427,6 +449,7 @@ fun EntriesScreen(
         // SECTION 5: Notes & diesel (only miscellaneous section kept)
         Section(title = "5. Notes & diesel") {
             OutlinedTextField(
+                colors = entryFieldColors(),
                 value = dieselCansUsed, onValueChange = { dieselCansUsed = it },
                 label = { Text("Diesel cans used") },
                 singleLine = true,
@@ -446,6 +469,7 @@ fun EntriesScreen(
             if (!isHardLocked) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(
+                        colors = entryFieldColors(),
                         value = newNote, onValueChange = { newNote = it; noteMsg = null },
                         placeholder = { Text("Add a point, e.g. litter turned") },
                         singleLine = true,
@@ -485,6 +509,7 @@ fun EntriesScreen(
                         w3 = w3.toDoubleOrNull(), n3 = n3.toIntOrNull(),
                         w4 = w4.toDoubleOrNull(), n4 = n4.toIntOrNull(),
                         w5 = w5.toDoubleOrNull(), n5 = n5.toIntOrNull(),
+                        indivWeights = PhysiologicalEngine.parseWeights(singles).joinToString(", ") { it.fmt() },
                         mortality = mortality.trim().toIntOrNull(),
                         feedBagsUsed = feedSum,
                         feedUsedType = firstType,
@@ -520,7 +545,7 @@ fun EntriesScreen(
                 modifier = Modifier.weight(1f)
             )
             HoldButton(
-                label = "Revert day",
+                label = "Unlock day",
                 onComplete = onRevertDay,
                 container = StatusCrit,
                 icon = Icons.Default.Restore,
@@ -528,8 +553,16 @@ fun EntriesScreen(
                 modifier = Modifier.weight(1f)
             )
         }
+        HoldButton(
+            label = "Clear all entries · Day $dayNumber",
+            onComplete = onClearDay,
+            container = StatusCrit,
+            icon = Icons.Default.Close,
+            height = 46,
+            enabled = !isHardLocked
+        )
         Text(
-            text = "Disable the cut-off lock to edit after the cut-off. Revert clears this day's entries so you can re-enter.",
+            text = "Unlock day keeps every value so you can change only the wrong ones, then hold Update. Clear all empties the whole day.",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -537,6 +570,17 @@ fun EntriesScreen(
         Spacer(modifier = Modifier.height(96.dp).navigationBarsPadding())
     }
 }
+
+/** Field colours: saved (locked) values stay clearly readable instead of fading to grey on black. */
+@Composable
+fun entryFieldColors() = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+    disabledTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.92f),
+    disabledBorderColor = com.example.ui.theme.GlassLine,
+    disabledLabelColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+    disabledPlaceholderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+    disabledSupportingTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+    disabledTrailingIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+)
 
 /** Note text without leading bullet marks or extra spaces. */
 fun cleanNote(raw: String): String = raw.trim().trimStart('-', '•', '*', '·', '–').trim().replace(Regex("\\s+"), " ")
@@ -691,6 +735,7 @@ fun WeightSampleRow(
     ) {
         Text(loc, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), modifier = Modifier.weight(1.2f))
         OutlinedTextField(
+            colors = entryFieldColors(),
             value = weight, onValueChange = onWeightChange,
             placeholder = { Text("Weight (g)") }, singleLine = true, enabled = enabled,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -698,6 +743,7 @@ fun WeightSampleRow(
         )
         Spacer(modifier = Modifier.width(8.dp))
         OutlinedTextField(
+            colors = entryFieldColors(),
             value = count, onValueChange = onCountChange,
             placeholder = { Text("Count") }, singleLine = true, enabled = enabled,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -722,6 +768,7 @@ fun DeliveryRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         OutlinedTextField(
+            colors = entryFieldColors(),
             value = bags, onValueChange = onBagsChange,
             label = { Text("$slotLabel (bags)") }, singleLine = true, enabled = enabled,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -744,6 +791,7 @@ fun FeedTypeDropdown(
 
     Box(modifier = modifier) {
         OutlinedTextField(
+            colors = entryFieldColors(),
             value = displayLabel, onValueChange = {}, readOnly = true, enabled = enabled,
             label = { Text("Feed Type") },
             trailingIcon = {

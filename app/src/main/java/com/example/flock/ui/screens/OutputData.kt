@@ -471,7 +471,6 @@ class OutputData(
             } else if (day >= 2 && usedBagsToday == 0.0) add(TopicAlert(1, "Yesterday's feed use not entered yet"))
             e.waterPh?.let { ph -> if (ph < 6.0 || ph > 6.8) add(TopicAlert(1, "Water pH ${Fmt.n(ph)} outside 6.00–6.80")) }
             e.waterTempC?.let { t -> if (t > 25) add(TopicAlert(1, "Water ${Fmt.n(t, 1)} °C is warm (ideal 10.0–25.0 °C) — flush the lines")) }
-            nextPhaseDay?.let { d -> if (d - day in 1..2) add(TopicAlert(1, "Feed changes to ${CompanyStandard.feedPhase(d)} on day $d")) }
             if (day > 7 && !patternFits) add(TopicAlert(2, "No safe pan series for ${Fmt.n(dayBags, 2)} bags"))
             if (birdsPerPan > birdsPerPanMax) add(TopicAlert(1, "${Fmt.n(birdsPerPan, 1)} birds per open pan — more than ${Fmt.n(birdsPerPanMax, 1)}; open more pans"))
             birdsPerNipple?.let { b -> if (b > birdsPerNippleMax) add(TopicAlert(1, "${Fmt.n(b, 1)} birds per nipple — more than ${Fmt.n(birdsPerNippleMax, 1)}")) }

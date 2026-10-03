@@ -239,14 +239,31 @@ object PhysiologicalEngine {
         val averageG: Double get() = if (chickCount > 0) totalWeightG / chickCount else 0.0
     }
 
+    /**
+     * [birdCv] is the true coefficient of variation, from birds weighed one by one (sample SD ÷ mean,
+     * at least [MIN_BIRDS_FOR_CV] birds); [uniformityPct] = birds within ±10 % of their mean.
+     * [locSpreadPct] is the spread between the location averages: weighing a bucket of birds together
+     * averages away the bird-to-bird spread (by about √birds per bucket), so it is far smaller than the
+     * CV and is shown as a location spread, never as the CV. [cvPercent] = birdCv, else 0.
+     */
     data class WeightSampleResult(
         val flockAvgG: Double,
         val cvPercent: Double,
         val hasSample: Boolean,
-        val totalWeighed: Int
+        val totalWeighed: Int,
+        val birdCv: Double? = null,
+        val uniformityPct: Double? = null,
+        val locSpreadPct: Double? = null,
+        val birdsWeighedSingly: Int = 0
     )
 
-    fun computeWeightSamples(samples: List<LocationSample>): WeightSampleResult {
+    const val MIN_BIRDS_FOR_CV = 10
+
+    /** "352, 361 340;355" → weights in grams (anything that isn't a positive number is skipped). */
+    fun parseWeights(raw: String): List<Double> =
+        raw.split(',', ';', ' ', '\n', '\t', '/').mapNotNull { it.trim().toDoubleOrNull() }.filter { it > 0 }
+
+    fun computeWeightSamples(samples: List<LocationSample>, singles: List<Double> = emptyList()): WeightSampleResult {
         var totalW = 0.0
         var totalN = 0
         val locAverages = mutableListOf<Double>()
@@ -257,22 +274,28 @@ object PhysiologicalEngine {
                 locAverages.add(s.averageG)
             }
         }
+        // birds weighed one by one count towards the average too
+        totalW += singles.sum(); totalN += singles.size
         if (totalN == 0) {
             return WeightSampleResult(flockAvgG = 0.0, cvPercent = 0.0, hasSample = false, totalWeighed = 0)
         }
         val avg = totalW / totalN
-        var cv = 0.0
-        if (locAverages.size >= 2) {
+        val locSpread = if (locAverages.size >= 2) {
             val mean = locAverages.average()
-            val variance = locAverages.map { (it - mean) * (it - mean) }.average()
-            val sd = sqrt(variance)
-            cv = if (mean > 0) (sd / mean) * 100.0 else 0.0
+            val sd = sqrt(locAverages.map { (it - mean) * (it - mean) }.average())
+            if (mean > 0) sd / mean * 100.0 else null
+        } else null
+        var birdCv: Double? = null
+        var uniformity: Double? = null
+        if (singles.size >= MIN_BIRDS_FOR_CV) {
+            val m = singles.average()
+            val sd = sqrt(singles.sumOf { (it - m) * (it - m) } / (singles.size - 1))
+            birdCv = if (m > 0) sd / m * 100.0 else null
+            uniformity = singles.count { kotlin.math.abs(it - m) <= 0.10 * m } * 100.0 / singles.size
         }
         return WeightSampleResult(
-            flockAvgG = avg,
-            cvPercent = cv,
-            hasSample = true,
-            totalWeighed = totalN
+            flockAvgG = avg, cvPercent = birdCv ?: 0.0, hasSample = true, totalWeighed = totalN,
+            birdCv = birdCv, uniformityPct = uniformity, locSpreadPct = locSpread, birdsWeighedSingly = singles.size
         )
     }
 

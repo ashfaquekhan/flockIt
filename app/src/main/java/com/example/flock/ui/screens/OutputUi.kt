@@ -3,6 +3,8 @@ package com.example.flock.ui.screens
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -138,35 +140,36 @@ fun RangeParam(
     label: String, unit: String, min: Double?, ideal: Double?, max: Double?, present: Double?,
     dec: Int = 1, presentKind: ValueKind = ValueKind.PRESENT, idealBand: Pair<Double, Double>? = null, note: String? = null
 ) {
-    val vals = buildList {
-        if (present != null) add(v(present, dec, presentKind))
-        if (min != null) add(v(min, dec, ValueKind.MIN))
-        when {
-            idealBand != null && (idealBand.first != min || idealBand.second != max) ->
-                add(vt("${Fmt.n(idealBand.first, dec)}–${Fmt.n(idealBand.second, dec)}", ValueKind.IDEAL))
-            ideal != null -> add(v(ideal, dec, ValueKind.IDEAL))
-        }
-        if (max != null) add(v(max, dec, ValueKind.MAX))
+    val idealTxt = when {
+        idealBand != null && (idealBand.first != min || idealBand.second != max) -> "${Fmt.n(idealBand.first, dec)}–${Fmt.n(idealBand.second, dec)}"
+        ideal != null -> Fmt.n(ideal, dec)
+        else -> null
     }
-    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(label, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
-            if (unit.isNotEmpty()) Text("  $unit", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.55f))
-        }
-        ValueRow(vals)
-        RangeBar(min, ideal, max, present, presentKind, idealBand)
+    val refs = buildList {
+        if (min != null) add("min " + Fmt.n(min, dec) to kindColor(ValueKind.MIN))
+        if (idealTxt != null && present != null) add("ideal $idealTxt" to kindColor(ValueKind.IDEAL))
+        if (max != null) add("max " + Fmt.n(max, dec) to kindColor(ValueKind.MAX))
     }
+    // no reading: the ideal is the headline value
+    val main: V = when {
+        present != null -> v(present, dec, presentKind)
+        idealTxt != null -> vt(idealTxt, ValueKind.IDEAL)
+        idealBand != null -> vt("${Fmt.n(idealBand.first, dec)}–${Fmt.n(idealBand.second, dec)}", ValueKind.IDEAL)
+        else -> vt("—", ValueKind.NEUTRAL)
+    }
+    CompactLine(label, unit, null, main, rangeTrend(present, min, max), refs)
+    RangeBar(min, ideal, max, present, presentKind, idealBand, slim = true)
 }
 
 @Composable
-fun RangeBar(min: Double?, ideal: Double?, max: Double?, present: Double?, presentKind: ValueKind, idealBand: Pair<Double, Double>? = null) {
+fun RangeBar(min: Double?, ideal: Double?, max: Double?, present: Double?, presentKind: ValueKind, idealBand: Pair<Double, Double>? = null, slim: Boolean = false) {
     val pts = listOfNotNull(min, ideal, max, present, idealBand?.first, idealBand?.second)
     if (pts.isEmpty()) return
     val lo0 = pts.min(); val hi0 = pts.max()
     val span = max(hi0 - lo0, max(abs(hi0) * 0.1, 1.0))
     val lo = lo0 - span * 0.25; val hi = hi0 + span * 0.25
     val track = MaterialTheme.colorScheme.surfaceVariant
-    Canvas(Modifier.fillMaxWidth().height(18.dp)) {
+    Canvas(Modifier.fillMaxWidth().height(if (slim) 12.dp else 18.dp)) {
         fun x(v: Double) = ((v.coerceIn(lo, hi) - lo) / (hi - lo) * size.width).toFloat()
         val h = size.height
         drawRoundRect(track, size = Size(size.width, h), cornerRadius = CornerRadius(9f, 9f))
@@ -223,7 +226,175 @@ private fun status(k: Kpi): Pair<String, Color> {
 @Composable
 fun KpiCard(title: String, kpis: List<Kpi>) {
     OutputCard(title = title) {
-        kpis.forEach { KpiRow(it) }
+        kpis.forEach { KpiLine(it) }
+    }
+}
+
+/**
+ * A KPI on one line: name (and the whole-flock figure), the trend marker, the value, then commercial
+ * and ideal in small type, with the comparison bar under it.
+ */
+@Composable
+fun KpiLine(k: Kpi) {
+    val t = if (k.settling) null else trendOf(k.actual, k.company ?: k.ideal, k.better)
+    fun f(x: Double, dec: Int) = if (dec == 0) Fmt.i(x.roundToInt()) else Fmt.n(x, dec)
+    val refs = buildList {
+        if (k.company != null) add("com " + f(k.company, k.decimals) to kindColor(ValueKind.COMMERCIAL))
+        if (k.ideal != null) add(k.idealLabel.lowercase() + " " + f(k.ideal, k.decimals) to kindColor(ValueKind.IDEAL))
+    }
+    val total = k.totalFactor?.let { fac -> k.actual?.let { "flock " + f(it * fac, k.totalDec) + " " + k.totalUnit } }
+    val value = if (k.decimals == 0) vi(k.actual?.roundToInt(), k.actualKind) else v(k.actual, k.decimals, k.actualKind)
+    CompactLine(k.label, k.unit, total, value, t, refs)
+    SlimCompareBar(k)
+}
+
+/** Name and unit on the left (with an optional second line), trend marker and value on the right, references under the value. */
+@Composable
+fun CompactLine(label: String, unit: String, sub: String?, value: V, trend: TrendMark?, refs: List<Pair<String, Color>>) {
+    Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), maxLines = 2)
+                if (unit.isNotEmpty()) Text("  $unit", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.55f), maxLines = 1)
+            }
+            if (sub != null) Text(sub, style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace), color = Color.White.copy(alpha = 0.6f), maxLines = 1)
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (trend != null) { TrendIcon(trend); Spacer(Modifier.width(5.dp)) }
+                Text(value.text, style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+                    color = kindColor(if (value.text == "—") ValueKind.NEUTRAL else value.kind), maxLines = 1, softWrap = false)
+            }
+            if (refs.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                refs.forEach { (t, c) -> Text(t, style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace), color = c, maxLines = 1, softWrap = false) }
+            }
+        }
+    }
+}
+
+/** The comparison bar, full width and slim: commercial ±5 % band and tick, ideal tick, the flock's dot. */
+@Composable
+fun SlimCompareBar(k: Kpi) {
+    val c = k.company ?: k.ideal ?: return
+    val dotC = kindColor(k.actualKind)
+    Canvas(Modifier.fillMaxWidth().height(14.dp)) {
+        val pad = 7.dp.toPx()
+        val pts = listOfNotNull(c * 0.95, c * 1.05, k.ideal, k.actual)
+        val span = max(pts.max() - pts.min(), abs(c) * 0.1)
+        val lo = pts.min() - span * 0.08; val hi = pts.max() + span * 0.08
+        val w = size.width - pad * 2
+        fun x(v: Double) = pad + ((v.coerceIn(lo, hi) - lo) / (hi - lo) * w).toFloat()
+        val mid = size.height / 2
+        drawLine(Color.White.copy(alpha = 0.22f), Offset(pad, mid), Offset(pad + w, mid), strokeWidth = 2f)
+        k.company?.let { co ->
+            drawRect(kindColor(ValueKind.COMMERCIAL).copy(alpha = 0.28f), Offset(x(co * 0.95), mid - 3.5.dp.toPx()), Size(x(co * 1.05) - x(co * 0.95), 7.dp.toPx()))
+            drawLine(kindColor(ValueKind.COMMERCIAL), Offset(x(co), mid - 6.dp.toPx()), Offset(x(co), mid + 6.dp.toPx()), strokeWidth = 2.dp.toPx())
+        }
+        k.ideal?.let { id -> drawLine(kindColor(ValueKind.IDEAL), Offset(x(id), mid - 6.dp.toPx()), Offset(x(id), mid + 6.dp.toPx()), strokeWidth = 2.dp.toPx()) }
+        k.actual?.let { drawCircle(dotC, 5.dp.toPx(), Offset(x(it), mid)); drawCircle(Color.Black, 1.8.dp.toPx(), Offset(x(it), mid)) }
+    }
+}
+
+// =================================== trend markers ===================================
+
+enum class Grade { GOOD, AVERAGE, BAD }
+/** [dir] 1 above the reference, −1 below, 0 on par; [grade] says whether that is good. */
+data class TrendMark(val dir: Int, val grade: Grade)
+
+val TrendGood = Color(0xFF46B98C)
+val TrendAverage = Color(0xFFF0A23A)
+val TrendBad = Color(0xFFE5534B)
+fun gradeColor(g: Grade) = when (g) { Grade.GOOD -> TrendGood; Grade.AVERAGE -> TrendAverage; Grade.BAD -> TrendBad }
+
+/**
+ * Against a standard: within ±[tolPct] % is on par (an orange dash where higher or lower is better, a
+ * green one where being on target is the aim). Beyond it the arrow shows the direction and its colour
+ * whether that is good: green good, orange a little off, red well off (3 × the tolerance).
+ */
+fun trendOf(actual: Double?, ref: Double?, better: Better, tolPct: Double = 3.0): TrendMark? {
+    if (actual == null || ref == null || ref == 0.0) return null
+    val d = (actual - ref) / abs(ref) * 100
+    val dir = if (abs(d) < tolPct) 0 else if (d > 0) 1 else -1
+    val grade = when (better) {
+        Better.HIGHER -> when { d >= tolPct -> Grade.GOOD; d > -3 * tolPct -> Grade.AVERAGE; else -> Grade.BAD }
+        Better.LOWER -> when { d <= -tolPct -> Grade.GOOD; d < 3 * tolPct -> Grade.AVERAGE; else -> Grade.BAD }
+        Better.CLOSER -> when { abs(d) < tolPct -> Grade.GOOD; abs(d) < 3 * tolPct -> Grade.AVERAGE; else -> Grade.BAD }
+    }
+    return TrendMark(dir, grade)
+}
+
+/** A reading against its safe range: inside is good (green dash); just outside orange, well outside red. */
+fun rangeTrend(actual: Double?, min: Double?, max: Double?): TrendMark? {
+    if (actual == null || (min == null && max == null)) return null
+    val span = if (min != null && max != null) max - min else abs(min ?: max!!) * 0.2
+    return when {
+        max != null && actual > max -> TrendMark(1, if (actual - max <= span * 0.15) Grade.AVERAGE else Grade.BAD)
+        min != null && actual < min -> TrendMark(-1, if (min - actual <= span * 0.15) Grade.AVERAGE else Grade.BAD)
+        else -> TrendMark(0, Grade.GOOD)
+    }
+}
+
+/** ▲ / ▼ / – in the grade's colour. */
+@Composable
+fun TrendIcon(t: TrendMark, size: androidx.compose.ui.unit.Dp = 12.dp) {
+    val c = gradeColor(t.grade)
+    Canvas(Modifier.size(size)) {
+        val w = this.size.width; val h = this.size.height
+        when (t.dir) {
+            1 -> drawPath(androidx.compose.ui.graphics.Path().apply { moveTo(w / 2, h * 0.12f); lineTo(w * 0.95f, h * 0.88f); lineTo(w * 0.05f, h * 0.88f); close() }, c)
+            -1 -> drawPath(androidx.compose.ui.graphics.Path().apply { moveTo(w * 0.05f, h * 0.12f); lineTo(w * 0.95f, h * 0.12f); lineTo(w / 2, h * 0.88f); close() }, c)
+            else -> drawLine(c, Offset(w * 0.12f, h / 2), Offset(w * 0.88f, h / 2), strokeWidth = h * 0.22f, cap = StrokeCap.Round)
+        }
+    }
+}
+
+// =================================== tabs and tables ===================================
+
+/** Equal-width tabs with a white outline; the chosen one is outlined brighter and bold. */
+@Composable
+fun OutputTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        labels.forEachIndexed { i, l ->
+            val on = i == selected
+            Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(10.dp))
+                .border(if (on) 2.dp else 1.dp, if (on) Color.White else Color.White.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                .background(if (on) Color.White.copy(alpha = 0.10f) else Color.Transparent)
+                .clickable { onSelect(i) }
+                .padding(vertical = 10.dp, horizontal = 4.dp)
+                .testTagCompat("tab_out_$i"), contentAlignment = Alignment.Center) {
+                Text(l, style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (on) FontWeight.Bold else FontWeight.Medium),
+                    color = Color.White.copy(alpha = if (on) 1f else 0.7f), maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
+        }
+    }
+}
+
+private fun Modifier.testTagCompat(tag: String) = this.then(androidx.compose.ui.Modifier.testTag(tag))
+
+/** One row of the house / line / pan table (null = not shown for that level). */
+data class MMRow(val label: String, val house: V?, val line: V?, val pan: V?)
+
+/** Whole house (macro) next to one line and one pan (micro), same numbers side by side. */
+@Composable
+fun MacroMicroTable(rows: List<MMRow>, heads: List<String> = listOf("House", "Line", "Pan")) {
+    val mono = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp)
+    val grey = Color.White.copy(alpha = 0.6f)
+    val wts = listOf(1.3f, 1.1f, 0.85f)
+    Column(Modifier.fillMaxWidth().border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Row(Modifier.fillMaxWidth()) {
+            Spacer(Modifier.weight(1.05f))
+            heads.forEachIndexed { i, h -> Text(h, Modifier.weight(wts[i]).padding(start = 4.dp), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = grey, textAlign = androidx.compose.ui.text.style.TextAlign.End) }
+        }
+        rows.forEach { r ->
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(r.label, Modifier.weight(1.05f), style = MaterialTheme.typography.labelMedium, color = grey, maxLines = 2)
+                listOf(r.house, r.line, r.pan).forEachIndexed { i, c ->
+                    Text(c?.text ?: "", Modifier.weight(wts[i]).padding(start = 4.dp), style = mono, color = c?.let { kindColor(if (it.text == "—") ValueKind.NEUTRAL else it.kind) } ?: grey,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.End, maxLines = 1, softWrap = false)
+                }
+            }
+        }
     }
 }
 

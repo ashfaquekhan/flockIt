@@ -48,7 +48,7 @@ class CoopInteractionTest {
     @Test fun projectionRoundTrips() {
         for (yaw in listOf(0.0, 0.7, 2.4, -1.3)) for (elev in listOf(0.3, 0.6154797, 1.1)) {
             val cam = CoopCam().apply { this.yaw = yaw; this.elev = elev; zoom = 1.4 }
-            val pr = CoopProj(1.5, 0.675, 1080f, 900f, cam)
+            val pr = CoopProj(3.05, 11.9, 0.5, 1080f, 900f, cam)
             for ((x, z) in listOf(0.2 to 0.3, 1.1 to 0.9, 0.75 to 1.4)) {
                 val (bx, bz) = pr.floorAt(pr.P(x, 0.0, z))
                 assertEquals(x, bx, 1e-4); assertEquals(z, bz, 1e-4)
@@ -57,12 +57,12 @@ class CoopInteractionTest {
     }
 
     @Test fun grainsBringBirdsOver() {
-        val sim = CoopSim().apply { sideFt = 5.0; x0Ft = 60.0; y0Ft = 10.0 }; val a = input()
+        val sim = CoopSim().apply { lenFt = 5.0; widFt = 5.0; x0Ft = 60.0; y0Ft = 10.0 }; val a = input()
         sim.setup(a)
         assertEquals("birds at the flock density", 1.31 * 25, sim.birds.size.toDouble(), 1.0)
         repeat(60) { sim.update(0.016, a, 1.0) }
         val b = sim.birds.first()                   // Pip, the curious one
-        sim.dropGrains((b.x + 0.3).coerceAtMost(sim.side - 0.2), b.zz)
+        sim.dropGrains((b.x + 0.3).coerceAtMost(sim.sx - 0.2), b.zz)
         val before = sim.grains.size
         var pecked = false
         repeat(900) { sim.update(0.016, a, 1.0); if (sim.birds.any { it.state == "peckGrain" }) pecked = true }

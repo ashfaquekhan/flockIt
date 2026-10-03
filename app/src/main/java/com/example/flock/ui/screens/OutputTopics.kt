@@ -89,43 +89,26 @@ fun StatTile(label: String, value: V, sub: String?, modifier: Modifier = Modifie
     }
 }
 
-/** 3 tiles per row, 2 on narrow screens or with large system text. */
-@Composable
-fun StatGrid(tiles: List<@Composable (Modifier) -> Unit>) {
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val cols = if (maxWidth < 380.dp || LocalDensity.current.fontScale > 1.1f) 2 else 3
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            tiles.chunked(cols).forEach { row ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    row.forEach { it(Modifier.weight(1f)) }
-                    repeat(cols - row.size) { Spacer(Modifier.weight(1f)) }
-                }
-            }
-        }
-    }
-}
+// =================================== TABS ===================================
 
+/** Birds: how many, deaths, growth, uniformity, comfort and the curves — everything about the birds in one place. */
 @Composable
-fun OverviewStats(d: OutputData, feeder: FeederState) {
-    val e = d.e
-    StatGrid(listOf(
-        { m -> StatTile("Live birds", vi(d.live, P), "entry ${Fmt.i(d.entryBirds)}", m) },
-        { m -> StatTile("Weight g", v(d.bw, 1, d.vk), d.bwCom?.let { "com ${Fmt.n(it, 1)}" }, m) },
-        { m -> StatTile("CV %", v(e.cv, 2, P), "max 10.00", m) },
-        { m -> StatTile("FCR", v(e.fcr, 3, P), d.fcrCom?.let { "com ${Fmt.n(it, 3)}" }, m) },
-        { m -> StatTile("Deaths today", vi(d.mortToday, P), d.mortTodayPct?.let { Fmt.pct(it, 3) }, m) },
-        { m -> StatTile("Mortality %", v(d.mortTDPct, 2, P), "com ${Fmt.n(d.comCumPct, 2)}", m) },
-        { m -> StatTile("Feed bags", v(d.planBags, 2, PR), "${d.feedings} × ${Fmt.n(d.bagsPerFeeding, 2)}", m) },
-        { m -> StatTile("Feeder %", if (feeder.lastFedAt == null) vt("—", ValueKind.NEUTRAL) else v(feeder.fillFrac * 100, 1, if (feeder.levelKg > 0) PR else MX),
-            when { feeder.lastFedAt == null -> "no feeding logged"; feeder.levelKg > 0 -> "${Fmt.n(feeder.hoursToEmpty ?: 0.0, 1)} h left"; else -> "empty ${Fmt.n(feeder.emptyForH, 1)} h" }, m) },
-        { m -> StatTile("Water L", v(e.totalWaterL, 1, PR), "${Fmt.n(e.totalWaterL / d.tankL * d.refillF, 2)} tanks", m) }
-    ))
-}
-
-@Composable
-fun GrowthBlock(d: OutputData) {
+fun BirdsTab(d: OutputData) {
     val e = d.e
     val live = d.live.toDouble()
+    val comCumBirds = d.comCumPct * d.entryBirds / 100.0
+    KpiCard("Flock", listOf(
+        Kpi("Live birds", "", live, P, d.entryBirds - comCumBirds, null, Better.HIGHER, 0),
+        Kpi("Deaths today", "%", d.mortTodayPct, P, d.comDailyPct, null, Better.LOWER, 3,
+            totalFactor = (d.live + d.mortToday) / 100.0, totalUnit = "birds", totalDec = 0),
+        Kpi("Mortality till date", "%", d.mortTDPct, P, d.comCumPct, d.ceilingPct, Better.LOWER, 2,
+            totalFactor = d.entryBirds / 100.0, totalUnit = "birds", totalDec = 0),
+        Kpi("Livability", "%", e.livability, P, 100 - d.comCumPct, null, Better.HIGHER, 2)
+    ))
+    OutputCard(title = "Start and removals") {
+        Param("Start", "", vi(d.placed, P, "Placed"), vi(d.reception, P, "Reception"), vi(d.entryBirds, P, "Entry"))
+        Param("Removed", "", vi(d.lameTD, P, "Culls"), vi(d.liftTD, P, "Lifted"), v(d.liftKgTD, 1, P, "Lifted kg"))
+    }
     KpiCard("Growth", listOf(
         Kpi("Body weight", "g", d.bw, d.vk, d.bwCom, d.bwIdeal, Better.HIGHER, 1, totalFactor = live / 1000, totalUnit = "kg"),
         Kpi("Daily gain", "g/day", d.gain, d.gainKind, d.gainCom, d.gainIdeal, Better.HIGHER, 1, totalFactor = live / 1000, totalUnit = "kg"),
@@ -133,14 +116,45 @@ fun GrowthBlock(d: OutputData) {
         Kpi("cFCR", "2 kg", e.cFcr, P, d.cfcrCom, d.cfcrIdeal, Better.LOWER, 3, settling = d.day < 7),
         Kpi("EPEF", "", d.epef, P, d.epefCom, d.epefIdeal, Better.HIGHER, 1, settling = d.day < 7)
     ))
-    if (e.sampleEntered) PopulationDistributionCard(entry = e)
+    OutputCard(title = "Uniformity") {
+        RangeParam("CV · birds weighed one by one", "%", null, 8.0, 10.0, e.cv, 2)
+        RangeParam("Within ±10 % of the mean", "%", 80.0, null, null, e.uniformityPct, 1)
+        if (e.locSpreadPct != null) Param("Spread between locations", "%", v(e.locSpreadPct, 2, P, "Bulk weighing"))
+    }
+    if (e.cv != null && e.sampleEntered) PopulationDistributionCard(entry = e)
+    OutputCard(title = "Comfort") {
+        RangeParam("Body (vent)", "°C", d.bodyTemp.first, d.bodyTemp.second, d.bodyTemp.third, null)
+        RangeParam("Feet", "°C", d.footTemp.first, d.footTemp.second, d.footTemp.third, null)
+        RangeParam("Density", "kg/ft²", null, null, kgPerFt2(d.farm.densityCapDefault), e.densityKgM2?.let { kgPerFt2(it) }, 3, d.vk)
+        RangeParam("Floor", "ft²/bird", e.minFtPerBird.takeIf { it > 0 }, null, null, e.ftPerBird.takeIf { it > 0 }, 3, d.vk)
+        Param("Light", "h", v(e.lightHours, 1, I, "Light"), v(24.0 - e.lightHours, 1, I, "Dark"))
+        RangeParam("Light intensity", "lux", d.lightLux.first, null, d.lightLux.second, e.luxPerFt2, idealBand = d.lightLux)
+    }
     BirdCharts(d)
 }
 
-// =================================== FEED ===================================
-
+/** Ventilation: the house air and litter it controls, then the fan plan. */
 @Composable
-fun FeedSection(d: OutputData, onFarmChange: ((com.example.flock.data.FarmEntity) -> Unit)? = null) {
+fun VentTab(d: OutputData) {
+    val e = d.e
+    OutputCard(title = "House air") {
+        RangeParam("Temperature", "°C", e.tempMin, e.tempIdeal, e.tempMax, null)
+        RangeParam("Humidity", "%", e.rhMin, e.rhIdeal, e.rhMax, null)
+        RangeParam("Air speed", "ft/min", null, null, PhysiologicalEngine.maxAirSpeedFpm(d.day), e.measuredAirspeed)
+        RangeParam("Static pressure", "Pa", 20.0, null, 25.0, e.measuredPressure)
+        RangeParam("CO₂", "ppm", null, null, e.co2Max, e.measuredCo2)
+        RangeParam("NH₃", "ppm", null, null, e.nh3Max, e.measuredNh3)
+    }
+    OutputCard(title = "Litter") {
+        RangeParam("Temperature", "°C", d.litterTemp.first, d.litterTemp.second, d.litterTemp.third, null)
+        RangeParam("Moisture", "%", 20.0, 25.0, 30.0, null)
+    }
+    VentSection(d)
+}
+
+/** Feed, water and stock: today's plan, what was eaten, water, and what is in store. */
+@Composable
+fun FeedTab(d: OutputData, onFarmChange: ((com.example.flock.data.FarmEntity) -> Unit)? = null) {
     FeedingPlanCard(d)
     if (d.day <= 7) FirstWeekCard(d)
     val yLive = (d.byDay[d.day - 1]?.liveBirds ?: d.live).toDouble()
@@ -148,9 +162,9 @@ fun FeedSection(d: OutputData, onFarmChange: ((com.example.flock.data.FarmEntity
         Kpi("Yesterday", "g/bird", d.usedPerBirdY, P, d.comPerBirdY, d.idealPerBirdY, Better.CLOSER, 1, totalFactor = yLive / 1000, totalUnit = "kg"),
         Kpi("Till date", "g/bird", d.cumPerBird, P, d.cumPerBirdCom, d.cumPerBirdIdeal, Better.CLOSER, 1, totalFactor = d.live / 1000.0, totalUnit = "kg")
     ))
-    StockBlock(d)
-    WaterCard(d, onFarmChange)
     FeedCharts(d)
+    WaterCard(d, onFarmChange)
+    StockBlock(d)
 }
 
 /** A numbered step of the feeding plan: circle with the number, name, then its values. */
@@ -179,44 +193,39 @@ private fun FeedingPlanCard(d: OutputData) {
     val hopper = max(0.0, o.bagsPerFeeding - d.feederLines * pat.openPerLine / d.pansPerBag)
     val shift = rememberClockShift("feed_${d.farm.spreadsheetId}")
     val light = LightProgram(d.e.lightHours)
+    val lines = d.feederLines
     OutputCard(title = "Feeding plan") {
-        Step(1, "Feed needed today") {
-            ValueRow(listOf(v(d.giveBags, 2, PR), v(d.comPerBird?.let { it * live / 1000 / bag }, 2, C), v(d.idealPerBird * live / 1000 / bag, 2, I)), "bags")
-            ValueRow(listOf(v(d.givePerBird, 1, PR), v(d.comPerBird, 1, C), v(d.idealPerBird, 1, I)), "g/bird")
-        }
-        Step(2, "Bags to give") {
-            ValueRow(listOf(v(d.dayBags, 2, PR, "Full bags"), v(d.extraBags, 2, PR, "Above need")), "give")
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("times a day", modifier = Modifier.width(62.dp), maxLines = 2, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
-                d.feedOptions.forEachIndexed { i, opt ->
-                    val tag = when { !opt.safe -> "Not safe"; i == d.recommendedOption -> "Best"; else -> "Also OK" }
-                    val kind = when { !opt.safe -> MX; i == d.recommendedOption -> P; else -> PR }
-                    ValueChip(vi(opt.feedings, kind, tag), Modifier.weight(1f)
-                        .border(if (i == pick) 2.dp else 0.dp, if (i == pick) Color.White else Color.Transparent, RoundedCornerShape(8.dp))
-                        .clickable { pick = i })
-                }
+        // today, for the whole house
+        KpiLine(Kpi("Feed needed", "bags", d.giveBags, PR, d.comPerBird?.let { it * live / 1000 / bag }, d.idealPerBird * live / 1000 / bag, Better.CLOSER, 2))
+        KpiLine(Kpi("Feed per bird", "g", d.givePerBird, PR, d.comPerBird, d.idealPerBird, Better.CLOSER, 1))
+        ValueRow(listOf(v(d.dayBags, 2, PR, "Full bags"), v(d.extraBags, 2, PR, "Above need")), "give")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("times a day", modifier = Modifier.width(62.dp), maxLines = 2, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
+            d.feedOptions.forEachIndexed { i, opt ->
+                val tag = when { !opt.safe -> "Not safe"; i == d.recommendedOption -> "Best"; else -> "Also OK" }
+                val kind = when { !opt.safe -> MX; i == d.recommendedOption -> P; else -> PR }
+                ValueChip(vi(opt.feedings, kind, tag), Modifier.weight(1f)
+                    .border(if (i == pick) 2.dp else 0.dp, if (i == pick) Color.White else Color.Transparent, RoundedCornerShape(8.dp))
+                    .clickable { pick = i })
             }
         }
-        Step(3, "Each feeding") {
-            ValueRow(listOf(v(o.bagsPerFeeding, 2, PR, "Bags"), v(o.bagsPerLine, 2, PR, "Bags / line"), v(o.kgPerLine, 1, PR, "kg / line")), "pour")
-        }
-        Step(4, "Pans on and off") {
-            ValueRow(listOf(vt(pat.label, if (o.safe) PR else MX, "Pattern")), "line")
-            ValueRow(listOf(vi(pat.openPerLine, PR, "On"), vi(d.pansInArea, P, "In area"), vi(d.pansPerLine, P, "Feed pans")), "pans")
-            ValueRow(listOf(v(o.fillPct, 1, PR, "Pans filled %"), v(hopper, 2, PR, "Left in hopper")), "fill")
-            FarmTopView(d, pat)
-            KeyLine(kindColor(PR) to "on", Color.White.copy(alpha = 0.6f) to "off", Color.White to "sensor", kindColor(MN) to "drinker")
-        }
-        Step(5, "One pan covers") {
-            ValueRow(listOf(v(pat.birdsPerPan, 1, PR, "Birds"), v(d.birdsPerPanMax, 1, MX, "Max")), "birds")
-            ValueRow(listOf(v(pat.cellFt2, 1, PR, "ft²")), "floor")
-            ValueRow(listOf(v(pat.travelM, 2, PR, "Walk m"), v(ALLOWED_TRAVEL_M, 2, MX, "Max m")), "walk")
-            PanCellView(d, pat)
-        }
-        Step(6, "Feeding clock") {
-            DayClock(d.feedTimesFor(o.feedings).map { hoursOf(it) }, shift.value, { shift.value = it }, kindColor(PR),
-                light.darkStartHour to light.darkEndHour, farmZone(d.farm), tag = "feedClock")
-        }
+        ValueRow(listOf(vt(pat.label, if (o.safe) PR else MX, "Pans on / off")), "pattern")
+        ValueRow(listOf(v(o.fillPct, 1, PR, "Pans filled %"), v(hopper, 2, PR, "Hopper bags")), "fill")
+        // macro and micro: the whole house next to one line and one pan, per feeding
+        MacroMicroTable(listOf(
+            MMRow("Bags / feeding", v(o.bagsPerFeeding, 2, PR), v(o.bagsPerLine, 2, PR), null),
+            MMRow("kg / feeding", v(o.bagsPerFeeding * bag, 1, PR), v(o.kgPerLine, 1, PR), v(if (pat.openPerLine > 0) o.kgPerLine / pat.openPerLine else null, 2, PR)),
+            MMRow("Pans on", vi(pat.openPerLine * lines, PR), vi(pat.openPerLine, PR), null),
+            MMRow("Birds", vi(d.live, P), v(live / lines, 1, P), v(pat.birdsPerPan, 1, if (pat.birdsPerPan <= d.birdsPerPanMax) PR else MX)),
+            MMRow("Floor ft²", v(d.areaInUseFt2, 1, P), v(d.areaInUseFt2 / lines, 1, P), v(pat.cellFt2, 1, PR)),
+            MMRow("Walk m", null, null, v(pat.travelM, 2, if (pat.travelM <= ALLOWED_TRAVEL_M) PR else MX))
+        ))
+        ValueRow(listOf(v(d.birdsPerPanMax, 1, MX, "Max birds / pan"), v(ALLOWED_TRAVEL_M, 2, MX, "Max walk m")), "limits")
+        FarmTopView(d, pat)
+        KeyLine(kindColor(PR) to "on", Color.White.copy(alpha = 0.6f) to "off", Color.White to "sensor", kindColor(MN) to "drinker")
+        PanCellView(d, pat)
+        DayClock(d.feedTimesFor(o.feedings).map { hoursOf(it) }, shift.value, { shift.value = it }, kindColor(PR),
+            light.darkStartHour to light.darkEndHour, farmZone(d.farm), tag = "feedClock")
     }
 }
 
@@ -401,54 +410,6 @@ private fun ControllerCard(d: OutputData) {
 
 // =================================== MORTALITY ===================================
 
-@Composable
-fun MortalitySection(d: OutputData) {
-    val e = d.e
-    KpiCard("Mortality", listOf(
-        Kpi("Till date", "%", d.mortTDPct, P, d.comCumPct, d.ceilingPct, Better.LOWER, 2, points = true, totalFactor = d.entryBirds / 100.0, totalUnit = "birds", scope = "% entry")
-    ))
-    OutputCard(title = "Birds") {
-        val comCumBirds = d.comCumPct * d.entryBirds / 100.0
-        Param("Live", "", vi(d.live, P), v(d.entryBirds - comCumBirds, 1, C), strong = true)
-        Param("Start", "", vi(d.placed, P, "Placed"), vi(d.reception, P, "Reception"), vi(d.entryBirds, P, "Entry"))
-        Param("Deaths", "", listOf(
-            "today" to listOf(vi(d.mortToday, P), v(d.comMortBirdsToday, 1, C), v(d.mortTodayPct, 3, P, "%")),
-            "till date" to listOf(vi(d.mortTD, P), v(comCumBirds, 1, C), v(d.mortTDPct, 2, P, "%"))
-        ))
-        Param("Livability", "%", v(e.livability, 2, P), v(100 - d.comCumPct, 2, C))
-        Param("Culls · lifted", "", vi(d.lameTD, P, "Culls"), vi(d.liftTD, P, "Lifted"), v(d.liftKgTD, 1, P, "Lifted kg"))
-    }
-}
 
 // =================================== ENVIRONMENT ===================================
 
-@Composable
-fun EnvironmentSection(d: OutputData) {
-    val e = d.e
-    OutputCard(title = "House air") {
-        RangeParam("Temperature", "°C", e.tempMin, e.tempIdeal, e.tempMax, null)
-        RangeParam("Humidity", "%", e.rhMin, e.rhIdeal, e.rhMax, null)
-    }
-    OutputCard(title = "Litter") {
-        RangeParam("Temperature", "°C", d.litterTemp.first, d.litterTemp.second, d.litterTemp.third, null)
-        RangeParam("Moisture", "%", 20.0, 25.0, 30.0, null)
-    }
-    OutputCard(title = "Bird") {
-        RangeParam("Body (vent)", "°C", d.bodyTemp.first, d.bodyTemp.second, d.bodyTemp.third, null)
-        RangeParam("Feet", "°C", d.footTemp.first, d.footTemp.second, d.footTemp.third, null)
-    }
-    OutputCard(title = "Air quality") {
-        RangeParam("CO₂", "ppm", null, null, e.co2Max, e.measuredCo2)
-        RangeParam("NH₃", "ppm", null, null, e.nh3Max, e.measuredNh3)
-        RangeParam("Static pressure", "Pa", 20.0, null, 25.0, e.measuredPressure)
-        RangeParam("Air speed", "ft/min", null, null, PhysiologicalEngine.maxAirSpeedFpm(d.day), e.measuredAirspeed)
-    }
-    OutputCard(title = "Light") {
-        Param("Hours", "", v(e.lightHours, 1, I, "Light"), v(24.0 - e.lightHours, 1, I, "Dark"))
-        RangeParam("Intensity", "lux", d.lightLux.first, null, d.lightLux.second, e.luxPerFt2, idealBand = d.lightLux)
-    }
-    OutputCard(title = "Space") {
-        RangeParam("Density", "kg/ft²", null, null, kgPerFt2(d.farm.densityCapDefault), e.densityKgM2?.let { kgPerFt2(it) }, 3, d.vk)
-        RangeParam("Floor", "ft²/bird", e.minFtPerBird.takeIf { it > 0 }, null, null, e.ftPerBird.takeIf { it > 0 }, 3, d.vk)
-    }
-}

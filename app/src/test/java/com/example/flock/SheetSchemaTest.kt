@@ -15,7 +15,7 @@ class SheetSchemaTest {
     private val sid = "S1"
     private val farm = FarmEntity(spreadsheetId = sid, farmName = "Maa Tarini", farmId = "farm_1")
 
-    private fun rawOf(blocks: Map<String, List<List<String>>>) = SheetSchema.RawFile(
+    private fun rawOf(blocks: Map<String, List<List<Any>>>) = SheetSchema.RawFile(
         titles = SheetSchema.TABS.toSet(), meta = blocks["_Meta"], farm = blocks["_Farm"], config = blocks["_Config"],
         feedTypes = blocks["_FeedTypes"], flocks = blocks["Flocks"], days = blocks["DailyData"], tasks = blocks["Tasks"])
 
@@ -48,8 +48,8 @@ class SheetSchemaTest {
         assertEquals(SheetSchema.DAILY_HEADERS, hdr.take(SheetSchema.DAILY_HEADERS.size))
         assertEquals("Vet visit", hdr.last())
         val row = b["DailyData"]!![1]
-        assertEquals("7", row[SheetSchema.DAILY_HEADERS.indexOf("Mortality")])
-        assertEquals("12.5", row[SheetSchema.DAILY_HEADERS.indexOf("FeedBagsUsed")])
+        assertEquals(7, row[SheetSchema.DAILY_HEADERS.indexOf("Mortality")])          // a real number, not text
+        assertEquals(12.5, row[SheetSchema.DAILY_HEADERS.indexOf("FeedBagsUsed")])
         assertEquals("yes", row.last())
     }
 
@@ -113,5 +113,45 @@ class SheetSchemaTest {
 
     @Test fun columnLetters() {
         assertEquals(listOf("A", "Z", "AA", "AZ", "BA", "AAA"), listOf(1, 26, 27, 52, 53, 703).map { SheetSchema.colLetter(it) })
+    }
+
+    @Test fun eachFeedVarietyHasItsOwnBagsColumn() {
+        val d = DailyDataEntity(spreadsheetId = sid, flockId = "F1", dayNumber = 12, date = "2026-10-01", mortality = 4,
+            feedBagsUsed = 15.0, feedUsedType = "B1", feedUsedBreakdown = "B1=3.0;B2=12.0", updatedAt = 9, locked = false)
+        val c = SheetSchema.Content(farm, null, listOf(
+            com.example.flock.data.FeedTypeEntity(spreadsheetId = sid, code = "B1", name = "Starter", bagKg = 50.0, sortOrder = 1),
+            com.example.flock.data.FeedTypeEntity(spreadsheetId = sid, code = "B2", name = "Grower", bagKg = 50.0, sortOrder = 2),
+            com.example.flock.data.FeedTypeEntity(spreadsheetId = sid, code = "B3", name = "Finisher", bagKg = 50.0, sortOrder = 3)),
+            emptyList(), listOf(d), emptyList())
+        val b = SheetSchema.blocks(c, SheetSchema.primaryMeta("farm_1", 4))
+        val hdr = b["DailyData"]!![0].map { it.toString() }
+        val row = b["DailyData"]!![1]
+        assertEquals(3.0, row[hdr.indexOf("Used B1")]); assertEquals(12.0, row[hdr.indexOf("Used B2")]); assertEquals("", row[hdr.indexOf("Used B3")])
+        assertEquals(false, row[hdr.indexOf("Locked")]); assertEquals("2026-10-01", row[hdr.indexOf("Date")])
+        // read back: the split is kept
+        val back = SheetSchema.parse(sid, rawOf(b), farm, null).days.single()
+        assertEquals(15.0, back.feedBagsUsed, 1e-9)
+        assertEquals(mapOf("B1" to 3.0, "B2" to 12.0), SheetSchema.usedSplit(back))
+        // a hand edit of one variety's column changes the split and the total
+        val edited = b.toMutableMap()
+        edited["DailyData"] = listOf(b["DailyData"]!![0], row.toMutableList().also { it[hdr.indexOf("Used B2")] = 10.5 })
+        val e2 = SheetSchema.parse(sid, rawOf(edited), farm, null).days.single()
+        assertEquals(13.5, e2.feedBagsUsed, 1e-9)
+        assertEquals(10.5, SheetSchema.usedSplit(e2)["B2"]!!, 1e-9)
+    }
+
+    @Test fun trueCvNeedsBirdsWeighedOneByOne() {
+        // five buckets of 50 birds: the averages barely differ even though birds vary a lot
+        val buckets = listOf(355.0, 362.0, 371.0, 349.0, 366.0).map { com.example.flock.engine.PhysiologicalEngine.LocationSample(it * 50, 50) }
+        val bulk = com.example.flock.engine.PhysiologicalEngine.computeWeightSamples(buckets)
+        assertEquals(null, bulk.birdCv)
+        assertTrue(bulk.locSpreadPct!! < 3.0)
+        val singles = listOf(300.0, 320.0, 335.0, 340.0, 350.0, 355.0, 360.0, 365.0, 372.0, 380.0, 390.0, 405.0, 420.0)
+        val r = com.example.flock.engine.PhysiologicalEngine.computeWeightSamples(buckets, singles)
+        val m = singles.average(); val sd = Math.sqrt(singles.sumOf { (it - m) * (it - m) } / (singles.size - 1))
+        assertEquals(sd / m * 100, r.birdCv!!, 1e-9)
+        assertEquals(singles.count { Math.abs(it - m) <= 0.1 * m } * 100.0 / singles.size, r.uniformityPct!!, 1e-9)
+        assertEquals((buckets.sumOf { it.totalWeightG } + singles.sum()) / (250 + singles.size), r.flockAvgG, 1e-9)
+        assertEquals(listOf(352.0, 361.0, 340.0), com.example.flock.engine.PhysiologicalEngine.parseWeights("352, 361 340;x"))
     }
 }

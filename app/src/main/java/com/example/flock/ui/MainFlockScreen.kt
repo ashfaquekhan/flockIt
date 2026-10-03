@@ -194,7 +194,8 @@ fun MainFlockScreen(
                     recentNotes = recentNotes,
                     onSave = { inputs -> viewModel.saveDayEntry(inputs) },
                     onToggleLockTimer = { viewModel.toggleCutoffLock() },
-                    onRevertDay = { viewModel.revertDay() }
+                    onRevertDay = { viewModel.revertDay() },
+                    onClearDay = { viewModel.clearDay() }
                 )
                 FlockNavTab.OUTPUT -> OutputScreen(
                     flock = activeFlock,

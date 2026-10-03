@@ -258,8 +258,21 @@ class FlockRepository(
     }
 
     /**
-     * Safely reverts a day: clears all of that day's inputs (samples, mortality, feed, deliveries,
-     * notes) and its committed lock, recomputes, and pushes the cleared row to the sheet.
+     * Reverts (unlocks) a day: its saved groups open again for editing, every value stays in place so
+     * only the wrong ones need changing.
+     */
+    suspend fun unlockDay(spreadsheetId: String, flockId: String, dayNumber: Int, userEmail: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            val existing = dailyDataDao.getDayEntry(spreadsheetId, flockId, dayNumber)
+                ?: return@withContext Result.failure(Exception("Day entry not found"))
+            val open = existing.copy(committed = false, savedFields = "", updatedAt = System.currentTimeMillis(), updatedBy = userEmail)
+            saveAndPushDay("Day $dayNumber unlocked", spreadsheetId, open)
+            Result.success(Unit)
+        }
+
+    /**
+     * Clears a day: all of that day's inputs (samples, mortality, feed, deliveries, notes) and its
+     * lock, recomputes, and pushes the cleared row to the sheet.
      */
     suspend fun revertDay(spreadsheetId: String, flockId: String, dayNumber: Int, userEmail: String): Result<Unit> =
         withContext(Dispatchers.IO) {
@@ -267,7 +280,7 @@ class FlockRepository(
                 ?: return@withContext Result.failure(Exception("Day entry not found"))
             val cleared = existing.copy(
                 w1 = null, n1 = null, w2 = null, n2 = null, w3 = null, n3 = null,
-                w4 = null, n4 = null, w5 = null, n5 = null,
+                w4 = null, n4 = null, w5 = null, n5 = null, indivWeights = "",
                 mortality = 0, feedBagsUsed = 0.0, feedUsedType = "B1", feedUsedBreakdown = "",
                 birdsLifted = 0, weightLifted = 0.0, lameSeparated = 0,
                 feedRecB1 = 0.0, feedRecB2 = 0.0, feedRecB3 = 0.0,
@@ -457,7 +470,8 @@ class FlockRepository(
                 modified.w2 != existing.w2 || modified.n2 != existing.n2 ||
                 modified.w3 != existing.w3 || modified.n3 != existing.n3 ||
                 modified.w4 != existing.w4 || modified.n4 != existing.n4 ||
-                modified.w5 != existing.w5 || modified.n5 != existing.n5
+                modified.w5 != existing.w5 || modified.n5 != existing.n5 ||
+                modified.indivWeights != existing.indivWeights
         val mortChanged = modified.mortality != existing.mortality
         val feedChanged = modified.feedBagsUsed != existing.feedBagsUsed || modified.feedUsedBreakdown != existing.feedUsedBreakdown
         if ((weightsChanged || mortChanged || feedChanged) && dayNumber > curDay) {
@@ -478,7 +492,8 @@ class FlockRepository(
                 ((modified.w2 ?: 0.0) > 0 && (modified.n2 ?: 0) > 0) ||
                 ((modified.w3 ?: 0.0) > 0 && (modified.n3 ?: 0) > 0) ||
                 ((modified.w4 ?: 0.0) > 0 && (modified.n4 ?: 0) > 0) ||
-                ((modified.w5 ?: 0.0) > 0 && (modified.n5 ?: 0) > 0)
+                ((modified.w5 ?: 0.0) > 0 && (modified.n5 ?: 0) > 0) ||
+                PhysiologicalEngine.parseWeights(modified.indivWeights).isNotEmpty()
 
         val newSaved = saved.toMutableSet()
         if (hasSample) newSaved += "W"
@@ -508,6 +523,12 @@ class FlockRepository(
         if (rows.isEmpty()) return@withContext
 
         val bagKg = farm.feedBagKg
+        val kgOf = feedTypeDao.getFeedTypes(spreadsheetId).associate { it.code to it.bagKg }
+        fun usedSplit(r: DailyDataEntity): Map<String, Double> {
+            val b = parseFeedBreakdown(r.feedUsedBreakdown)
+            if (b.isNotEmpty()) return b.groupBy({ it.first }, { it.second }).mapValues { it.value.sum() }
+            return if (r.feedBagsUsed > 0) mapOf(r.feedUsedType.ifBlank { "B1" } to r.feedBagsUsed) else emptyMap()
+        }
 
         var cumMort = 0
         var cumLift = 0
@@ -530,11 +551,11 @@ class FlockRepository(
             cumLame += r.lameSeparated
 
             // Feed consumption & delivery accumulation
-            cumFeedKg += r.feedBagsUsed * bagKg
-            totalUsedBags += r.feedBagsUsed
-            if (r.feedBagsUsed > 0 && r.feedUsedType.isNotBlank()) {
-                usedPerType[r.feedUsedType] = (usedPerType[r.feedUsedType] ?: 0.0) + r.feedBagsUsed
-            }
+            // each variety on its own: bags per type, at that type's bag weight
+            val split = usedSplit(r)
+            cumFeedKg += split.entries.sumOf { (code, bags) -> bags * (kgOf[code] ?: bagKg) }
+            totalUsedBags += split.values.sum()
+            split.forEach { (code, bags) -> usedPerType[code] = (usedPerType[code] ?: 0.0) + bags }
 
             // All 3 feed delivery slots (Bug 1 Fix)
             if (r.feedRecB1 > 0 && r.feedTypeB1.isNotBlank()) {
@@ -563,7 +584,7 @@ class FlockRepository(
                 PhysiologicalEngine.LocationSample(r.w4 ?: 0.0, r.n4 ?: 0),
                 PhysiologicalEngine.LocationSample(r.w5 ?: 0.0, r.n5 ?: 0)
             )
-            val sampleRes = PhysiologicalEngine.computeWeightSamples(samples)
+            val sampleRes = PhysiologicalEngine.computeWeightSamples(samples, PhysiologicalEngine.parseWeights(r.indivWeights))
 
             val weightAge: Double
             val projWeight: Double
@@ -710,8 +731,8 @@ class FlockRepository(
                 sev = max(sev, 1)
             }
 
-            // Bug 5 Fix: CV gate on hasSample && totalWeighed >= 2
-            val cvValue: Double? = if (sampleRes.hasSample && sampleRes.totalWeighed >= 2) sampleRes.cvPercent else null
+            // The CV is only the true bird-to-bird CV (birds weighed one by one); bulk weighing gives a location spread.
+            val cvValue: Double? = sampleRes.birdCv
             if (cvValue != null) {
                 if (cvValue >= config.cvCrit) {
                     alertMsgs.add(String.format("CV %.1f%% — critical spread", cvValue))
@@ -739,6 +760,8 @@ class FlockRepository(
                     sampleEntered = sampleRes.hasSample,
                     avgWeight = if (sampleRes.hasSample) sampleRes.flockAvgG else null,
                     cv = cvValue,
+                    uniformityPct = sampleRes.uniformityPct,
+                    locSpreadPct = sampleRes.locSpreadPct,
                     weightAge = weightAge,
                     idealWeight = PhysiologicalEngine.bwFromDay(day.toDouble(), flock.breed),
                     liveBirds = live,

@@ -17,8 +17,12 @@ import kotlin.math.min
  * doesn't know are kept at the right, under their own names, when a tab is rewritten.
  */
 object SheetSchema {
-    /** 4: tables read by header, every tab present, flock deletedAt, feeder-layout farm keys (v34). */
-    const val VERSION = 4
+    /**
+     * 4: tables read by header, every tab present, flock deletedAt, feeder-layout farm keys (v34).
+     * 5: numbers and true/false written as real cell values (no text with a leading '), one "Used <code>"
+     *    column of bags per feed variety, individually weighed birds.
+     */
+    const val VERSION = 5
 
     val FLOCK_HEADERS = listOf(
         "flockId", "name", "breed", "startDate", "startTime", "birdsPlaced", "receptionMort",
@@ -32,8 +36,14 @@ object SheetSchema {
         "BroodingLength", "ActualFans", "ActualFanTime", "OutTemp", "OutRH", "Notes",
         "WaterTempC", "WaterPh", "FeedMoisturePct", "MeasuredCo2", "MeasuredNh3", "MeasuredO2",
         "MeasuredPressure", "MeasuredAirspeed", "PadWetMin", "PadDryMin", "LuxPerFt2", "DieselCansUsed",
-        "UpdatedAt", "UpdatedBy", "Committed", "FeedUsedBreakdown", "SavedFields"
+        "UpdatedAt", "UpdatedBy", "Committed", "FeedUsedBreakdown", "SavedFields", "IndividualWeights"
     )
+    /** Bags of one feed variety used that day — one column per variety, after the fixed columns. */
+    fun usedHeader(code: String) = "Used $code"
+    fun isUsedColumn(name: String) = isUsedCol(name)
+    private fun isUsedCol(name: String) = name.trim().startsWith("Used", ignoreCase = true) && norm(name).length > 4 && norm(name).startsWith("used") &&
+        DAILY_HEADERS.none { norm(it) == norm(name) }
+    private fun usedCode(name: String) = name.trim().drop(4).trim().trimStart('_', '-', ':').trim()
     val TASK_HEADERS = listOf(
         "taskId", "flockId", "block", "label", "time", "everyDay", "dayNumber", "createdAt",
         "startDay", "endDay", "recurrence", "everyN", "alertEnabled", "completedDays", "kind"
@@ -86,7 +96,7 @@ object SheetSchema {
         /** Columns that match none of [fields] (kept at the right when the tab is rewritten). */
         fun extras(fields: List<String>): List<Int> {
             val used = fields.mapNotNull { col(it) }.toSet()
-            return names.indices.filter { it !in used && norm(names[it]).isNotEmpty() }
+            return names.indices.filter { it !in used && norm(names[it]).isNotEmpty() && !isUsedCol(names[it]) }
         }
     }
 
@@ -99,6 +109,10 @@ object SheetSchema {
         fun l(field: String): Long? = raw(field)?.toString()?.trim()?.let { it.toLongOrNull() ?: num(it)?.toLong() }
         fun b(field: String): Boolean = s(field).let { it.equals("true", true) || it == "1" || it.equals("yes", true) }
         fun cell(i: Int): String = cells.getOrNull(i)?.toString().orEmpty()
+        fun cellRaw(i: Int): Any = cells.getOrNull(i) ?: ""
+        /** Bags per feed variety from the "Used <code>" columns (empty when the sheet has none). */
+        fun usedByCode(): Map<String, Double> = h.names.withIndex().filter { isUsedCol(it.value) }
+            .mapNotNull { (i, n) -> num(cells.getOrNull(i))?.let { usedCode(n) to it } }.filter { it.first.isNotBlank() }.toMap()
     }
 
     fun num(raw: Any?): Double? {
@@ -136,9 +150,9 @@ object SheetSchema {
             createdAt = r.l("createdAt") ?: System.currentTimeMillis(), deletedAt = r.l("deletedAt") ?: 0L
         )
     }
-    fun flockRow(f: FlockEntity): List<String> = listOf(
-        f.flockId, f.name, f.breed, f.startDate, f.startTime, sv(f.birdsPlaced), sv(f.receptionMort),
-        sv(f.targetWeight), sv(f.harvestAge), f.season, f.status, sv(f.locked), sv(f.deleted), sv(f.createdAt), sv(f.deletedAt)
+    fun flockRow(f: FlockEntity): List<Any> = listOf(
+        f.flockId, f.name, f.breed, f.startDate, f.startTime, f.birdsPlaced, f.receptionMort,
+        f.targetWeight, f.harvestAge, f.season, f.status, f.locked, f.deleted, f.createdAt, f.deletedAt
     )
 
     fun day(sid: String, r: Row): DailyDataEntity? {
@@ -162,8 +176,18 @@ object SheetSchema {
             padWetMin = r.d("PadWetMin"), padDryMin = r.d("PadDryMin"), luxPerFt2 = r.d("LuxPerFt2"),
             dieselCansUsed = r.d("DieselCansUsed") ?: 0.0,
             updatedAt = r.l("UpdatedAt") ?: 0L, updatedBy = r.s("UpdatedBy"),
-            committed = r.b("Committed"), feedUsedBreakdown = r.s("FeedUsedBreakdown"), savedFields = r.s("SavedFields")
+            committed = r.b("Committed"), feedUsedBreakdown = r.s("FeedUsedBreakdown"), savedFields = r.s("SavedFields"),
+            indivWeights = r.s("IndividualWeights")
         )
+        // The per-variety columns are the bags record when the sheet has them: they set the split and the total.
+        val perType = r.usedByCode().filterValues { it > 0 }
+        if (perType.isNotEmpty()) return finishDay(d.copy(
+            feedUsedBreakdown = perType.entries.joinToString(";") { "${it.key}=${it.value}" },
+            feedBagsUsed = perType.values.sum(), feedUsedType = perType.maxByOrNull { it.value }!!.key))
+        return finishDay(d)
+    }
+
+    private fun finishDay(d: DailyDataEntity): DailyDataEntity {
         // Hand edits in the sheet: if FeedBagsUsed was changed but the per-type breakdown wasn't, scale it to the new total.
         val parts = com.example.flock.data.parseFeedBreakdown(d.feedUsedBreakdown)
         val partSum = parts.sumOf { it.second }
@@ -174,19 +198,29 @@ object SheetSchema {
             partSum > 0 -> parts.joinToString(";") { (c, b) -> "$c=${b * d.feedBagsUsed / partSum}" }
             else -> "${d.feedUsedType}=${d.feedBagsUsed}"
         }
-        val hasSample = listOf(d.w1 to d.n1, d.w2 to d.n2, d.w3 to d.n3, d.w4 to d.n4, d.w5 to d.n5).any { (w, n) -> (w ?: 0.0) > 0 && (n ?: 0) > 0 }
+        val hasSample = listOf(d.w1 to d.n1, d.w2 to d.n2, d.w3 to d.n3, d.w4 to d.n4, d.w5 to d.n5).any { (w, n) -> (w ?: 0.0) > 0 && (n ?: 0) > 0 } ||
+            d.indivWeights.isNotBlank()
         return d.copy(feedUsedBreakdown = breakdown, sampleEntered = hasSample)
     }
-    fun dayRow(d: DailyDataEntity): List<String> = listOf(
-        d.flockId, sv(d.dayNumber), d.date, sv(d.locked), sv(d.sampleEntered),
-        sv(d.w1), sv(d.n1), sv(d.w2), sv(d.n2), sv(d.w3), sv(d.n3), sv(d.w4), sv(d.n4), sv(d.w5), sv(d.n5),
-        sv(d.mortality), sv(d.feedBagsUsed), d.feedUsedType, sv(d.birdsLifted), sv(d.weightLifted), sv(d.lameSeparated),
-        sv(d.feedRecB1), d.feedTypeB1, sv(d.feedRecB2), d.feedTypeB2, sv(d.feedRecB3), d.feedTypeB3,
-        sv(d.broodingLength), sv(d.actualFans), sv(d.actualFanTime), sv(d.outTemp), sv(d.outRH), d.notes,
-        sv(d.waterTempC), sv(d.waterPh), sv(d.feedMoisturePct), sv(d.measuredCo2), sv(d.measuredNh3), sv(d.measuredO2),
-        sv(d.measuredPressure), sv(d.measuredAirspeed), sv(d.padWetMin), sv(d.padDryMin), sv(d.luxPerFt2), sv(d.dieselCansUsed),
-        sv(d.updatedAt), d.updatedBy, sv(d.committed), d.feedUsedBreakdown, d.savedFields
+    fun dayRow(d: DailyDataEntity): List<Any> = listOf(
+        d.flockId, d.dayNumber, d.date, d.locked, d.sampleEntered,
+        n(d.w1), n(d.n1), n(d.w2), n(d.n2), n(d.w3), n(d.n3), n(d.w4), n(d.n4), n(d.w5), n(d.n5),
+        d.mortality, d.feedBagsUsed, d.feedUsedType, d.birdsLifted, d.weightLifted, d.lameSeparated,
+        d.feedRecB1, d.feedTypeB1, d.feedRecB2, d.feedTypeB2, d.feedRecB3, d.feedTypeB3,
+        n(d.broodingLength), n(d.actualFans), n(d.actualFanTime), n(d.outTemp), n(d.outRH), d.notes,
+        n(d.waterTempC), n(d.waterPh), n(d.feedMoisturePct), n(d.measuredCo2), n(d.measuredNh3), n(d.measuredO2),
+        n(d.measuredPressure), n(d.measuredAirspeed), n(d.padWetMin), n(d.padDryMin), n(d.luxPerFt2), d.dieselCansUsed,
+        d.updatedAt, d.updatedBy, d.committed, d.feedUsedBreakdown, d.savedFields, d.indivWeights
     )
+    /** Bags per variety a day row used (from its split, else its one type). */
+    fun usedSplit(d: DailyDataEntity): Map<String, Double> {
+        val b = com.example.flock.data.parseFeedBreakdown(d.feedUsedBreakdown)
+        if (b.isNotEmpty()) return b.groupBy({ it.first }, { it.second }).mapValues { it.value.sum() }
+        return if (d.feedBagsUsed > 0) mapOf(d.feedUsedType.ifBlank { "B1" } to d.feedBagsUsed) else emptyMap()
+    }
+    /** Every value of a day row keyed by its normalised column name, per-variety columns included. */
+    fun dayValues(d: DailyDataEntity): Map<String, Any> =
+        DAILY_HEADERS.map { norm(it) }.zip(dayRow(d)).toMap() + usedSplit(d).mapKeys { norm(usedHeader(it.key)) }
     fun dayKey(d: DailyDataEntity) = d.flockId + "|" + d.dayNumber
 
     fun task(sid: String, r: Row): TaskEntity? {
@@ -200,9 +234,9 @@ object SheetSchema {
             kind = r.s("kind").ifBlank { "task" }
         )
     }
-    fun taskRow(t: TaskEntity): List<String> = listOf(
-        t.taskId, t.flockId, t.block, t.label, t.time, sv(t.everyDay), t.dayNumber?.toString() ?: "", sv(t.createdAt),
-        sv(t.startDay), sv(t.endDay), t.recurrence, sv(t.everyN), sv(t.alertEnabled), t.completedDays, t.kind
+    fun taskRow(t: TaskEntity): List<Any> = listOf(
+        t.taskId, t.flockId, t.block, t.label, t.time, t.everyDay, n(t.dayNumber), t.createdAt,
+        t.startDay, t.endDay, t.recurrence, t.everyN, t.alertEnabled, t.completedDays, t.kind
     )
 
     fun feedType(sid: String, r: Row): FeedTypeEntity? {
@@ -210,7 +244,7 @@ object SheetSchema {
         return FeedTypeEntity(spreadsheetId = sid, code = code, name = r.s("name").ifBlank { code },
             bagKg = r.d("bagKg") ?: 50.0, phase = r.s("phase").ifBlank { "custom" }, sortOrder = r.i("sortOrder") ?: 1)
     }
-    fun feedRow(f: FeedTypeEntity): List<String> = listOf(f.code, f.name, sv(f.bagKg), f.phase, sv(f.sortOrder))
+    fun feedRow(f: FeedTypeEntity): List<Any> = listOf(f.code, f.name, f.bagKg, f.phase, f.sortOrder)
 
     // ------------------------------------------------------------------ key/value tabs
 
@@ -220,7 +254,8 @@ object SheetSchema {
         return m
     }
 
-    fun farmToKV(farm: FarmEntity): List<List<String>> = listOf(
+    fun farmToKV(farm: FarmEntity): List<List<Any>> = typedKV(farmToKVText(farm))
+    private fun farmToKVText(farm: FarmEntity): List<List<String>> = listOf(
         listOf("Key", "Value"),
         listOf("farmName", farm.farmName), listOf("farmId", farm.farmId), listOf("houseName", farm.houseName),
         listOf("timeZone", farm.timeZone), listOf("lengthFt", sv(farm.lengthFt)), listOf("widthFt", sv(farm.widthFt)),
@@ -289,7 +324,8 @@ object SheetSchema {
         )
     }
 
-    fun configToKV(c: ConfigEntity): List<List<String>> = listOf(
+    fun configToKV(c: ConfigEntity): List<List<Any>> = typedKV(configToKVText(c))
+    private fun configToKVText(c: ConfigEntity): List<List<String>> = listOf(
         listOf("Key", "Value"),
         listOf("tempBand", sv(c.tempBand)), listOf("rhMin", sv(c.rhMin)), listOf("rhMax", sv(c.rhMax)),
         listOf("nh3Warn", sv(c.nh3Warn)), listOf("nh3Crit", sv(c.nh3Crit)), listOf("co2Warn", sv(c.co2Warn)),
@@ -311,6 +347,18 @@ object SheetSchema {
             cFcrDivisor = db("cFcrDivisor", base.cFcrDivisor), cycleSec = it2("cycleSec", base.cycleSec), minOnSec = it2("minOnSec", base.minOnSec),
             tunTrigYoung = db("tunTrigYoung", base.tunTrigYoung), tunTrigBig = db("tunTrigBig", base.tunTrigBig)
         )
+    }
+
+    /** Key/value rows with numbers and true/false as real cell values (text stays text). */
+    private fun typedKV(rows: List<List<String>>): List<List<Any>> = rows.mapIndexed { i, r ->
+        if (i == 0) r else listOf(r[0], typed(r[1]))
+    }
+    private fun typed(v: String): Any = when {
+        v.equals("true", true) -> true
+        v.equals("false", true) -> false
+        Regex("^-?\\d+$").matches(v) && v.length < 16 -> v.toLong()
+        Regex("^-?\\d*\\.\\d+([eE]-?\\d+)?$|^-?\\d+[eE]-?\\d+$").matches(v) -> v.toDouble()
+        else -> v
     }
 
     // ------------------------------------------------------------------ whole files
@@ -435,15 +483,21 @@ object SheetSchema {
     }
 
     /** Every tab's block in the current layout. [meta] is written as the _Meta key/value list. */
-    fun blocks(c: Content, meta: List<Pair<String, String>>): LinkedHashMap<String, List<List<String>>> {
-        val out = LinkedHashMap<String, List<List<String>>>()
-        out["_Meta"] = listOf(listOf("Key", "Value")) + meta.map { listOf(it.first, it.second) }
+    /** Feed varieties that get a "Used" column: the farm's types in order, then any other code the days used. */
+    fun usedCodes(c: Content): List<String> =
+        (c.feedTypes.sortedBy { it.sortOrder }.map { it.code } + c.days.flatMap { usedSplit(it).keys }).filter { it.isNotBlank() }.distinct()
+
+    fun blocks(c: Content, meta: List<Pair<String, String>>): LinkedHashMap<String, List<List<Any>>> {
+        val out = LinkedHashMap<String, List<List<Any>>>()
+        out["_Meta"] = typedKV(listOf(listOf("Key", "Value")) + meta.map { listOf(it.first, it.second) })
         out["_Farm"] = farmToKV(c.farm)
         out["_Config"] = c.config?.let { configToKV(it) } ?: listOf(listOf("Key", "Value"))
-        out["_FeedTypes"] = listOf(FEED_HEADERS) + c.feedTypes.map { feedRow(it) }
-        out["Flocks"] = listOf(FLOCK_HEADERS + c.flockExtra.names) + c.flocks.map { flockRow(it) + c.flockExtra.of(it.flockId) }
-        out["DailyData"] = listOf(DAILY_HEADERS + c.dayExtra.names) + c.days.map { dayRow(it) + c.dayExtra.of(dayKey(it)) }
-        out["Tasks"] = listOf(TASK_HEADERS + c.taskExtra.names) + c.tasks.map { taskRow(it) + c.taskExtra.of(it.taskId) }
+        out["_FeedTypes"] = listOf<List<Any>>(FEED_HEADERS) + c.feedTypes.map { feedRow(it) }
+        out["Flocks"] = listOf<List<Any>>(FLOCK_HEADERS + c.flockExtra.names) + c.flocks.map { flockRow(it) + c.flockExtra.of(it.flockId) }
+        val codes = usedCodes(c)
+        out["DailyData"] = listOf<List<Any>>(DAILY_HEADERS + codes.map { usedHeader(it) } + c.dayExtra.names) +
+            c.days.map { d -> val u = usedSplit(d); dayRow(d) + codes.map { code -> u[code] ?: "" } + c.dayExtra.of(dayKey(d)) }
+        out["Tasks"] = listOf<List<Any>>(TASK_HEADERS + c.taskExtra.names) + c.tasks.map { taskRow(it) + c.taskExtra.of(it.taskId) }
         return out
     }
 
@@ -474,4 +528,6 @@ object SheetSchema {
     fun colLetter(n: Int): String { var x = n; val sb = StringBuilder(); while (x > 0) { val r = (x - 1) % 26; sb.insert(0, ('A' + r)); x = (x - 1) / 26 }; return sb.toString() }
 
     private fun sv(v: Any?): String = v?.toString() ?: ""
+    /** An optional number as a real number, or a blank cell. */
+    private fun n(v: Number?): Any = v ?: ""
 }

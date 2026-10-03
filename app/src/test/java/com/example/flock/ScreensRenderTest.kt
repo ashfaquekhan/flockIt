@@ -29,6 +29,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onNodeWithTag
 import com.example.flock.data.DailyDataEntity
 import com.example.flock.data.FarmEntity
 import com.example.flock.data.FarmRegistryEntity
@@ -156,6 +158,14 @@ class ScreensRenderTest {
             OutputScreen(flock, farm, all[day], all.take(day + 1), FeedStockSummary(0.0, 0.0, 0.0, emptyMap()), feedTypes, weather, emptyList(), day == 11, {})
         } } }
         rule.mainClock.advanceTimeBy(1000)
+        // the feeding plan is in the Feed · water · stock tab: scroll the tab bar into view and open it
+        var g0 = 0
+        while (rule.onNodeWithTag("tab_out_2").getUnclippedBoundsInRoot().top.value > 500f && g0++ < 40) {
+            rule.onRoot().performTouchInput { swipe(Offset(8f, height * 0.7f), Offset(8f, height * 0.5f), 1200) }
+            rule.mainClock.advanceTimeBy(1500)
+        }
+        rule.onNodeWithTag("tab_out_2").performClick()
+        rule.mainClock.advanceTimeBy(600)
         // scroll with the finger (in the page margin, clear of the map and the clocks) until the plan is near the top
         var guard = 0
         // slow, short swipes (no fling) until the plan's title sits in the upper half of the screen
@@ -175,4 +185,15 @@ class ScreensRenderTest {
         assertEquals(before.value, rule.onAllNodesWithText("Feeding plan")[0].getUnclippedBoundsInRoot().top.value, 30f)
     }
     @Config(qualifiers = "w360dp-h4200dp-xhdpi") @Test fun outputLong() = shoot("output_long") { output() }
+    @Config(qualifiers = "w360dp-h4200dp-xhdpi") @Test fun outputLongVent() = shootTab(1, "output_long_vent")
+    @Config(qualifiers = "w360dp-h5200dp-xhdpi") @Test fun outputLongFeed() = shootTab(2, "output_long_feed")
+
+    private fun shootTab(tab: Int, name: String) {
+        rule.mainClock.autoAdvance = false
+        rule.setContent { MyApplicationTheme { output() } }
+        rule.mainClock.advanceTimeBy(800)
+        rule.onNodeWithTag("tab_out_$tab").performClick()
+        rule.mainClock.advanceTimeBy(800)
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_$name.png")
+    }
 }

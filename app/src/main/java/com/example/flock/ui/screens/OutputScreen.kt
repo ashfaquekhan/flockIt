@@ -182,16 +182,14 @@ fun OutputScreen(
             onFeed = { bags -> events = FeedLog.add(ctx, flockKey, bags); now = System.currentTimeMillis() },
             onUndo = { events = FeedLog.undoLast(ctx, flockKey); now = System.currentTimeMillis() }) }
         Anchored("alerts") { AlertList(d.allAlerts) }
-        Anchored("overview") { OverviewStats(d, feeder) }
-        Anchored("growth") { GrowthBlock(d) }
-        Anchored("sec_feed") { SectionLabel("Feed") }
-        FeedSection(d, onFarmChange)
-        Anchored("sec_vent") { SectionLabel("Ventilation") }
-        VentSection(d)
-        Anchored("sec_mort") { SectionLabel("Mortality") }
-        MortalitySection(d)
-        Anchored("sec_env") { SectionLabel("Environment") }
-        EnvironmentSection(d)
+        // birds · ventilation · feed, water & stock — each subject together in its own tab
+        var tab by rememberSaveable { androidx.compose.runtime.mutableIntStateOf(0) }
+        Anchored("tabs") { OutputTabs(listOf("Birds", "Ventilation", "Feed, water & stock"), tab) { tab = it } }
+        when (tab) {
+            0 -> BirdsTab(d)
+            1 -> VentTab(d)
+            else -> FeedTab(d, onFarmChange)
+        }
         if (onCloseBatch != null && flock?.status != "closed") {
             OutlinedButton(onClick = { confirmClose = true }, modifier = Modifier.fillMaxWidth(),
                 border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine)) {

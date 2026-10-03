@@ -251,7 +251,7 @@ class SheetsSyncManager(
 
     /** Verified RAW write of a 2D block anchored at the top-left cell of a tab. */
     private suspend fun putBlock(
-        authHeader: String, spreadsheetId: String, tabName: String, values: List<List<String>>
+        authHeader: String, spreadsheetId: String, tabName: String, values: List<List<Any>>
     ): Boolean {
         if (values.isEmpty()) return true
         return try {
@@ -271,7 +271,7 @@ class SheetsSyncManager(
 
     /** Append rows (RAW) to a simple-named tab. */
     private suspend fun appendRows(
-        authHeader: String, spreadsheetId: String, tabName: String, rows: List<List<String>>
+        authHeader: String, spreadsheetId: String, tabName: String, rows: List<List<Any>>
     ): Boolean {
         if (rows.isEmpty()) return true
         return try {
@@ -328,29 +328,57 @@ class SheetsSyncManager(
             val authHeader = authManager.getAuthHeader() ?: return@withContext Result.success(Unit)
             ensureLayout(authHeader, spreadsheetId)
             try {
-                val keyRes = GoogleApiClientProvider.sheetsApi.batchGet(
-                    authHeader, spreadsheetId, listOf(appendRange("DailyData", "A2:B"))
+                val res = GoogleApiClientProvider.sheetsApi.batchGet(
+                    authHeader, spreadsheetId, listOf(a1("DailyData", "1:1"), appendRange("DailyData", "A2:B"))
                 )
-                val rows = keyRes.body()?.valueRanges?.getOrNull(0)?.values ?: emptyList()
+                if (!res.isSuccessful) return@withContext Result.failure(Exception("DailyData read failed (${res.code()})"))
+                val vr = res.body()?.valueRanges.orEmpty()
+                var header: List<String> = vr.getOrNull(0)?.values?.firstOrNull()?.map { it.toString().trim() }?.takeIf { it.isNotEmpty() }
+                    ?: SheetSchema.DAILY_HEADERS
+                val rows = vr.getOrNull(1)?.values ?: emptyList()
                 var rowNum = -1
-                for ((idx, r) in rows.withIndex()) {
-                    if (r.s(0) == day.flockId && r.i(1) == day.dayNumber) { rowNum = idx + 2; break }
+                for ((idx, r) in rows.withIndex()) if (r.s(0) == day.flockId && r.i(1) == day.dayNumber) { rowNum = idx + 2; break }
+                val values = SheetSchema.dayValues(day)
+                val writes = mutableListOf<ValueRange>()
+                // a feed variety with no column yet gets one at the end of the header
+                val missing = SheetSchema.usedSplit(day).keys.map { SheetSchema.usedHeader(it) }
+                    .filter { name -> header.none { SheetSchema.norm(it) == SheetSchema.norm(name) } }
+                if (missing.isNotEmpty()) {
+                    growColumns(authHeader, spreadsheetId, "DailyData", header.size + missing.size)
+                    writes += ValueRange(range = a1("DailyData", "${SheetSchema.colLetter(header.size + 1)}1"), values = listOf(missing))
+                    header = header + missing
                 }
                 val ok = if (rowNum > 0) {
-                    val res = GoogleApiClientProvider.sheetsApi.batchUpdateValues(
-                        authHeader, spreadsheetId,
-                        BatchUpdateValuesRequest(
-                            valueInputOption = RAW,
-                            data = listOf(ValueRange(range = a1("DailyData", "A$rowNum"), values = listOf(dayToRow(day))))
-                        )
-                    )
-                    res.isSuccessful
+                    // only the columns the app knows, in runs, so the farm's own columns keep their values
+                    val known = header.indices.filter { SheetSchema.norm(header[it]) in values.keys || SheetSchema.isUsedColumn(header[it]) }
+                    var i = 0
+                    while (i < known.size) {
+                        var j = i
+                        while (j + 1 < known.size && known[j + 1] == known[j] + 1) j++
+                        val cells = (known[i]..known[j]).map { values[SheetSchema.norm(header[it])] ?: "" }
+                        writes += ValueRange(range = a1("DailyData", "${SheetSchema.colLetter(known[i] + 1)}$rowNum"), values = listOf(cells))
+                        i = j + 1
+                    }
+                    GoogleApiClientProvider.sheetsApi.batchUpdateValues(authHeader, spreadsheetId,
+                        BatchUpdateValuesRequest(valueInputOption = RAW, data = writes)).isSuccessful
                 } else {
-                    appendRows(authHeader, spreadsheetId, "DailyData", listOf(dayToRow(day)))
+                    val headerOk = writes.isEmpty() || GoogleApiClientProvider.sheetsApi.batchUpdateValues(authHeader, spreadsheetId,
+                        BatchUpdateValuesRequest(valueInputOption = RAW, data = writes)).isSuccessful
+                    headerOk && appendRows(authHeader, spreadsheetId, "DailyData", listOf(header.map { values[SheetSchema.norm(it)] ?: "" }))
                 }
                 if (ok) Result.success(Unit) else Result.failure(Exception("DailyData write failed"))
             } catch (e: Exception) { Result.failure(e) }
         }
+
+    /** Grows a tab to at least [cols] columns. */
+    private suspend fun growColumns(authHeader: String, fileId: String, tab: String, cols: Int) {
+        val g = gridOf(authHeader, fileId)?.get(tab) ?: return
+        if (g.third >= cols) return
+        try {
+            GoogleApiClientProvider.sheetsApi.batchUpdateSpreadsheet(authHeader, fileId,
+                BatchUpdateSpreadsheetRequest(listOf(SheetRequest(AppendDimensionRequest(g.first, "COLUMNS", cols - g.third + 5)))))
+        } catch (e: Exception) { Log.w(TAG, "growColumns: ${e.message}") }
+    }
 
     /** Upserts a task row by taskId (update in place, else append) so edits don't duplicate rows. */
     suspend fun pushTask(spreadsheetId: String, task: TaskEntity): Result<Unit> = withContext(Dispatchers.IO) {
@@ -502,7 +530,7 @@ class SheetsSyncManager(
      * grows grids, writes every block from A1 in one call, then clears the old rows and columns beyond
      * each block. [addActivityLog] also adds the ActivityLog tab when missing.
      */
-    private suspend fun writeBlocks(authHeader: String, fileId: String, blocks: Map<String, List<List<String>>>, addActivityLog: Boolean): Boolean {
+    private suspend fun writeBlocks(authHeader: String, fileId: String, blocks: Map<String, List<List<Any>>>, addActivityLog: Boolean): Boolean {
         try {
             var grid = gridOf(authHeader, fileId) ?: return false
             // 1) tabs the file lacks (older files), sized for their block
@@ -899,8 +927,8 @@ class SheetsSyncManager(
 
             val configBlock = SheetSchema.configToKV(config)
 
-            val feedTypeBlock = mutableListOf<List<String>>(listOf("code", "name", "bagKg", "phase", "sortOrder"))
-            for (ft in feedTypes) feedTypeBlock.add(listOf(ft.code, ft.name, sv(ft.bagKg), ft.phase, sv(ft.sortOrder)))
+            val feedTypeBlock = mutableListOf<List<Any>>(SheetSchema.FEED_HEADERS)
+            for (ft in feedTypes) feedTypeBlock.add(SheetSchema.feedRow(ft))
 
             val nowFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
             val activityBlock = listOf(
@@ -913,7 +941,8 @@ class SheetsSyncManager(
             putBlock(authHeader, spreadsheetId, "_Config", configBlock)
             putBlock(authHeader, spreadsheetId, "_FeedTypes", feedTypeBlock)
             val okFlocksHdr = putBlock(authHeader, spreadsheetId, "Flocks", listOf(FLOCK_HEADERS))
-            val okDailyHdr = putBlock(authHeader, spreadsheetId, "DailyData", listOf(DAILY_HEADERS))
+            val okDailyHdr = putBlock(authHeader, spreadsheetId, "DailyData",
+                listOf(DAILY_HEADERS + feedTypes.sortedBy { it.sortOrder }.map { SheetSchema.usedHeader(it.code) }))
             putBlock(authHeader, spreadsheetId, "Tasks", listOf(TASK_HEADERS))
             putBlock(authHeader, spreadsheetId, "ActivityLog", activityBlock)
 

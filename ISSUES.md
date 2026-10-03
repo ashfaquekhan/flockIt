@@ -27,12 +27,19 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O18 | Pour per line can be a fraction of a bag (e.g. 2.38 = 118.8 kg) | Shown in bags and kg; the day's total is always whole bags. |
 | O19 | Clock shifts (feed and water ring positions) are kept on the phone only | Not synced to the sheet; each phone keeps its own. |
 | O20 | Farm window birds are drawn up to 320 at once | Bigger windows are offered only when they hold ≤ 320 birds at today's density. |
+| O23 | True CV needs birds weighed one by one | Bulk (bucket) weighing can't give the bird-to-bird CV; enter 10+ single weights (50–100 is better) on sample days. |
+| O24 | Trend tolerance is ±3 % against the commercial standard (or ideal) | A guide; tell me if some KPIs need a tighter or wider band. |
 | O22 | Sheet upgrade and repair are checked by unit tests, not yet against a live Google account | The layout logic is tested; the Drive/Sheets calls need a real run on the farm's sheet. |
 | O21 | Output review checklist (keep / change / drop) is waiting for the farm's choices | https://claude.ai/artifact/VDtyZmDKtLiJBu5Nxq6B3g |
 
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v37 | "CV" was far too low | Computed from the spread of the 5 bucket averages, which averages away the bird-to-bird spread | True CV from birds weighed one by one; bucket spread shown as "spread between locations" |
+| v37 | Feed used by variety wasn't kept apart | Recalculation added all of a day's bags to its first type and used one bag weight | Per-type split and each type's bag weight used everywhere; one sheet column per variety |
+| v37 | Numbers in the sheet showed a leading ' | Every cell was sent as text | Numbers and true/false sent as real values |
+| v37 | Entered values disappeared / couldn't be corrected one by one | Revert wiped the whole day; locked fields drawn grey on black | Unlock keeps values; Clear all is separate; locked values drawn readable |
+| v37 | Commercial / ideal missing in places and the KPI blocks took too much room | Three chips per scope row | One compact line per KPI with com / ideal in small type and a slim bar |
 | v36 | Back up & repair failed or scrambled data on sheets from older versions | Every tab was read by column position; older layouts put values in the wrong fields, and repair wrote that back | Tables read by header name with older names accepted; layout rules in SheetSchema |
 | v36 | Repair failed on sheets missing a tab (_Config, _FeedTypes, Tasks, ActivityLog); pull failed entirely | Writes and reads assumed every tab existed | Missing tabs are added before writing; reads use only the tabs present |
 | v36 | Old rows came back after a repair | The rewrite wrote from A1 but never cleared rows or columns beyond the new data | Leftovers beyond each block are cleared after the write |

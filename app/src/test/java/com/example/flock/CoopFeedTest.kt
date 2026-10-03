@@ -18,7 +18,7 @@ class CoopFeedTest {
     @Test fun birdsEatAfterFeeding() {
         val empty = FeederState(0.0, 400.0, null, 6.0, 0.0, 1_000L, 0.7)
         // a 10 × 10 ft window on the second feeder line, 40 ft from the front: pans, nipples and ~130 birds
-        val sim = CoopSim().apply { sideFt = 10.0; x0Ft = 40.0; y0Ft = FarmLayout.DEMO.lineY(3) - 5.0 }
+        val sim = CoopSim().apply { lenFt = 10.0; widFt = 10.0; x0Ft = 40.0; y0Ft = FarmLayout.DEMO.lineY(3) - 5.0 }
         val a = input(empty)
         sim.setup(a)
         repeat(600) { sim.update(0.016, a, 1.0) }                      // ~10 s hungry, feeder empty

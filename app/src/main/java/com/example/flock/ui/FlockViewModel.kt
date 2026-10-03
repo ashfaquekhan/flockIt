@@ -54,6 +54,7 @@ enum class AppScreen { FARMS, FLOCKS, DASHBOARD }
 data class DailyInputs(
     val w1: Double?, val n1: Int?, val w2: Double?, val n2: Int?, val w3: Double?, val n3: Int?,
     val w4: Double?, val n4: Int?, val w5: Double?, val n5: Int?,
+    val indivWeights: String = "",
     val mortality: Int?, val feedBagsUsed: Double, val feedUsedType: String,
     val feedUsedBreakdown: String = "",
     val birdsLifted: Int, val weightLifted: Double, val lameSeparated: Int,
@@ -473,13 +474,25 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         _userMessage.value = if (_cutoffLockEnabled.value) "Cut-off timer lock ON" else "Cut-off timer lock OFF — you can edit past the cut-off"
     }
 
-    /** Safely clears the currently-selected day's entries (and unlocks it). */
+    /** Unlocks the selected day for editing; every value stays so only the wrong ones need changing. */
     fun revertDay() {
         val flock = _activeFlock.value ?: return
         val day = _selectedDay.value
         viewModelScope.launch {
-            val res = repository.revertDay(_selectedSpreadsheetId.value, flock.flockId, day, authState.value.email)
-            _userMessage.value = if (res.isSuccess) "Day $day reverted — you can re-enter it" else (res.exceptionOrNull()?.message ?: "Could not revert")
+            val res = repository.unlockDay(_selectedSpreadsheetId.value, flock.flockId, day, authState.value.email)
+            _userMessage.value = if (res.isSuccess) "Day $day open for editing — change what's wrong and hold Update" else (res.exceptionOrNull()?.message ?: "Could not revert")
+        }
+    }
+
+    /** Clears every entry of the selected day (and unlocks it). */
+    fun clearDay() {
+        val flock = _activeFlock.value ?: return
+        val day = _selectedDay.value
+        viewModelScope.launch {
+            val sid = _selectedSpreadsheetId.value
+            val res = repository.revertDay(sid, flock.flockId, day, authState.value.email)
+            EntryDrafts.clear(getApplication(), EntryDrafts.key(sid, flock.flockId, day))
+            _userMessage.value = if (res.isSuccess) "Day $day cleared" else (res.exceptionOrNull()?.message ?: "Could not clear")
         }
     }
 
@@ -511,6 +524,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
                     w3 = if (keepW) existing.w3 else inputs.w3, n3 = if (keepW) existing.n3 else inputs.n3,
                     w4 = if (keepW) existing.w4 else inputs.w4, n4 = if (keepW) existing.n4 else inputs.n4,
                     w5 = if (keepW) existing.w5 else inputs.w5, n5 = if (keepW) existing.n5 else inputs.n5,
+                    indivWeights = if (keepW) existing.indivWeights else inputs.indivWeights,
                     mortality = if ("M" in locked) existing.mortality else (inputs.mortality ?: existing.mortality),
                     feedBagsUsed = if (day == 0) 0.0 else if (keepF) existing.feedBagsUsed else inputs.feedBagsUsed,
                     feedUsedType = if (keepF) existing.feedUsedType else inputs.feedUsedType,
