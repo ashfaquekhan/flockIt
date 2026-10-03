@@ -8,6 +8,49 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v38 — 2026-10-03 · Output reordered, day clock, uniformity histogram, ⓘ explanations, new icon · installs over a live flock
+- **Output page order**: the animation, then the day clock, then **Today** (weight, FCR, mortality, feed with
+  commercial and ideal; live birds, bags to load, water, feeder %), alerts, then the tabs for detail:
+  **Birds · Vent · Feed & water · Stock & tasks**. Tasks moved into the Output page (Stock & tasks tab); the
+  bottom bar is Entry and Output only.
+- **Animation box**: three widths: full, half or quarter of the house × 10 ft. The half and quarter views
+  start on the middle feeder line and can be moved on the map. Under the window there is a grid of the day's
+  numbers: weight, ideal temperature, minimum ventilation per bird and for the house, NH₃ and CO₂ limits, vent
+  (cloacal) temperature range, feet, resting breaths a minute and the panting threshold (air, humidity and
+  feels-like stay on the window itself).
+- **Day clock** (to look at, not to move): a 24-hour dial with the dark block, the hottest hours, feed loads,
+  tank refills, walks and the time now; the middle shows what is next. The times are worked out, not dragged:
+  dark is one block ending at 05:00; the first load comes at lights on and the last ends 2 h before the dark,
+  so birds never go into the dark hungry; extra loads go to the coolest light hours and never into the hottest
+  4 hours or the 2 h before them; the tank is refilled before the birds wake and before the heat; walks come
+  after lights on, an hour after each load, at peak heat and before the dark. The times-a-day choice in the
+  feeding plan moves the clock with it.
+- **Feeding plan in order**: Bags today → Times a day → Each time (bags and per line) → Pans on/off, with
+  the times-a-day chips under it. "Max walk" is now **Travel to pan** (and the limit "Max travel to pan").
+  No clock inside the plan.
+- **Feed correction** (advice only, capped): when weight is more than 3 % under commercial, load up to 5 %
+  more (half the gap); when FCR is more than 3 % over commercial and weight is on target, up to 3 % less;
+  none in the first week. Shown next to the plan with the bags it would make.
+- **Eaten**: feed per bird yesterday and till date (commercial and ideal), bags and kg till date for each
+  feed type and in total.
+- **Water**: a small tank picture filled to the share of the day's water, "× n" refills, the tank size, fills
+  needed and litres each refill; nipple line pressure in inches, height and flow per line.
+- **Uniformity**: CV and even birds, then a weight histogram: share of birds in 5 % steps around the
+  average with the weights under them, light / even / heavy shares, and lightest / average / heaviest. With
+  10 or more birds weighed one by one it shows those birds; otherwise the expected spread at that CV, drawn
+  paler and labelled.
+- **Bars**: ideal band and tick above the centre line, commercial below, so they no longer overlap; a ring
+  dot marks the ideal when there is no reading; units sit next to the value; "=" replaces the orange dash for
+  on par; every reading shows "com" and "ideal", with NA where there is no curve.
+- **ⓘ explanations** on each card (one per card, not on every line): what it is, the exact formula, what it
+  needs, what changes it, and how to keep it right.
+- **Loading animation**: a chick pecking beside a filling pan, with no box behind it (pull-to-refresh,
+  weather). **New app icon**: the same chick and pan in a white ring on black.
+- **Code structure**: new `domain` package for pure rules (`DaySchedule`, `FeedCorrection`) with unit
+  tests; ARCHITECTURE.md now documents the layers, patterns, rules for future changes and security notes.
+- Tests: `DayScheduleTest`, `FeedCorrectionTest`; `ScreensRenderTest` renders the Stock & tasks tab, the
+  quarter view and the ⓘ dialog.
+
 ## v37 — 2026-10-03 · Output in three tabs, trend markers, true CV, real numbers in the sheet · **DB v15 (non-destructive)**
 - **Output tabs** below the animation, feed log and alerts: **Birds** (flock and deaths, start and
   removals, growth, uniformity, comfort, curves), **Ventilation** (house air, air quality, litter, minimum

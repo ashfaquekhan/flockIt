@@ -25,16 +25,26 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O16 | Cooling grid and fan finder start from the season's typical temperatures | Weather is not used for inside values until house sensors exist. |
 | O17 | Farm settings still hold the old default of 60 pans per line unless changed | Set feed pans (e.g. 112), sensor pans (2) and bags to fill a line (e.g. 3.3) in Farm settings for the plan to match the shed. |
 | O18 | Pour per line can be a fraction of a bag (e.g. 2.38 = 118.8 kg) | Shown in bags and kg; the day's total is always whole bags. |
-| O19 | Clock shifts (feed and water ring positions) are kept on the phone only | Not synced to the sheet; each phone keeps its own. |
-| O20 | Farm window birds are drawn up to 320 at once | Bigger windows are offered only when they hold ≤ 320 birds at today's density. |
+| O19 | Day clock times are rules, not settings | Dark ends at 05:00 (O14); the hot window comes from the forecast or the season's typical day. Say if the farm needs a different dark period or feeding hours. |
+| O20 | Farm window draws up to 1,800 birds at once | A width that would hold more at today's density steps down to half or quarter width. |
 | O23 | True CV needs birds weighed one by one | Bulk (bucket) weighing can't give the bird-to-bird CV; enter 10+ single weights (50–100 is better) on sample days. |
 | O24 | Trend tolerance is ±3 % against the commercial standard (or ideal) | A guide; tell me if some KPIs need a tighter or wider band. |
 | O22 | Sheet upgrade and repair are checked by unit tests, not yet against a live Google account | The layout logic is tested; the Drive/Sheets calls need a real run on the farm's sheet. |
+| O25 | Feed correction is advice only | Capped at +5 % / −3 %, none in week 1; birds eat to appetite, so check pans are cleared before adding feed. |
+| O26 | Breaths a minute in the animation box are typical resting rates, not measured | 30–50 in week 1, 20–40 later; panting over 60. |
+| O27 | Access token cached in plain preferences and app backup allowed | See ARCHITECTURE.md §10; fix with the P6 sign-in change. |
+| O28 | Larger refactor (use cases, DI, Gradle modules) is planned, not done | Steps listed in ARCHITECTURE.md §9; done gradually so each release installs over a live flock. |
 | O21 | Output review checklist (keep / change / drop) is waiting for the farm's choices | https://claude.ai/artifact/VDtyZmDKtLiJBu5Nxq6B3g |
 
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v38 | Ideal and commercial highlights on the bars overlapped | Both bands drawn on the centre line | Ideal above the line, commercial below |
+| v38 | Ventilation ranges had no dot and units sat by the name | Range bars drew a dot only for a reading; unit placed after the label | Ring dot at the ideal when there is no reading; unit after the value |
+| v38 | Orange dash for "on par" read as a warning | Orange is the warning colour | "=" in grey (green when good) |
+| v38 | Feed clock could be dragged to any hour | The ring was a manual setting | Times worked out from light hours, heat and the feeding count; clock is display only |
+| v38 | Loader showed a small dark square over the page | Material's pull-to-refresh indicator draws a filled disc | Custom loader with no background |
+| v38 | Uniformity said little | Only CV and a location spread | Histogram, light / even / heavy shares, weights |
 | v37 | "CV" was far too low | Computed from the spread of the 5 bucket averages, which averages away the bird-to-bird spread | True CV from birds weighed one by one; bucket spread shown as "spread between locations" |
 | v37 | Feed used by variety wasn't kept apart | Recalculation added all of a day's bags to its first type and used one bag weight | Per-type split and each type's bag weight used everywhere; one sheet column per variety |
 | v37 | Numbers in the sheet showed a leading ' | Every cell was sent as text | Numbers and true/false sent as real values |

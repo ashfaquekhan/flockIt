@@ -17,6 +17,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import com.example.flock.ui.components.FlockPullIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,8 +43,7 @@ import java.util.Locale
 
 enum class FlockNavTab(val label: String, val icon: ImageVector) {
     ENTRY("ENTRY", Icons.Default.EditNote),
-    OUTPUT("OUTPUT", Icons.Default.Dashboard),
-    TASKS("TASKS", Icons.Default.CheckCircle)
+    OUTPUT("OUTPUT", Icons.Default.Dashboard)
 }
 
 /**
@@ -172,9 +172,12 @@ fun MainFlockScreen(
             }
         }
     ) { innerPadding ->
+        val pullState = androidx.compose.material3.pulltorefresh.rememberPullToRefreshState()
         PullToRefreshBox(
             isRefreshing = isRefreshing,
             onRefresh = { viewModel.refreshCurrentFarm() },
+            state = pullState,
+            indicator = { FlockPullIndicator(pullState, isRefreshing) },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
@@ -208,19 +211,22 @@ fun MainFlockScreen(
                     hourly = hourly,
                     isToday = selectedDay == currentFlockDay,
                     onCloseBatch = activeFlock?.let { f -> { viewModel.closeFlock(f.flockId) } },
-                    onFarmChange = { viewModel.updateFarm(it) }
-                )
-                FlockNavTab.TASKS -> TasksScreen(
-                    allTasks = tasks,
-                    dayNumber = selectedDay,
-                    harvestAge = activeFlock?.harvestAge ?: 42,
-                    onSaveTask = { id, block, label, time, s, e, rec, n, alert, kind ->
-                        viewModel.saveTask(id, block, label, time, s, e, rec, n, alert, kind)
-                    },
-                    onDeleteTask = { taskId -> viewModel.deleteTask(taskId) },
-                    onToggleComplete = { id, day, done -> viewModel.toggleTaskComplete(id, day, done) },
-                    onToggleAlert = { id, en -> viewModel.toggleTaskAlert(id, en) },
-                    onCopyToRange = { id, f, t -> viewModel.copyTaskToRange(id, f, t) }
+                    onFarmChange = { viewModel.updateFarm(it) },
+                    tasksContent = {
+                        TasksScreen(
+                            allTasks = tasks,
+                            dayNumber = selectedDay,
+                            harvestAge = activeFlock?.harvestAge ?: 42,
+                            onSaveTask = { id, block, label, time, s, e, rec, n, alert, kind ->
+                                viewModel.saveTask(id, block, label, time, s, e, rec, n, alert, kind)
+                            },
+                            onDeleteTask = { taskId -> viewModel.deleteTask(taskId) },
+                            onToggleComplete = { id, day, done -> viewModel.toggleTaskComplete(id, day, done) },
+                            onToggleAlert = { id, en -> viewModel.toggleTaskAlert(id, en) },
+                            onCopyToRange = { id, f, t -> viewModel.copyTaskToRange(id, f, t) },
+                            scrollable = false
+                        )
+                    }
                 )
             }
         }

@@ -22,6 +22,8 @@ const val PAN_SPACING_FT = 2.5
 const val NIPPLE_SPACING_FT = 0.82
 const val LINE_START_FT = 5.0
 /** Ross: birds should not have to walk more than 2 m to feed or water. */
+/** breaths a minute above which birds are panting (heat stress) */
+const val PANT_ABOVE_PER_MIN = 60.0
 const val ALLOWED_TRAVEL_M = 2.0
 
 /** The five Output topics, in the order the farm reads them. */
@@ -373,6 +375,21 @@ class OutputData(
         else -> listOf("06:00", "09:00", "12:00", "15:00", "18:00")
     }
     val feedTimes: List<String> = feedTimesFor(feedings)
+    // ------------------------------- the farm's day (clock) and feed correction -------------------------------
+    /** Outside temperature for each hour of this day: the forecast when it covers the day, else the season's typical day. */
+    val dayTemps: List<Double> = run {
+        val pts = hourly.filter { it.date == e.date }.associateBy { it.hour }
+        if (pts.size >= 24) (0 until 24).map { pts[it]!!.tempC }
+        else com.example.flock.domain.DaySchedule.seasonTemps(scenarios.first().outC, scenarios.last().outC)
+    }
+    /** Tank fills the day's water needs (rounded up), and the refills planned with the farm's multiplier. */
+    val waterTanksNeeded: Double get() = max(1.0, ceil(e.totalWaterL / tankL))
+    val waterRefills: Int get() = (waterTanksNeeded * (if (refillF > 0) refillF else 1.0)).roundToInt().coerceIn(1, 24)
+    fun daySchedule(feedings: Int) = com.example.flock.domain.DaySchedule.plan(
+        com.example.flock.domain.DaySchedule.Inputs(e.lightHours, 5.0, feedings, waterRefills, dayTemps))
+    val correction = com.example.flock.domain.FeedCorrection.advise(day, if (e.sampleEntered) bw else null, bwCom, e.fcr, fcrCom)
+    val correctedBags: Double get() = if (correction.pct == 0.0) dayBags else ceil(giveBags * (1 + correction.pct / 100) - 1e-6)
+
     /** Ross: let birds clear the pans once a day from day 10–12 — only workable once a day's ration can refill the empty lines. */
     val cleanOutOk = day >= 10 && giveBags >= bagsFillOpen
 
@@ -423,6 +440,10 @@ class OutputData(
         else -> Triple(40.6, 41.2, 42.0)
     }
     /** Foot (leg skin) temperature: warm to the touch; thermal-camera studies put comfortable birds at ~32–34 °C. */
+    /** minimum air per bird: the day's worked-out value, or the design rule for this weight when it is missing */
+    val minVentCfmBird: Double get() = e.cfmPerBird.takeIf { it > 0 } ?: PhysiologicalEngine.designMinVentCfmPerBird(bw / 1000.0, farm.minVentFactor)
+    /** resting breaths a minute when the house is at its ideal; chicks breathe faster than grown birds */
+    val breathsIdeal: Pair<Double, Double> = if (day <= 7) 30.0 to 50.0 else 20.0 to 40.0
     val footTemp: Triple<Double, Double, Double> = if (day <= 7) Triple(29.0, 31.0, 33.0) else Triple(31.0, 33.0, 35.0)
     /** Litter / floor: Ross 28–32 °C at placement (floor 28–30 °C); afterwards it follows the house air. */
     val litterTemp: Triple<Double, Double, Double> = if (day <= 7) Triple(28.0, 30.0, 32.0) else Triple(e.tempMin, e.tempIdeal, e.tempMax)

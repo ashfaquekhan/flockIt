@@ -105,7 +105,7 @@ class ScreensRenderTest {
             topBar = { TopFlockBar(farm.farmName, flock, 11, 11, "30 Sep 2026", lock, weather, "synced", {}, {}, {}, {}, {}) },
             bottomBar = {
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                    listOf("Entry" to Icons.Default.Edit, "Output" to Icons.Default.Insights, "Tasks" to Icons.Default.Checklist).forEachIndexed { i, (l, ic) ->
+                    listOf("Entry" to Icons.Default.Edit, "Output" to Icons.Default.Insights).forEachIndexed { i, (l, ic) ->
                         NavigationBarItem(selected = i == tab, onClick = {}, icon = { Icon(ic, null) }, label = { Text(l) })
                     }
                 }
@@ -126,9 +126,13 @@ class ScreensRenderTest {
     }
     @Composable private fun output() = Dash(1) {
         val r = rows(11)
-        OutputScreen(flock, farm, r.last(), r, FeedStockSummary(0.0, 0.0, 0.0, emptyMap()), feedTypes, weather, emptyList(), true, {})
+        OutputScreen(flock, farm, r.last(), r, FeedStockSummary(0.0, 0.0, 0.0, emptyMap()), feedTypes, weather, emptyList(), true, {},
+            tasksContent = {
+                TasksScreen(listOf(TaskEntity(spreadsheetId = "t", taskId = "1", flockId = "f", block = "Morning", label = "Check drinkers", time = "06:00")),
+                    11, 42, { _, _, _, _, _, _, _, _, _, _ -> }, {}, { _, _, _ -> }, { _, _ -> }, { _, _, _ -> }, scrollable = false)
+            })
     }
-    @Composable private fun tasks() = Dash(2) {
+    @Composable private fun tasks() = Dash(1) {
         TasksScreen(listOf(TaskEntity(spreadsheetId = "t", taskId = "1", flockId = "f", block = "Morning", label = "Check drinkers", time = "06:00")),
             11, 42, { _, _, _, _, _, _, _, _, _, _ -> }, {}, { _, _, _ -> }, { _, _ -> }, { _, _, _ -> })
     }
@@ -158,7 +162,7 @@ class ScreensRenderTest {
             OutputScreen(flock, farm, all[day], all.take(day + 1), FeedStockSummary(0.0, 0.0, 0.0, emptyMap()), feedTypes, weather, emptyList(), day == 11, {})
         } } }
         rule.mainClock.advanceTimeBy(1000)
-        // the feeding plan is in the Feed · water · stock tab: scroll the tab bar into view and open it
+        // the feeding plan is in the Feed & water tab: scroll the tab bar into view and open it
         var g0 = 0
         while (rule.onNodeWithTag("tab_out_2").getUnclippedBoundsInRoot().top.value > 500f && g0++ < 40) {
             rule.onRoot().performTouchInput { swipe(Offset(8f, height * 0.7f), Offset(8f, height * 0.5f), 1200) }
@@ -184,9 +188,29 @@ class ScreensRenderTest {
         rule.mainClock.advanceTimeBy(900)
         assertEquals(before.value, rule.onAllNodesWithText("Feeding plan")[0].getUnclippedBoundsInRoot().top.value, 30f)
     }
-    @Config(qualifiers = "w360dp-h4200dp-xhdpi") @Test fun outputLong() = shoot("output_long") { output() }
-    @Config(qualifiers = "w360dp-h4200dp-xhdpi") @Test fun outputLongVent() = shootTab(1, "output_long_vent")
-    @Config(qualifiers = "w360dp-h5200dp-xhdpi") @Test fun outputLongFeed() = shootTab(2, "output_long_feed")
+    @Config(qualifiers = "w360dp-h5600dp-xhdpi") @Test fun outputLong() = shoot("output_long") { output() }
+    @Config(qualifiers = "w360dp-h5200dp-xhdpi") @Test fun outputLongVent() = shootTab(1, "output_long_vent")
+    @Config(qualifiers = "w360dp-h6800dp-xhdpi") @Test fun outputLongFeed() = shootTab(2, "output_long_feed")
+    @Config(qualifiers = "w360dp-h3600dp-xhdpi") @Test fun outputLongStock() = shootTab(3, "output_long_stock")
+    /** The quarter-width window and its stats grid. */
+    @Config(qualifiers = "w360dp-h1500dp-xhdpi") @Test fun outputQuarter() {
+        rule.mainClock.autoAdvance = false
+        rule.setContent { MyApplicationTheme { output() } }
+        rule.mainClock.advanceTimeBy(800)
+        rule.onNodeWithTag("coopWidth_2").performClick()
+        rule.mainClock.advanceTimeBy(1200)
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_output_quarter.png")
+    }
+    /** The ⓘ by a card opens its explanation. */
+    @Config(qualifiers = "w360dp-h2400dp-xhdpi") @Test fun infoDialog() {
+        rule.mainClock.autoAdvance = false
+        rule.setContent { MyApplicationTheme { output() } }
+        rule.mainClock.advanceTimeBy(800)
+        rule.onNodeWithTag("info_clock").performClick()
+        rule.mainClock.advanceTimeBy(800)
+        rule.onAllNodesWithText("How it is worked out")[0].assertExists()
+        com.github.takahirom.roborazzi.captureScreenRoboImage("src/test/screenshots/screen_info_clock.png")
+    }
 
     private fun shootTab(tab: Int, name: String) {
         rule.mainClock.autoAdvance = false

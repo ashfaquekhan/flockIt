@@ -62,7 +62,7 @@ private val OkColor = Color(0xFF46B98C)
 
 @Composable
 fun StandardsLegend() {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         LegendSwatch(ValuePresent, "Present", dashed = false, thick = true)
         LegendSwatch(ValueIdeal, "Ideal · Ross", dashed = false, thick = false)
         LegendSwatch(CompanyColor, "Commercial", dashed = true, thick = false)
@@ -78,7 +78,7 @@ private fun LegendSwatch(color: Color, label: String, dashed: Boolean, thick: Bo
                 pathEffect = if (dashed) PathEffect.dashPathEffect(floatArrayOf(8f, 6f)) else null)
         }
         Spacer(Modifier.width(5.dp))
-        Text(label, style = MaterialTheme.typography.labelMedium, color = color)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = color, maxLines = 1, softWrap = false)
     }
 }
 

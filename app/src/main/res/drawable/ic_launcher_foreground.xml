@@ -1,49 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- FlockIt: a chick pecking at a feeder pan inside a white ring (matches the in-app loader). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- Golden growth curve in the background of foreground -->
-    <path
-        android:strokeColor="#FFCA28"
-        android:strokeWidth="3.5"
-        android:strokeLineCap="round"
-        android:pathData="M 32,74 Q 48,70 60,54 T 76,34" />
-    <path
-        android:fillColor="#FFCA28"
-        android:pathData="M 76,34 L 71,38 L 77,41 Z" />
-
-    <!-- Rooster / Broiler chicken profile silhouette -->
-    <!-- Comb -->
-    <path
-        android:fillColor="#E53935"
-        android:pathData="M 52,33 C 50,30 48,32 47,35 C 45,33 43,35 43,38 C 41,37 39,39 40,42 L 54,42 Z" />
-    <!-- Wattle -->
-    <path
-        android:fillColor="#E53935"
-        android:pathData="M 39,49 C 37,51 37,55 40,55 C 42,55 42,50 41,49 Z" />
-    <!-- Beak -->
-    <path
-        android:fillColor="#FFB300"
-        android:pathData="M 38,44 L 32,46 L 38,48 Z" />
-    <!-- Chicken Body & Head -->
-    <path
-        android:fillColor="#FDFCF9"
-        android:pathData="M 50,40 C 46,40 40,42 40,48 C 40,51 43,55 45,60 C 47,65 47,72 54,75 C 62,78 72,75 75,67 C 77,61 74,54 70,50 C 66,46 62,44 57,41 C 55,40 52,40 50,40 Z" />
-    <!-- Wing Accent -->
-    <path
-        android:fillColor="#E0DDD3"
-        android:pathData="M 54,55 C 51,58 52,65 57,67 C 62,69 68,67 69,61 C 70,57 65,54 60,54 C 57,54 55,54 54,55 Z" />
-    <!-- Eye -->
-    <path
-        android:fillColor="#1B241F"
-        android:pathData="M 44,45 m -1.5,0 a 1.5,1.5 0 1,0 3,0 a 1.5,1.5 0 1,0 -3,0" />
-    <!-- Legs -->
-    <path
-        android:strokeColor="#FFB300"
-        android:strokeWidth="2.2"
-        android:strokeLineCap="round"
-        android:pathData="M 54,75 L 52,82 M 52,82 L 48,84 M 52,82 L 53,84 M 61,74 L 62,82 M 62,82 L 58,84 M 62,82 L 64,84" />
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="1.6" android:pathData="M 20.5,54 a 33.5,33.5 0 1,0 67.0,0 a 33.5,33.5 0 1,0 -67.0,0 Z" />
+    <path android:fillColor="#F6D45C" android:pathData="M 30,62 a 16,13 0 1,0 32,0 a 16,13 0 1,0 -32,0 Z" />
+    <path android:fillColor="#F6D45C" android:pathData="M 31,57 L 24,51 L 27,61 L 32,64 Z" />
+    <path android:fillColor="#E0B53C" android:pathData="M 36.5,63 a 8.5,5.5 0 1,0 17.0,0 a 8.5,5.5 0 1,0 -17.0,0 Z" />
+    <path android:fillColor="#F6D45C" android:pathData="M 48.5,46 a 9.5,9.5 0 1,0 19.0,0 a 9.5,9.5 0 1,0 -19.0,0 Z" />
+    <path android:fillColor="#000000" android:pathData="M 59.3,44.5 a 1.7,1.7 0 1,0 3.4,0 a 1.7,1.7 0 1,0 -3.4,0 Z" />
+    <path android:fillColor="#F3B23C" android:pathData="M 66.5,44 L 73,47.5 L 66.5,50.5 Z" />
+    <path android:strokeColor="#F2A278" android:strokeWidth="2.2" android:strokeLineCap="round" android:pathData="M 42,74 L 41,81" />
+    <path android:strokeColor="#F2A278" android:strokeWidth="2.2" android:strokeLineCap="round" android:pathData="M 50,74 L 51,81" />
+    <path android:strokeColor="#F2A278" android:strokeWidth="2.0" android:strokeLineCap="round" android:pathData="M 38,81.5 L 44,81.5" />
+    <path android:strokeColor="#F2A278" android:strokeWidth="2.0" android:strokeLineCap="round" android:pathData="M 48,81.5 L 54,81.5" />
+    <path android:fillColor="#F2D17A" android:pathData="M 61.3,74.6 a 8.2,2.7 0 1,0 16.4,0 a 8.2,2.7 0 1,0 -16.4,0 Z" />
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="2.0" android:pathData="M 58.7,75 a 10.8,4.2 0 1,0 21.6,0 a 10.8,4.2 0 1,0 -21.6,0 Z" />
+    <path android:fillColor="#F2D17A" android:pathData="M 65.5,61 a 1.5,1.5 0 1,0 3.0,0 a 1.5,1.5 0 1,0 -3.0,0 Z" />
+    <path android:fillColor="#F2D17A" android:pathData="M 69.7,66 a 1.3,1.3 0 1,0 2.6,0 a 1.3,1.3 0 1,0 -2.6,0 Z" />
 </vector>
-

@@ -146,8 +146,9 @@ fun RangeParam(
         else -> null
     }
     val refs = buildList {
+        add("com NA" to kindColor(ValueKind.COMMERCIAL))
+        add("ideal " + (idealTxt ?: "NA") to kindColor(ValueKind.IDEAL))
         if (min != null) add("min " + Fmt.n(min, dec) to kindColor(ValueKind.MIN))
-        if (idealTxt != null && present != null) add("ideal $idealTxt" to kindColor(ValueKind.IDEAL))
         if (max != null) add("max " + Fmt.n(max, dec) to kindColor(ValueKind.MAX))
     }
     // no reading: the ideal is the headline value
@@ -187,6 +188,10 @@ fun RangeBar(min: Double?, ideal: Double?, max: Double?, present: Double?, prese
             val out = (min != null && it < min) || (max != null && it > max)
             drawCircle(if (out) StatusCrit else kindColor(presentKind), h / 2.1f, Offset(x(it), h / 2))
             drawCircle(Color.White, h / 5.5f, Offset(x(it), h / 2))
+        } ?: (ideal ?: idealBand?.let { (it.first + it.second) / 2 })?.let {
+            // no reading: the dot sits on the ideal, drawn as a ring
+            drawCircle(kindColor(ValueKind.IDEAL), h / 2.1f, Offset(x(it), h / 2))
+            drawCircle(Color.Black, h / 4f, Offset(x(it), h / 2))
         }
     }
 }
@@ -224,8 +229,8 @@ private fun status(k: Kpi): Pair<String, Color> {
 }
 
 @Composable
-fun KpiCard(title: String, kpis: List<Kpi>) {
-    OutputCard(title = title) {
+fun KpiCard(title: String, kpis: List<Kpi>, info: String? = null) {
+    OutputCard(title = title, info = info) {
         kpis.forEach { KpiLine(it) }
     }
 }
@@ -239,8 +244,8 @@ fun KpiLine(k: Kpi) {
     val t = if (k.settling) null else trendOf(k.actual, k.company ?: k.ideal, k.better)
     fun f(x: Double, dec: Int) = if (dec == 0) Fmt.i(x.roundToInt()) else Fmt.n(x, dec)
     val refs = buildList {
-        if (k.company != null) add("com " + f(k.company, k.decimals) to kindColor(ValueKind.COMMERCIAL))
-        if (k.ideal != null) add(k.idealLabel.lowercase() + " " + f(k.ideal, k.decimals) to kindColor(ValueKind.IDEAL))
+        add("com " + (k.company?.let { f(it, k.decimals) } ?: "NA") to kindColor(ValueKind.COMMERCIAL))
+        add(k.idealLabel.lowercase() + " " + (k.ideal?.let { f(it, k.decimals) } ?: "NA") to kindColor(ValueKind.IDEAL))
     }
     val total = k.totalFactor?.let { fac -> k.actual?.let { "flock " + f(it * fac, k.totalDec) + " " + k.totalUnit } }
     val value = if (k.decimals == 0) vi(k.actual?.roundToInt(), k.actualKind) else v(k.actual, k.decimals, k.actualKind)
@@ -253,10 +258,7 @@ fun KpiLine(k: Kpi) {
 fun CompactLine(label: String, unit: String, sub: String?, value: V, trend: TrendMark?, refs: List<Pair<String, Color>>) {
     Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), maxLines = 2)
-                if (unit.isNotEmpty()) Text("  $unit", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.55f), maxLines = 1)
-            }
+            Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), maxLines = 2)
             if (sub != null) Text(sub, style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace), color = Color.White.copy(alpha = 0.6f), maxLines = 1)
         }
         Column(horizontalAlignment = Alignment.End) {
@@ -264,6 +266,7 @@ fun CompactLine(label: String, unit: String, sub: String?, value: V, trend: Tren
                 if (trend != null) { TrendIcon(trend); Spacer(Modifier.width(5.dp)) }
                 Text(value.text, style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
                     color = kindColor(if (value.text == "—") ValueKind.NEUTRAL else value.kind), maxLines = 1, softWrap = false)
+                if (unit.isNotEmpty()) Text(" $unit", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), maxLines = 1, softWrap = false)
             }
             if (refs.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 refs.forEach { (t, c) -> Text(t, style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace), color = c, maxLines = 1, softWrap = false) }
@@ -277,20 +280,23 @@ fun CompactLine(label: String, unit: String, sub: String?, value: V, trend: Tren
 fun SlimCompareBar(k: Kpi) {
     val c = k.company ?: k.ideal ?: return
     val dotC = kindColor(k.actualKind)
-    Canvas(Modifier.fillMaxWidth().height(14.dp)) {
+    Canvas(Modifier.fillMaxWidth().height(16.dp)) {
         val pad = 7.dp.toPx()
-        val pts = listOfNotNull(c * 0.95, c * 1.05, k.ideal, k.actual)
+        val pts = listOfNotNull(c * 0.95, c * 1.05, k.ideal?.times(0.97), k.ideal?.times(1.03), k.actual)
         val span = max(pts.max() - pts.min(), abs(c) * 0.1)
         val lo = pts.min() - span * 0.08; val hi = pts.max() + span * 0.08
         val w = size.width - pad * 2
         fun x(v: Double) = pad + ((v.coerceIn(lo, hi) - lo) / (hi - lo) * w).toFloat()
         val mid = size.height / 2
-        drawLine(Color.White.copy(alpha = 0.22f), Offset(pad, mid), Offset(pad + w, mid), strokeWidth = 2f)
+        drawLine(Color.White.copy(alpha = 0.3f), Offset(pad, mid), Offset(pad + w, mid), strokeWidth = 2f)
         k.company?.let { co ->
-            drawRect(kindColor(ValueKind.COMMERCIAL).copy(alpha = 0.28f), Offset(x(co * 0.95), mid - 3.5.dp.toPx()), Size(x(co * 1.05) - x(co * 0.95), 7.dp.toPx()))
-            drawLine(kindColor(ValueKind.COMMERCIAL), Offset(x(co), mid - 6.dp.toPx()), Offset(x(co), mid + 6.dp.toPx()), strokeWidth = 2.dp.toPx())
+            drawRect(kindColor(ValueKind.COMMERCIAL).copy(alpha = 0.32f), Offset(x(co * 0.95), mid + 1.dp.toPx()), Size(x(co * 1.05) - x(co * 0.95), 5.5.dp.toPx()))
+            drawLine(kindColor(ValueKind.COMMERCIAL), Offset(x(co), mid), Offset(x(co), mid + 7.dp.toPx()), strokeWidth = 2.dp.toPx())
         }
-        k.ideal?.let { id -> drawLine(kindColor(ValueKind.IDEAL), Offset(x(id), mid - 6.dp.toPx()), Offset(x(id), mid + 6.dp.toPx()), strokeWidth = 2.dp.toPx()) }
+        k.ideal?.let { id ->
+            drawRect(kindColor(ValueKind.IDEAL).copy(alpha = 0.32f), Offset(x(id * 0.97), mid - 6.5.dp.toPx()), Size(x(id * 1.03) - x(id * 0.97), 5.5.dp.toPx()))
+            drawLine(kindColor(ValueKind.IDEAL), Offset(x(id), mid - 7.dp.toPx()), Offset(x(id), mid), strokeWidth = 2.dp.toPx())
+        }
         k.actual?.let { drawCircle(dotC, 5.dp.toPx(), Offset(x(it), mid)); drawCircle(Color.Black, 1.8.dp.toPx(), Offset(x(it), mid)) }
     }
 }
@@ -343,7 +349,11 @@ fun TrendIcon(t: TrendMark, size: androidx.compose.ui.unit.Dp = 12.dp) {
         when (t.dir) {
             1 -> drawPath(androidx.compose.ui.graphics.Path().apply { moveTo(w / 2, h * 0.12f); lineTo(w * 0.95f, h * 0.88f); lineTo(w * 0.05f, h * 0.88f); close() }, c)
             -1 -> drawPath(androidx.compose.ui.graphics.Path().apply { moveTo(w * 0.05f, h * 0.12f); lineTo(w * 0.95f, h * 0.12f); lineTo(w / 2, h * 0.88f); close() }, c)
-            else -> drawLine(c, Offset(w * 0.12f, h / 2), Offset(w * 0.88f, h / 2), strokeWidth = h * 0.22f, cap = StrokeCap.Round)
+            else -> {
+                val pc = if (t.grade == Grade.GOOD) c else Color.White.copy(alpha = 0.6f)
+                drawLine(pc, Offset(w * 0.15f, h * 0.36f), Offset(w * 0.85f, h * 0.36f), strokeWidth = h * 0.14f, cap = StrokeCap.Round)
+                drawLine(pc, Offset(w * 0.15f, h * 0.64f), Offset(w * 0.85f, h * 0.64f), strokeWidth = h * 0.14f, cap = StrokeCap.Round)
+            }
         }
     }
 }

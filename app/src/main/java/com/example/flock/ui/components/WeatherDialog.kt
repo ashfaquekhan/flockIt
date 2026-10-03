@@ -72,7 +72,7 @@ fun WeatherForecastDialog(forecast: ForecastResult?, onDismiss: () -> Unit) {
 
                 when {
                     forecast == null -> Box(modifier = Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
+                        FlockLoader()
                     }
                     forecast.days.isEmpty() -> Box(modifier = Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
                         Text(

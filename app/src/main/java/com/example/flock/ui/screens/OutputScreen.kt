@@ -120,6 +120,7 @@ fun OutputScreen(
     isToday: Boolean = false,
     onCloseBatch: (() -> Unit)? = null,
     onFarmChange: ((FarmEntity) -> Unit)? = null,
+    tasksContent: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     // one scroll position for every day; the section being read stays put when the day changes
@@ -166,7 +167,10 @@ fun OutputScreen(
         waterC = 18.0 to 21.0, waterPh = 6.0 to 6.8, travelM = ALLOWED_TRAVEL_M,
         layout = FarmLayout(farm.usableLengthFt, farm.usableWidthFt, d.lineOrder, d.lineGapFt, d.lineStartFt, d.panSpacingFt, d.pansPerLine,
             d.sensorPans, d.feedPattern.on, d.feedPattern.off, d.pansInArea, NIPPLE_SPACING_FT, d.drinkerLenFt, d.drinkerHtIn * 0.0254,
-            d.barricadeFtNow, d.live.toDouble() / d.areaInUseFt2)
+            d.barricadeFtNow, d.live.toDouble() / d.areaInUseFt2),
+        minVentCfmBird = d.minVentCfmBird, minVentCfm = d.minVentCfmBird * d.live, idealC = entry.tempIdeal,
+        nh3Max = entry.nh3Max, co2Max = entry.co2Max, ventC = d.bodyTemp, feetC = d.footTemp.second,
+        breaths = d.breathsIdeal, pantAbove = PANT_ABOVE_PER_MIN
     )
     var confirmClose by remember { mutableStateOf(false) }
 
@@ -177,18 +181,25 @@ fun OutputScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         TagLegend()
+        // the animation, then the day's clock, the key numbers and alerts; details in the tabs below
         Anchored("coop") { GlassBox(Modifier.fillMaxWidth()) { Coop3D(coop) } }
-        Anchored("feedlog") { FeedEntryRow(d, feeder,
-            onFeed = { bags -> events = FeedLog.add(ctx, flockKey, bags); now = System.currentTimeMillis() },
-            onUndo = { events = FeedLog.undoLast(ctx, flockKey); now = System.currentTimeMillis() }) }
+        // how many times to feed today: chosen in the feeding plan, used by the clock too
+        var feedPick by rememberSaveable(d.day, d.recommendedOption) { androidx.compose.runtime.mutableIntStateOf(d.recommendedOption) }
+        val feedings = d.feedOptions.getOrNull(feedPick)?.feedings ?: d.feedings
+        Anchored("clock") { OutputCard(title = "Day clock", info = "clock") { FarmDayClock(d.daySchedule(feedings), farmZone(d.farm)) } }
+        Anchored("kpis") { KeyKpis(d, feeder) }
         Anchored("alerts") { AlertList(d.allAlerts) }
-        // birds · ventilation · feed, water & stock — each subject together in its own tab
         var tab by rememberSaveable { androidx.compose.runtime.mutableIntStateOf(0) }
-        Anchored("tabs") { OutputTabs(listOf("Birds", "Ventilation", "Feed, water & stock"), tab) { tab = it } }
+        Anchored("tabs") { OutputTabs(listOf("Birds", "Vent", "Feed & water", "Stock & tasks"), tab) { tab = it } }
         when (tab) {
             0 -> BirdsTab(d)
             1 -> VentTab(d)
-            else -> FeedTab(d, onFarmChange)
+            2 -> FeedTab(d, feedPick, { feedPick = it }, onFarmChange) {
+                FeedEntryRow(d, feeder,
+                    onFeed = { bags -> events = FeedLog.add(ctx, flockKey, bags); now = System.currentTimeMillis() },
+                    onUndo = { events = FeedLog.undoLast(ctx, flockKey); now = System.currentTimeMillis() })
+            }
+            else -> StockTab(d, tasksContent)
         }
         if (onCloseBatch != null && flock?.status != "closed") {
             OutlinedButton(onClick = { confirmClose = true }, modifier = Modifier.fillMaxWidth(),
@@ -295,12 +306,17 @@ fun GlassBox(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
 @Composable
 fun OutputCard(
     title: String,
+    info: String? = null,
     content: @Composable () -> Unit
 ) {
     val anchors = LocalScrollAnchors.current
     GlassBox(Modifier.fillMaxWidth().onGloballyPositioned { anchors?.report("card:$title", it.positionInRoot().y) }) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(text = title, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = title, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface),
+                    modifier = Modifier.weight(1f))
+                if (info != null) InfoButton(info)
+            }
             content()
         }
     }

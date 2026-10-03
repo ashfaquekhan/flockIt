@@ -40,6 +40,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import com.example.flock.ui.components.FlockPullIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -111,9 +112,12 @@ fun FlocksScreen(
 
             Spacer(Modifier.height(10.dp))
 
+            val pullState = androidx.compose.material3.pulltorefresh.rememberPullToRefreshState()
             PullToRefreshBox(
                 isRefreshing = isRefreshing,
                 onRefresh = onRefresh,
+                state = pullState,
+                indicator = { FlockPullIndicator(pullState, isRefreshing) },
                 modifier = Modifier.weight(1f)
             ) {
                 if (ordered.isEmpty()) {

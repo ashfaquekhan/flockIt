@@ -79,7 +79,13 @@ data class CoopInput(
     val airC: Double, val rhPct: Double, val feelsC: Double, val chillC: Double, val pressurePa: Double,
     val litterC: Double, val litterMoist: Double, val bodyC: Double,
     val waterC: Pair<Double, Double>, val waterPh: Pair<Double, Double>, val travelM: Double,
-    val layout: FarmLayout = FarmLayout.DEMO
+    val layout: FarmLayout = FarmLayout.DEMO,
+    /** shown in the grid under the window: minimum air per bird and for the house, gas limits, vent and feet temperatures */
+    val minVentCfmBird: Double = 0.0, val minVentCfm: Double = 0.0, val idealC: Double = airC,
+    val nh3Max: Double = 10.0, val co2Max: Double = 3000.0,
+    val ventC: Triple<Double, Double, Double>? = null, val feetC: Double? = null,
+    /** breaths a minute at the house's ideal (resting birds) and where panting starts */
+    val breaths: Pair<Double, Double> = 20.0 to 40.0, val pantAbove: Double = 60.0
 )
 
 /**
@@ -105,7 +111,7 @@ data class FarmLayout(
 internal const val FT = 0.3048
 /** Most birds drawn at once (brooding densities can exceed it in a full-width view; the half-width view is offered then). */
 internal const val MAX_BIRDS = 1800
-/** The window is always this long along the house (ft); across it is the full or half house width. */
+/** The window is always this long along the house (ft); across it is the full, half or quarter house width. */
 internal const val VIEW_LEN_FT = 10.0
 
 private val NAMES = listOf("Pip", "Dot", "Hazel", "Tiko")
@@ -583,17 +589,20 @@ private fun stateWord(s: String) = when (s) {
 fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
     val sim = remember { CoopSim() }
     val L = inp.layout
-    // the window: 10 ft along the house, the full or half width across; starts a quarter into the birds' area
-    var full by rememberSaveable { androidx.compose.runtime.mutableStateOf(true) }
+    // the window: 10 ft along the house; the full, half or quarter width across; starts a quarter into the birds' area
+    var mode by rememberSaveable { androidx.compose.runtime.mutableIntStateOf(0) }   // 0 full · 1 half · 2 quarter
+    fun widthOf(m: Int) = L.widthFt / (1 shl m)
     val midF = L.lineOrder.withIndex().filter { it.value == 'F' }.let { it.getOrNull(it.size / 2)?.index ?: 0 }
     var x0 by rememberSaveable { mutableDoubleStateOf(-1.0) }
     var y0 by rememberSaveable { mutableDoubleStateOf(-1.0) }
-    // a full-width view that would hold too many birds to draw (dense brooding) falls back to half width
-    if (full && sim.birdsFor(L, VIEW_LEN_FT, L.widthFt, max(0.0, x0)) > MAX_BIRDS) full = false
+    // a view that would hold too many birds to draw (dense brooding) steps down to a narrower one
+    while (mode < 2 && sim.birdsFor(L, VIEW_LEN_FT, widthOf(mode), max(0.0, x0)) > MAX_BIRDS) mode++
+    val full = mode == 0
     val lenFt = min(VIEW_LEN_FT, L.lengthFt)
-    val widFt = if (full) L.widthFt else L.widthFt / 2
+    val widFt = widthOf(mode)
     if (x0 < 0) x0 = (min(L.barricadeFt, L.lengthFt) * 0.25 - lenFt / 2).coerceIn(0.0, max(0.0, L.lengthFt - lenFt))
     if (full) y0 = 0.0 else if (y0 < 0) y0 = (L.lineY(midF) - widFt / 2).coerceIn(0.0, max(0.0, L.widthFt - widFt))
+    y0 = y0.coerceIn(0.0, max(0.0, L.widthFt - widFt))
     sim.lenFt = lenFt; sim.widFt = widFt; sim.x0Ft = x0; sim.y0Ft = y0
     sim.setup(inp)
     // the frame loop starts once: read the latest input (new feedings, lights) through this, not the first one
@@ -623,7 +632,7 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
     val scheduledDark = run { val z = java.time.ZonedDateTime.now(inp.zoneId); !inp.light.isLight(z.hour + z.minute / 60.0) }
     Column(modifier) {
         androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val h = (maxWidth * (if (full) 0.72f else 0.82f)).coerceIn(250.dp, 460.dp)
+            val h = (maxWidth * (when (mode) { 0 -> 0.72f; 1 -> 0.82f; else -> 0.9f })).coerceIn(250.dp, 460.dp)
             Canvas(
                 Modifier.fillMaxWidth().height(h).clipToBounds().testTag("coop")
                     // two fingers: tilt (up/down), zoom (pinch) and turn; one finger up/down still scrolls the page
@@ -690,19 +699,21 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
                 ) { Text(if (awake) "Sleep" else "Wake", color = Color.White) }
             }
         }
+        // the birds' and the house's numbers for today, under the window
+        CoopStats(inp)
         // window size, and the whole house with the window on it
         Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf(true, false).forEach { isFull ->
-                val w = if (isFull) L.widthFt else L.widthFt / 2
+            (0..2).forEach { m ->
+                val w = widthOf(m)
                 val n = sim.birdsFor(L, lenFt, w, x0)
                 val fits = n <= MAX_BIRDS
-                val on = isFull == full
-                ValueChip(vt("${Fmt.n(w, 1)} × ${Fmt.n(lenFt, 1)} ft", if (!fits) ValueKind.MAX else if (on) ValueKind.PRESENT else ValueKind.PREDICTED,
-                    (if (isFull) "Full width" else "Half width") + " · " + (if (fits) "${Fmt.i(n)} birds" else "too many")),
-                    Modifier.weight(1f).border(if (on) 2.dp else 0.dp, if (on) Color.White else Color.Transparent, RoundedCornerShape(8.dp))
+                val on = m == mode
+                ValueChip(vt("${Fmt.n(w, 1)} ft", if (!fits) ValueKind.MAX else if (on) ValueKind.PRESENT else ValueKind.PREDICTED,
+                    listOf("Full", "Half", "Quarter")[m] + " · " + (if (fits) Fmt.i(n) else "too many")),
+                    Modifier.weight(1f).testTag("coopWidth_$m").border(if (on) 2.dp else 0.dp, if (on) Color.White else Color.Transparent, RoundedCornerShape(8.dp))
                         .clickable(enabled = fits) {
-                            if (isFull) { full = true; y0 = 0.0 }
-                            else { full = false; y0 = (L.lineY(midF) - w / 2).coerceIn(0.0, max(0.0, L.widthFt - w)) }
+                            mode = m
+                            y0 = if (m == 0) 0.0 else (L.lineY(midF) - w / 2).coerceIn(0.0, max(0.0, L.widthFt - w))
                         })
             }
         }
@@ -720,6 +731,49 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
                     Text(Fmt.n(b.weightG, 1) + " g", Modifier.weight(1f), style = num, color = ValuePresent, maxLines = 1)
                     Text(Fmt.n(b.fullness * 100, 1) + "%", Modifier.weight(0.8f), style = num, color = ValuePredicted, maxLines = 1)
                     Text(stateWord(b.state), Modifier.weight(1.1f), style = lab, color = Color.White.copy(alpha = 0.7f), maxLines = 1)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Today's numbers for the birds in the window, all at the house's ideal (there are no sensors): weight,
+ * the temperature to hold, minimum air, gas limits, vent and feet temperatures and breathing.
+ */
+@Composable
+private fun CoopStats(inp: CoopInput) {
+    data class Cell(val label: String, val value: String, val unit: String, val col: Color)
+    val v = inp.ventC
+    val cells = listOf(
+        Cell("Weight", Fmt.n(inp.meanG, 1), "g", ValuePresent),
+        Cell("Ideal temp", Fmt.n(inp.idealC, 1), "°C", ValueIdeal),
+        Cell("Min vent / bird", Fmt.n(inp.minVentCfmBird, 3), "cfm", ValuePredicted),
+        Cell("Min vent, house", Fmt.n(inp.minVentCfm, 1), "cfm", ValuePredicted),
+        Cell("NH₃ under", Fmt.n(inp.nh3Max, 1), "ppm", ValueMax),
+        Cell("CO₂ under", Fmt.n(inp.co2Max, 1), "ppm", ValueMax),
+        Cell("Vent temp", if (v == null) "NA" else "${Fmt.n(v.first, 1)}–${Fmt.n(v.third, 1)}", "°C", ValueIdeal),
+        Cell("Feet", inp.feetC?.let { Fmt.n(it, 1) } ?: "NA", "°C", ValueIdeal),
+        Cell("Breaths", "${Fmt.n(inp.breaths.first, 1)}–${Fmt.n(inp.breaths.second, 1)}", "/min", ValueIdeal),
+        Cell("Panting over", Fmt.n(inp.pantAbove, 1), "/min", ValueMax)
+    )
+    val lab = MaterialTheme.typography.labelSmall
+    val num = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp).testTag("coopStats"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Text("Day ${inp.age} · weight measured, the rest are targets", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.weight(1f))
+            InfoButton("window")
+        }
+        cells.chunked(2).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                row.forEach { c ->
+                    Column(Modifier.weight(1f).border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 4.dp)) {
+                        Text(c.label, style = lab, color = Color.White.copy(alpha = 0.55f), maxLines = 1)
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.Bottom) {
+                            Text(c.value, style = num, color = c.col, maxLines = 1, softWrap = false)
+                            Text(" " + c.unit, style = lab, color = Color.White.copy(alpha = 0.55f), maxLines = 1)
+                        }
+                    }
                 }
             }
         }

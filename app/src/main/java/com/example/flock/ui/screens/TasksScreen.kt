@@ -109,7 +109,9 @@ fun TasksScreen(
     onToggleComplete: (taskId: String, day: Int, done: Boolean) -> Unit,
     onToggleAlert: (taskId: String, enabled: Boolean) -> Unit,
     onCopyToRange: (taskId: String, fromDay: Int, toDay: Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** false when shown inside another scrolling page (the Output tab) */
+    scrollable: Boolean = true
 ) {
     var editing by remember { mutableStateOf<TaskEntity?>(null) }
     var showAdd by remember { mutableStateOf(false) }
@@ -122,7 +124,7 @@ fun TasksScreen(
 
     val scroll = rememberScrollState()
     Column(
-        modifier = modifier.fillMaxSize().verticalScroll(scroll).padding(14.dp),
+        modifier = if (scrollable) modifier.fillMaxSize().verticalScroll(scroll).padding(14.dp) else modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {

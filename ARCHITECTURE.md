@@ -73,6 +73,65 @@ sign out and app version. Reached from the avatar on the Farms screen.
 Kotlin + Compose + Room; AGP 9.1.1 / Gradle 9.3.1; committed `flockit-debug.jks` for a stable debug SHA-1.
 Build: `./gradlew :app:assembleDebug` (see repo README / memory for the isolated GRADLE_USER_HOME note).
 
+## 9. Code layout and rules for future changes (v38)
+The app follows the standard Android architecture (UI → state holder → domain → data), with
+unidirectional data flow: state flows down into composables, events flow up as lambdas.
+
+```
+com.example.flock
+├─ ui/            Compose only: screens, components, theme. No maths, no I/O.
+│  ├─ screens/    OutputScreen (page order) · OutputTopics (tab cards) · OutputUi (kit: KpiLine, RangeParam,
+│  │              SlimCompareBar, ValueChip…) · OutputData (one read-only view model of a day) · InfoTopics (ⓘ texts)
+│  ├─ components/ shared widgets (FlockLoader, dialogs, hold buttons)
+│  └─ FlockViewModel  screen state (StateFlow) + user actions; survives rotation
+├─ domain/        pure Kotlin rules with unit tests, no Android imports:
+│                 DaySchedule (dark, feed, refill, walk times) · FeedCorrection (capped feed advice)
+├─ engine/        pure Kotlin biology and climate maths (PhysiologicalEngine, IbController, CompanyStandard)
+├─ data/          Room entities, DAOs, migrations, FlockRepository (recalculates a batch, single source of truth)
+├─ sync/          Google Sheets: SheetSchema (layout rules, read by header, upgrades) · SheetsSyncManager · auth
+├─ network/       weather client
+└─ notify/        task alarms
+```
+
+Patterns in use, and where:
+- **MVVM + repository**: composables read `StateFlow`s from `FlockViewModel`; the repository owns Room and
+  the sheet; Room is what the UI reads (offline-first).
+- **Pure domain objects** (`domain/`, `engine/`): every number shown on Output comes from a function that
+  takes plain values and returns plain values, so it can be unit-tested without a phone. New rules go here
+  first, with a test (`DayScheduleTest`, `FeedCorrectionTest`, `FeedPlanTest`, `IbControllerTest`).
+- **Presentation model** (`OutputData`): derives everything a day's page shows from the stored day,
+  the farm and the flock, once; cards only format it.
+- **Schema versioning**: Room migrations (`MIGRATION_x_y`, tested in `MigrationTest`) and the sheet's
+  schema number with automatic upgrade of older sheets and their backups (`SheetSchemaTest`). Never change
+  a column or table without a migration and a test.
+- **Design tokens**: colours for value kinds (present, projected, ideal, commercial, min, max) live in
+  `ui/theme`; screens use the kit in `OutputUi`, never raw colours, so a style change is one edit.
+- **Explanations in one place**: every ⓘ reads `InfoTopics`; when a formula changes, its text changes in
+  the same commit.
+
+Rules when adding a feature:
+1. Rule or formula → `domain/` (or `engine/`) + unit test. 2. Stored value → entity + Room migration +
+   sheet column (SheetSchema aliases for old names) + tests. 3. Display → `OutputData` field, then a card
+   using the kit, with an ⓘ topic. 4. CHANGELOG.md and ISSUES.md in the same commit.
+
+Planned next steps (not done yet, to keep each release installable over a live flock):
+- Move `OutputData`'s derivations that are rules (feed plan, pan patterns, stock) into `domain/` use cases.
+- Split `FlockRepository.recompute` into small use cases (weights, feed, water, ventilation).
+- Dependency injection (Hilt) instead of `FlockViewModel` building the database and repository itself.
+- Gradle modules (`:core:domain`, `:core:data`, `:feature:output`, `:feature:entry`) once the packages
+  above have no cross-dependencies.
+
+## 10. Security notes
+- **Debug keystore** `flockit-debug.jks` is committed with password `flockit` on purpose (stable debug
+  SHA-1 for Google sign-in). It must never sign a Play release; release signing reads `STORE_PASSWORD` /
+  `KEY_PASSWORD` from the environment.
+- **Access token** is cached in plain SharedPreferences (`user_access_token`). Move it to memory only (it
+  lasts ~1 h and can be re-requested) or encrypted storage when the P6 auth change lands.
+- **`android:allowBackup="true"`** lets Android back up the local database and preferences (including that
+  token). Add `dataExtractionRules` that exclude the token, or turn backup off.
+- Sheets data is protected by Google Drive sharing; the app never stores Google passwords.
+- No secrets in the sheet; the user's email is used only to name who changed a row.
+
 ---
 Sources: Android Identity / Credential Manager & Authorization guidance —
 https://developer.android.com/identity/sign-in/credential-manager-siwg ·
