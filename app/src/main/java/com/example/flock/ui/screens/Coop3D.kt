@@ -725,7 +725,7 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
         val named = sim.birds.filter { !it.lite }
         if (named.isNotEmpty()) Column(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             val lab = MaterialTheme.typography.labelMedium
-            val num = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+            val num = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold)
             named.forEach { b ->
                 Row(Modifier.fillMaxWidth()) {
                     Text(b.name, Modifier.width(52.dp), style = lab, color = Color.White)
@@ -760,7 +760,7 @@ private fun CoopStats(inp: CoopInput) {
         Cell("Panting over", Fmt.n(inp.pantAbove, 1), "/min", ValueMax)
     )
     val lab = MaterialTheme.typography.labelSmall
-    val num = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+    val num = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold)
     Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp).testTag("coopStats"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Text("Day ${inp.age} · targets" + if (inp.weightMeasured) " (weight is measured)" else " (weight is projected)", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.weight(1f))
@@ -922,7 +922,7 @@ private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: 
     }
     // numbers of a tapped bird, next to it
     if (sel != null) {
-        val lp = Paint().apply { isAntiAlias = true; textSize = (size.width / 30f).coerceIn(11f * density, 15f * density); typeface = Typeface.MONOSPACE }
+        val lp = Paint().apply { isAntiAlias = true; textSize = (size.width / 30f).coerceIn(11f * density, 15f * density); typeface = com.example.ui.theme.AppFonts.mono }
         val sc = cbrt(sel.weightG / 42.0) * 0.1
         val anchor = P(sel.x, (sh.L + sh.ry * 2 + sh.neckY + sh.hr * 3) * sc, sel.zz)
         val mean = inp.meanG
@@ -946,7 +946,7 @@ private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: 
     }
 
     // text: grey labels, coloured numbers (ideal values where there is no sensor)
-    val paint = Paint().apply { isAntiAlias = true; textSize = (size.width / 31f).coerceIn(10.5f * density, 14f * density); typeface = Typeface.MONOSPACE }
+    val paint = Paint().apply { isAntiAlias = true; textSize = (size.width / 31f).coerceIn(10.5f * density, 14f * density); typeface = com.example.ui.theme.AppFonts.mono }
     val grey = Color.White.copy(alpha = 0.6f)
     fun seg(parts: List<Pair<String, Color>>, x: Float, y: Float, right: Boolean) {
         val widths = parts.map { paint.measureText(it.first) }

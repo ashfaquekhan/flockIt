@@ -121,9 +121,9 @@ private fun Totals(plan: DaySchedule.Plan, kinds: List<Kind>, a: DayAmounts) {
                         Column(Modifier.padding(start = 8.dp)) {
                             Row(verticalAlignment = Alignment.Bottom) {
                                 Text(c.name + " ", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.65f), maxLines = 1, softWrap = false)
-                                Text(c.value, style = MaterialTheme.typography.titleSmall.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold), color = c.col, maxLines = 1, softWrap = false)
+                                Text(c.value, style = MaterialTheme.typography.titleSmall.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold), color = c.col, maxLines = 1, softWrap = false)
                             }
-                            if (c.sub.isNotEmpty()) Text(c.sub, style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace), color = c.col.copy(alpha = 0.8f), maxLines = 1, softWrap = false)
+                            if (c.sub.isNotEmpty()) Text(c.sub, style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont), color = c.col.copy(alpha = 0.8f), maxLines = 1, softWrap = false)
                         }
                     }
                 }
@@ -145,8 +145,8 @@ private fun NextUp(kinds: List<Kind>, plan: DaySchedule.Plan, nowH: Double) {
         Text("Next", Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), maxLines = 1, softWrap = false)
         Text(e.emoji, Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.titleMedium, maxLines = 1, softWrap = false)
         Text(e.what, Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = Color.White, maxLines = 1, softWrap = false)
-        Text(hhmmOf(e.h), Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold), color = e.col, maxLines = 1, softWrap = false)
-        Text("in " + Fmt.n(fwd(nowH, e.h), 1) + " h", Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace), color = Color.White.copy(alpha = 0.65f), maxLines = 1, softWrap = false)
+        Text(hhmmOf(e.h), Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold), color = e.col, maxLines = 1, softWrap = false)
+        Text("in " + Fmt.n(fwd(nowH, e.h), 1) + " h", Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont), color = Color.White.copy(alpha = 0.65f), maxLines = 1, softWrap = false)
     }
 }
 
@@ -176,12 +176,12 @@ private fun Agenda(plan: DaySchedule.Plan, kinds: List<Kind>, a: DayAmounts, now
             val alpha = if (isNext) 1f else if (gone) 0.42f else 0.82f
             Row(Modifier.fillMaxWidth().then(if (isNext) Modifier.border(1.dp, it.col.copy(alpha = 0.7f), RoundedCornerShape(6.dp)) else Modifier).padding(horizontal = 4.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                Text(hhmmOf(it.h), style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+                Text(hhmmOf(it.h), style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold),
                     color = it.col.copy(alpha = alpha), modifier = Modifier.width(52.dp * fs), maxLines = 1, softWrap = false)
                 Text(it.emoji, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(26.dp * fs), maxLines = 1, softWrap = false)
                 Text(it.what, style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = alpha), modifier = Modifier.weight(1f), maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                if (it.amount.isNotEmpty()) Text(it.amount, style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+                if (it.amount.isNotEmpty()) Text(it.amount, style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold),
                     color = it.col.copy(alpha = alpha), maxLines = 1, softWrap = false)
             }
         }
@@ -201,7 +201,7 @@ private fun DrawScope.drawDay(plan: DaySchedule.Plan, kinds: List<Kind>, nowH: D
         val start = (fromH / 24 * 360 - 90).toFloat(); var sweep = (fwd(fromH, toH) / 24 * 360).toFloat(); if (sweep == 0f) sweep = 360f
         drawArc(col, start, sweep, false, Offset(c.x - rad, c.y - rad), Size(rad * 2, rad * 2), style = Stroke(w, cap = StrokeCap.Butt))
     }
-    val mono = Paint().apply { isAntiAlias = true; typeface = Typeface.MONOSPACE; textAlign = Paint.Align.CENTER }
+    val mono = Paint().apply { isAntiAlias = true; typeface = com.example.ui.theme.AppFonts.mono; textAlign = Paint.Align.CENTER }
     val emoji = Paint().apply { isAntiAlias = true; textAlign = Paint.Align.CENTER }
     fun text(t: String, p: Offset, sp: Float, col: Color, bold: Boolean = false) {
         mono.textSize = sp * px; mono.color = col.toArgb(); mono.isFakeBoldText = bold

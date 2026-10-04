@@ -183,7 +183,7 @@ fun EnvelopeRow(metric: EnvelopeMetric) {
                 text = metric.subtitle,
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = com.example.ui.theme.NumberFont,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 ),
                 maxLines = 1
@@ -278,7 +278,7 @@ fun EnvelopeRow(metric: EnvelopeMetric) {
             text = curStr,
             style = MaterialTheme.typography.bodyMedium.copy(
                 fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = com.example.ui.theme.NumberFont,
                 color = valColor
             ),
             modifier = Modifier.width(55.dp)

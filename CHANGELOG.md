@@ -8,6 +8,16 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v42 — 2026-10-04 · The app's own type and theme · installs over a live flock
+- **Font** (option A from the sheet): **Rubik** for all text — soft square corners, like the bars of the
+  mark — and **JetBrains Mono** for every number, also on the charts, the clock and the farm window, so
+  digits line up in columns. Both are bundled in the app (no download at run time) under the SIL Open Font
+  License; the licence texts are in `design/fonts`.
+- **Theme from the mark**: the comb's red and the beak's orange are the app's accent colours (errors and
+  the marker under the chosen tab in the bottom bar); black, white outlines and the value colours stay.
+- **Wordmark**: the mark and the name on the sign-in screen and above "Your Farms".
+- Value chips: labels a touch lighter so the longer ones fit with the new type.
+
 ## v41 — 2026-10-04 · Feed by variety in the sheet, report tabs, any number of weighing spots, forecasts, projection check · **DB v16 (non-destructive)** · sheet schema 6
 - **Sheet (schema 6)** — upgrades itself the first time the app opens the farm (a snapshot of the old sheet
   is kept in Drive; backups are upgraded too; nothing is dropped):

@@ -11,6 +11,7 @@ poultry grow-out. Its guiding idea:
 > day-locking, a physiological targets engine, offline entry, a recycle bin, and a
 > fast cross-device account.
 
+- **Type:** Rubik (text) and JetBrains Mono (numbers), bundled under the SIL Open Font License — see `design/fonts`
 - **Package:** `com.ashfaque.flockit`  ·  **min SDK** 24 · **target/compile SDK** 36
 - **Stack:** Kotlin 2.2, Jetpack Compose (Material 3), Room, Retrofit/Moshi, Coroutines/Flow, MVVM
 - **Branches:** `main` (this working build) · `claude-app` (active development)

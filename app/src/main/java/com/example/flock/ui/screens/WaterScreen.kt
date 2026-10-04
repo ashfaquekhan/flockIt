@@ -199,7 +199,7 @@ fun WaterScreen(
                                 text = timeStr,
                                 style = MaterialTheme.typography.bodyMedium.copy(
                                     fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
+                                    fontFamily = com.example.ui.theme.NumberFont
                                 )
                             )
                             Spacer(modifier = Modifier.width(10.dp))

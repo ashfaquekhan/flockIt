@@ -173,7 +173,7 @@ fun TopFlockBar(
                             text = tempStr,
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontWeight = FontWeight.SemiBold,
-                                fontFamily = FontFamily.Monospace
+                                fontFamily = com.example.ui.theme.NumberFont
                             )
                         )
                     }

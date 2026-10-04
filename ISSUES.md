@@ -39,12 +39,12 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O32 | Curves past day 49 (breed) and day 55 (company) are modelled, not from a table | Gompertz weight, maintenance + growth feed. Replace with the published rows if the farm keeps flocks that long. |
 | O33 | Feeding suggestion and growth forecast need data | 3 days of feed entries / at least one weighing; before that they say so. Their noise settings (3 % a weighing, 0.6 % drift a day) are sensible defaults, not fitted to this farm yet. |
 | O34 | Sheet schema 6 upgrade is tested on data, not against a live Google account | As O22: the layout logic is unit-tested; the Drive / Sheets calls need a real run. A snapshot of the old sheet is made first. |
-| O35 | App font not chosen yet | Six options in design/font-options.png. |
 | O21 | Output review checklist (keep / change / drop) is waiting for the farm's choices | https://claude.ai/artifact/VDtyZmDKtLiJBu5Nxq6B3g |
 
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v42 | App used the phone's default type, which differs between phones | No bundled font | Rubik and JetBrains Mono bundled (option A) |
 | v41 | Feed and commercial mortality one day behind the company chart | The chart starts at day 1 (placement day), the app at day 0; "during the day" figures used the same row number as the morning weight | During flock day N = chart row N + 1 (`CompanyStandard.duringDay`); ration read one chart day after the flock's weight |
 | v41 | Feed used by variety hard to find in the sheet | The per-variety columns were added at the far right; no running totals anywhere | Columns beside the total; FeedLedger and DailySummary tabs |
 | v41 | Flock stopped at the harvest day | Day rows, the day bar and the curves all ended at harvestAge (curves at day 49 / 55) | Rows added as the flock runs on, up to day 70; curves carried on |

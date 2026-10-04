@@ -90,7 +90,7 @@ fun FlockManagementDialog(
                     Text(
                         text = "ACTIVE & REGISTERED FLOCKS",
                         style = MaterialTheme.typography.labelSmall.copy(
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = com.example.ui.theme.NumberFont,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -334,7 +334,7 @@ fun FarmSettingsDialog(
                 Text(
                     text = "WEATHER LOCATION (OPEN-METEO)",
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = com.example.ui.theme.NumberFont,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

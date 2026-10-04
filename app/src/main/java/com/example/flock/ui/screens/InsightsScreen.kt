@@ -310,7 +310,7 @@ fun KpiTile(
                 text = label.uppercase(),
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = com.example.ui.theme.NumberFont,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             )
@@ -320,7 +320,7 @@ fun KpiTile(
                     text = value,
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.ExtraBold,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = com.example.ui.theme.NumberFont,
                         color = if (isGood) StatusGood else StatusWarn
                     )
                 )

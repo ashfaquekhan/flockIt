@@ -157,7 +157,7 @@ fun HouseFloorPlan(
                         text = "OCCUPIED AREA",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 10.sp,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = com.example.ui.theme.NumberFont,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     )
@@ -173,7 +173,7 @@ fun HouseFloorPlan(
                         text = "SPACE / BIRD",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 10.sp,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = com.example.ui.theme.NumberFont,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     )
@@ -192,7 +192,7 @@ fun HouseFloorPlan(
                         text = "DENSITY",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 10.sp,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = com.example.ui.theme.NumberFont,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     )

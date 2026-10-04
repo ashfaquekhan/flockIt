@@ -152,7 +152,7 @@ fun GlanceTile(
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = com.example.ui.theme.NumberFont,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     )

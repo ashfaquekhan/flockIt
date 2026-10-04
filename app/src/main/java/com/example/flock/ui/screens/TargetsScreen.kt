@@ -196,7 +196,7 @@ fun TargetsScreen(
                                 text = "CALENDAR AGE",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = com.example.ui.theme.NumberFont,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             )
@@ -228,7 +228,7 @@ fun TargetsScreen(
                                 text = "WEIGHT-AGE (REAL)",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = com.example.ui.theme.NumberFont,
                                     color = if (isProjected) StatusProjected else com.example.ui.theme.ValuePresent
                                 )
                             )
@@ -291,7 +291,7 @@ fun TargetsScreen(
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = com.example.ui.theme.NumberFont,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         ),
                         modifier = Modifier.weight(1.3f)
@@ -301,7 +301,7 @@ fun TargetsScreen(
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = com.example.ui.theme.NumberFont,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         ),
                         modifier = Modifier.weight(1f)
@@ -311,7 +311,7 @@ fun TargetsScreen(
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = com.example.ui.theme.NumberFont,
                             color = MaterialTheme.colorScheme.primary
                         ),
                         modifier = Modifier.weight(1.1f)
@@ -321,7 +321,7 @@ fun TargetsScreen(
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = com.example.ui.theme.NumberFont,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         ),
                         modifier = Modifier.weight(0.9f)
@@ -354,7 +354,7 @@ fun TargetsScreen(
                         Text(
                             text = row.calendarVal,
                             style = MaterialTheme.typography.bodySmall.copy(
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = com.example.ui.theme.NumberFont,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             ),
                             modifier = Modifier.weight(1f)
@@ -363,7 +363,7 @@ fun TargetsScreen(
                         Text(
                             text = row.weightAgeVal,
                             style = MaterialTheme.typography.bodySmall.copy(
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = com.example.ui.theme.NumberFont,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
                             ),
@@ -379,7 +379,7 @@ fun TargetsScreen(
                         Text(
                             text = row.deltaStr,
                             style = MaterialTheme.typography.bodySmall.copy(
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = com.example.ui.theme.NumberFont,
                                 fontWeight = FontWeight.SemiBold,
                                 color = vColor
                             ),

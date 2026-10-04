@@ -49,11 +49,12 @@ fun SignInScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            com.example.flock.ui.components.FlockMark(progress = 1f, size = 112.dp)
             Text(
                 text = "FlockIt",
-                style = MaterialTheme.typography.headlineMedium.copy(
+                style = MaterialTheme.typography.headlineLarge.copy(
                     fontWeight = FontWeight.Black,
-                    color = MaterialTheme.colorScheme.primary
+                    color = androidx.compose.ui.graphics.Color(0xFFF2F2F0)
                 )
             )
             Spacer(Modifier.height(6.dp))

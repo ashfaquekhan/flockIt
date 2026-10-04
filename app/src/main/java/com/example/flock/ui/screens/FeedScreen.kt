@@ -277,7 +277,7 @@ fun FeedScreen(
                         text = String.format("%.3f", stdFcr ?: 1.35),
                         style = MaterialTheme.typography.bodySmall.copy(
                             fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
+                            fontFamily = com.example.ui.theme.NumberFont
                         )
                     )
                 }
@@ -306,7 +306,7 @@ fun FeedBlockRow(
                 text = time,
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
+                    fontFamily = com.example.ui.theme.NumberFont
                 )
             )
             if (pct > 0) {
@@ -387,7 +387,7 @@ fun FcrCard(
             Text(
                 text = label.uppercase(),
                 style = MaterialTheme.typography.labelSmall.copy(
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = com.example.ui.theme.NumberFont,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -397,7 +397,7 @@ fun FcrCard(
                 text = value,
                 style = MaterialTheme.typography.titleLarge.copy(
                     fontWeight = FontWeight.ExtraBold,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = com.example.ui.theme.NumberFont,
                     color = DomainFeed
                 )
             )

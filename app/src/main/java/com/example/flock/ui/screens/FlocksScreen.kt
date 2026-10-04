@@ -286,7 +286,7 @@ private fun FlockCard(
             )
             Text(
                 "ID: ${flock.flockId}",
-                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont),
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }

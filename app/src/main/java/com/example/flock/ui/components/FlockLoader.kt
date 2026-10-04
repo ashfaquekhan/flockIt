@@ -130,3 +130,13 @@ fun FlockOpening(modifier: Modifier = Modifier, size: Dp = 132.dp) {
     androidx.compose.runtime.LaunchedEffect(Unit) { p.animateTo(1f, tween(1250, easing = LinearEasing)) }
     FlockMark(progress = p.value, modifier = modifier.testTag("flockOpening"), size = size)
 }
+
+/** The mark and the name, side by side — for the sign-in screen and the Farms header. */
+@Composable
+fun FlockWordmark(modifier: Modifier = Modifier, markSize: Dp = 44.dp, textStyle: androidx.compose.ui.text.TextStyle = androidx.compose.material3.MaterialTheme.typography.headlineMedium) {
+    androidx.compose.foundation.layout.Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        FlockMark(progress = 1f, size = markSize)
+        androidx.compose.material3.Text("FlockIt", style = textStyle.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Black, letterSpacing = androidx.compose.ui.unit.TextUnit.Unspecified),
+            color = Color(0xFFF2F2F0), maxLines = 1, softWrap = false)
+    }
+}

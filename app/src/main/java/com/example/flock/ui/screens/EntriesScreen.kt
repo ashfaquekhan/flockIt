@@ -296,7 +296,7 @@ fun EntriesScreen(
             }
             // more or fewer locations; the number is kept for the next weighing
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("${locs.size} locations", style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+                Text("${locs.size} locations", style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold),
                     modifier = Modifier.weight(1f), maxLines = 1, softWrap = false)
                 OutlinedButton(onClick = { if (locs.size > 1) locs.removeAt(locs.size - 1) },
                     enabled = weightsEnabled && locs.size > 1 && locs.last().w.isBlank(),
@@ -327,7 +327,7 @@ fun EntriesScreen(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val mono = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    val mono = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, fontFamily = com.example.ui.theme.NumberFont)
                     Column {
                         Text("Average", style = MaterialTheme.typography.labelSmall)
                         Text(if (liveSampleRes.hasSample) String.format("%.1f g", liveSampleRes.flockAvgG) else "—", style = mono)
@@ -622,7 +622,7 @@ fun SampleMap(locations: Int, farm: com.example.flock.data.FarmEntity, occupiedF
             val pts = listOf(androidx.compose.ui.geometry.Offset(padL, y(0.5))) + spots.map { androidx.compose.ui.geometry.Offset(x(it.first), y(it.second)) }
             for (i in 1 until pts.size) drawLine(Color.White.copy(alpha = 0.55f), pts[i - 1], pts[i], 1.4f * px,
                 pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6f * px, 5f * px)))
-            val paint = android.graphics.Paint().apply { isAntiAlias = true; textAlign = android.graphics.Paint.Align.CENTER; typeface = android.graphics.Typeface.MONOSPACE; isFakeBoldText = true }
+            val paint = android.graphics.Paint().apply { isAntiAlias = true; textAlign = android.graphics.Paint.Align.CENTER; typeface = com.example.ui.theme.AppFonts.mono; isFakeBoldText = true }
             spots.forEachIndexed { i, s ->
                 val c = androidx.compose.ui.geometry.Offset(x(s.first), y(s.second))
                 drawCircle(Color.Black, 10.5f * px, c); drawCircle(Color.White, 10.5f * px, c, style = androidx.compose.ui.graphics.drawscope.Stroke(1.6f * px))
@@ -642,7 +642,7 @@ fun SampleMap(locations: Int, farm: com.example.flock.data.FarmEntity, occupiedF
             Row(Modifier.fillMaxWidth()) {
                 pair.forEach { (i, s) ->
                     Text("${i + 1}  ${String.format("%.1f", s.first * lenFt)} ft  " + (if (n == 1) "middle" else if (s.second < 0.5) "left" else "right"),
-                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, letterSpacing = 0.sp), color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont, letterSpacing = 0.sp), color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1, softWrap = false, modifier = Modifier.weight(1f))
                 }
                 if (pair.size == 1) Spacer(Modifier.weight(1f))

@@ -72,9 +72,9 @@ fun ValueChip(x: V, modifier: Modifier = Modifier, big: Boolean = false) {
     val col = kindColor(k)
     Column(modifier.border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)).padding(horizontal = 7.dp, vertical = 4.dp)) {
         Text(x.tag ?: kindTag(x.kind).ifEmpty { "—" }, maxLines = 1, softWrap = false,
-            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 0.sp), color = col.copy(alpha = 0.9f))
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 10.5.sp, letterSpacing = (-0.1).sp), color = col.copy(alpha = 0.9f))
         Text(x.text, maxLines = 1, softWrap = false,
-            style = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.bodyLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold,
                 fontSize = if (big) 17.sp else 15.sp, letterSpacing = (-0.3).sp), color = col)
     }
 }
@@ -277,15 +277,15 @@ fun CompactLine(label: String, unit: String, sub: String?, value: V, trend: Tren
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(label, Modifier.weight(1f).padding(end = 8.dp), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), maxLines = 2)
             if (trend != null) { TrendIcon(trend); Spacer(Modifier.width(5.dp)) }
-            Text(value.text, style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+            Text(value.text, style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold),
                 color = kindColor(if (value.text == "—") ValueKind.NEUTRAL else value.kind), maxLines = 1, softWrap = false)
             if (unit.isNotEmpty()) Text(" $unit", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), maxLines = 1, softWrap = false)
         }
         if (sub != null || refs.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
-            if (sub != null) Text(sub, Modifier.padding(end = 8.dp), style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+            if (sub != null) Text(sub, Modifier.padding(end = 8.dp), style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont),
                 color = Color.White.copy(alpha = 0.6f), maxLines = 1, softWrap = false)
             androidx.compose.foundation.layout.FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-                refs.forEach { (t, c) -> Text(t, style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace), color = c, maxLines = 1, softWrap = false) }
+                refs.forEach { (t, c) -> Text(t, style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont), color = c, maxLines = 1, softWrap = false) }
             }
         }
     }
@@ -403,7 +403,7 @@ data class MMRow(val label: String, val house: V?, val line: V?, val pan: V?)
 /** Whole house (macro) next to one line and one pan (micro), same numbers side by side. */
 @Composable
 fun MacroMicroTable(rows: List<MMRow>, heads: List<String> = listOf("House", "Line", "Pan")) {
-    val mono = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp)
+    val mono = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp)
     val grey = Color.White.copy(alpha = 0.6f)
     val wts = listOf(1.25f, 1.1f, 0.8f)
     Column(Modifier.fillMaxWidth().border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 6.dp),
@@ -526,7 +526,7 @@ fun Knob(label: String, unit: String, value: Double, lo: Double, hi: Double, ste
                 }
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(Fmt.n(value, 1), style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black), color = color)
+                Text(Fmt.n(value, 1), style = MaterialTheme.typography.titleLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Black), color = color)
                 Text(unit, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }

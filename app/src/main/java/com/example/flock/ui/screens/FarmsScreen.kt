@@ -88,6 +88,7 @@ fun FarmsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
+                    com.example.flock.ui.components.FlockWordmark(markSize = 34.dp, textStyle = MaterialTheme.typography.titleLarge)
                     Text(
                         "Your Farms",
                         style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Black)

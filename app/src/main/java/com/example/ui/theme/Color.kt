@@ -53,6 +53,9 @@ val LineDark = Color(0x55FFFFFF)     // thin white outline     // hairlines / ou
 
 // Calm accent for dark mode (not flashy) — a muted teal-emerald
 val AccentDark = Color(0xFFD9E8E1)   // light, near-white accent
+// the mark's own colours: the comb and the beak (used sparingly, as markers)
+val BrandComb = Color(0xFFE5534B)
+val BrandBeak = Color(0xFFF0A23A)
 val AccentDarkWash = Color(0xFF000000)
 
 // Value provenance — keep the three kinds visually distinct so they're never confused:

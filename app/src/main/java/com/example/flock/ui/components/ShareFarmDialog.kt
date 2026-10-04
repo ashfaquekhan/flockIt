@@ -153,7 +153,7 @@ fun ShareFarmDialog(
                 Text(
                     text = "SPREADSHEET ID / LINK",
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = com.example.ui.theme.NumberFont,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -172,7 +172,7 @@ fun ShareFarmDialog(
                         Text(
                             text = spreadsheetId,
                             style = MaterialTheme.typography.bodySmall.copy(
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = com.example.ui.theme.NumberFont,
                                 fontSize = 11.sp
                             ),
                             modifier = Modifier.weight(1f),

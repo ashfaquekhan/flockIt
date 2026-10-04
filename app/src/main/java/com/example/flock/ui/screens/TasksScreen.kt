@@ -227,7 +227,7 @@ private fun TaskRow(
                 )
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(t.time, style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary))
+                Text(t.time, style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary))
                 Spacer(Modifier.width(8.dp))
                 Text(recurrenceLabel(t), style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (t.kind == "waterfill") {

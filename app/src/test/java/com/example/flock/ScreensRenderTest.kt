@@ -161,6 +161,7 @@ class ScreensRenderTest {
     @Config(qualifiers = "w360dp-h780dp-xhdpi") @Test fun tasksSmall() = shoot("tasks_small") { tasks() }
     @Config(qualifiers = "w360dp-h780dp-xhdpi") @Test fun flocksSmall() = shoot("flocks_small") { flocks() }
     @Config(qualifiers = "w360dp-h780dp-xhdpi") @Test fun farmsSmall() = shoot("farms_small") { farms() }
+    @Config(qualifiers = "w360dp-h780dp-xhdpi") @Test fun signInSmall() = shoot("signin_small") { com.example.flock.ui.screens.SignInScreen({}, {}) }
     /** Small phone with the system text size at 130 %. */
     @Config(qualifiers = "w360dp-h780dp-xhdpi") @Test fun outputBigText() = shoot("output_bigtext") {
         val dens = androidx.compose.ui.platform.LocalDensity.current

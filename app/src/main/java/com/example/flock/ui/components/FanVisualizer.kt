@@ -118,7 +118,7 @@ fun FanVisualizer(
                         Text(
                             text = lvl?.let { "L$it" } ?: "—",
                             style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 9.sp, fontFamily = FontFamily.Monospace,
+                                fontSize = 9.sp, fontFamily = com.example.ui.theme.NumberFont,
                                 color = if (atMin) DomainVent else MaterialTheme.colorScheme.onSurfaceVariant
                             ),
                             textAlign = TextAlign.Center
@@ -169,7 +169,7 @@ private fun LevelRow(
         MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
     } else {
         MaterialTheme.typography.bodySmall.copy(
-            fontFamily = FontFamily.Monospace,
+            fontFamily = com.example.ui.theme.NumberFont,
             fontWeight = if (highlight) FontWeight.Bold else FontWeight.Normal,
             color = if (highlight) DomainVent else if (dim) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f) else MaterialTheme.colorScheme.onSurface
         )
@@ -222,7 +222,7 @@ private fun FanItem(
                 text = "$fanNumber",
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = com.example.ui.theme.NumberFont,
                     fontWeight = FontWeight.Bold,
                     color = if (isRunning) DomainVent else idle
                 ),
@@ -269,7 +269,7 @@ fun MetaRow(label: String, value: String) {
             text = value,
             style = MaterialTheme.typography.bodySmall.copy(
                 fontWeight = FontWeight.SemiBold,
-                fontFamily = FontFamily.Monospace
+                fontFamily = com.example.ui.theme.NumberFont
             )
         )
     }

@@ -55,7 +55,7 @@ fun FarmTopView(d: OutputData, pattern: OutputData.PanPattern = d.feedPattern) {
             fun Y(ft: Double) = (oy + ft * s).toFloat()
             val line = Color.White.copy(alpha = 0.55f)
             val faint = Color.White.copy(alpha = 0.18f)
-            val paint = Paint().apply { isAntiAlias = true; textSize = 10f * px; typeface = Typeface.MONOSPACE; color = Color.White.copy(alpha = 0.7f).toArgb() }
+            val paint = Paint().apply { isAntiAlias = true; textSize = 10f * px; typeface = com.example.ui.theme.AppFonts.mono; color = Color.White.copy(alpha = 0.7f).toArgb() }
             // house
             drawRect(line, Offset(X(0.0), Y(0.0)), Size((lenFt * s).toFloat(), (widFt * s).toFloat()), style = Stroke(1.2f))
             // birds' area up to the barricade
@@ -136,7 +136,7 @@ fun PanCellView(d: OutputData, pattern: OutputData.PanPattern) {
             fun X(ft: Double) = ((padL + ft * ftToDp) * px).toFloat()
             val midY = (padT + bandDp / 2) * px
             fun Y(ft: Double) = (midY + ft * ftY * px).toFloat()
-            val paint = Paint().apply { isAntiAlias = true; textSize = 11.5f * px; typeface = Typeface.MONOSPACE; textAlign = Paint.Align.CENTER }
+            val paint = Paint().apply { isAntiAlias = true; textSize = 11.5f * px; typeface = com.example.ui.theme.AppFonts.mono; textAlign = Paint.Align.CENTER }
             fun label(t: String, x: Float, y: Float, c: Color, align: Paint.Align = Paint.Align.CENTER) {
                 paint.textAlign = align; paint.color = c.toArgb()
                 val w = paint.measureText(t); val h = paint.textSize

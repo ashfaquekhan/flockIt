@@ -121,11 +121,11 @@ private fun ForecastRow(d: ForecastDay) {
         Text(label, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold), modifier = Modifier.weight(1.6f))
         Text(
             text = "${d.tMinC?.let { String.format("%.0f", it) } ?: "–"}–${d.tMaxC?.let { String.format("%.0f", it) } ?: "–"}",
-            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            style = MaterialTheme.typography.bodySmall.copy(fontFamily = com.example.ui.theme.NumberFont),
             modifier = Modifier.weight(1.3f)
         )
-        Text("${d.precipProbPct ?: 0}%", style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), modifier = Modifier.weight(1f))
-        Text(d.windKmh?.let { "${it.toInt()}" } ?: "–", style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), modifier = Modifier.weight(1f))
+        Text("${d.precipProbPct ?: 0}%", style = MaterialTheme.typography.bodySmall.copy(fontFamily = com.example.ui.theme.NumberFont), modifier = Modifier.weight(1f))
+        Text(d.windKmh?.let { "${it.toInt()}" } ?: "–", style = MaterialTheme.typography.bodySmall.copy(fontFamily = com.example.ui.theme.NumberFont), modifier = Modifier.weight(1f))
         Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
             Box(modifier = Modifier.size(8.dp).padding(end = 0.dp)) {}
             Text("${d.confidencePct}%", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold, color = confColor, fontSize = 12.sp))

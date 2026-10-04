@@ -253,10 +253,10 @@ fun WeightGrowthChartCard(
                     .padding(top = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(text = "D0", style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, color = Color.Gray))
-                Text(text = "D14", style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, color = Color.Gray))
-                Text(text = "D28", style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, color = Color.Gray))
-                Text(text = "D$maxDay", style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, color = Color.Gray))
+                Text(text = "D0", style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont, color = Color.Gray))
+                Text(text = "D14", style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont, color = Color.Gray))
+                Text(text = "D28", style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont, color = Color.Gray))
+                Text(text = "D$maxDay", style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont, color = Color.Gray))
             }
         }
     }

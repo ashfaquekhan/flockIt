@@ -16,7 +16,7 @@ private val DarkColorScheme = darkColorScheme(
     onSecondary = Color(0xFF06222E),
     secondaryContainer = Color(0x26FFFFFF),
     onSecondaryContainer = Color(0xFFF2F2F0),
-    tertiary = Color(0xFFC79A5E),
+    tertiary = BrandBeak,
     onTertiary = Color(0xFF2E1F08),
     tertiaryContainer = Color.Black,
     onTertiaryContainer = Color(0xFFEBD3AE),
@@ -38,7 +38,7 @@ private val DarkColorScheme = darkColorScheme(
     surfaceDim = Color.Black,
     inverseSurface = Color(0xFFF2F2F0),
     inverseOnSurface = Color.Black,
-    error = Color(0xFFD9705F),
+    error = BrandComb,
     onError = Color(0xFF3A0906),
     errorContainer = Color.Black,
     onErrorContainer = Color(0xFFF6D2CB)
@@ -77,6 +77,8 @@ fun FlockItTheme(
     darkTheme: Boolean = true,
     content: @Composable () -> Unit
 ) {
+    // the faces for text drawn on canvases (charts, clock, farm window)
+    AppFonts.load(androidx.compose.ui.platform.LocalContext.current)
     MaterialTheme(
         colorScheme = DarkColorScheme,
         typography = Typography,

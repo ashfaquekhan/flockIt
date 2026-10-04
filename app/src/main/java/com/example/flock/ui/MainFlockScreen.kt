@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Dashboard
@@ -160,7 +161,14 @@ fun MainFlockScreen(
                     NavigationBarItem(
                         selected = selected,
                         onClick = { currentTab = tab },
-                        icon = { Icon(tab.icon, contentDescription = tab.label) },
+                        icon = {
+                            // the chosen tab is marked with a small bar in the beak's colour
+                            androidx.compose.foundation.layout.Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                                Icon(tab.icon, contentDescription = tab.label)
+                                Box(Modifier.padding(top = 2.dp).size(width = 18.dp, height = 3.dp)
+                                    .background(if (selected) com.example.ui.theme.BrandBeak else androidx.compose.ui.graphics.Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(2.dp)))
+                            }
+                        },
                         label = {
                             Text(
                                 text = tab.label,
