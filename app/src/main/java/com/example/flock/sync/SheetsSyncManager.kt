@@ -294,8 +294,10 @@ class SheetsSyncManager(
             ensureLayout(authHeader, spreadsheetId)
             try {
                 val okFlock = appendRows(authHeader, spreadsheetId, "Flocks", listOf(flockToRow(flock)))
+                // day rows go under the sheet's own header, whatever order its columns are in
+                val header = dailyHeaderOf(authHeader, spreadsheetId)
                 val okDays = if (days.isEmpty()) true
-                    else appendRows(authHeader, spreadsheetId, "DailyData", days.map { dayToRow(it) })
+                    else appendRows(authHeader, spreadsheetId, "DailyData", days.map { SheetSchema.dayCells(it, header) })
                 logActivity(spreadsheetId, "CREATE_FLOCK", "Added flock ${flock.name} (${flock.flockId})")
                 if (okFlock && okDays) Result.success(Unit)
                 else Result.failure(Exception("Sheet write failed (flock=$okFlock, days=$okDays)"))
@@ -322,8 +324,32 @@ class SheetsSyncManager(
             } catch (e: Exception) { Result.failure(e) }
         }
 
-    /** Upserts a single day's inputs into the DailyData tab (find row by FlockId+Day, else append). */
-    suspend fun pushDayEntry(spreadsheetId: String, day: DailyDataEntity): Result<Unit> =
+    /** The DailyData tab's header row (the current layout when the tab has none). */
+    private suspend fun dailyHeaderOf(authHeader: String, spreadsheetId: String): List<String> = (try {
+        GoogleApiClientProvider.sheetsApi.batchGet(authHeader, spreadsheetId, listOf(a1("DailyData", "1:1")))
+            .body()?.valueRanges?.getOrNull(0)?.values?.firstOrNull()?.map { it.toString().trim() }?.takeIf { it.isNotEmpty() }
+    } catch (e: Exception) { null }) ?: SheetSchema.dailyHeader(emptyList(), 5)
+
+    /**
+     * Rewrites the report tabs (feed ledger, daily summary) from the sheet's own rows, so they always match
+     * what the sheet holds — also rows another phone wrote. Best effort: a failure here never fails a save.
+     */
+    suspend fun pushReports(spreadsheetId: String): Boolean = withContext(Dispatchers.IO) {
+        val authHeader = authManager.getAuthHeader() ?: return@withContext false
+        try {
+            val raw = readRaw(authHeader, spreadsheetId) ?: return@withContext false
+            val farm = db.farmDao().getFarm(spreadsheetId) ?: FarmEntity(spreadsheetId = spreadsheetId)
+            val c = SheetSchema.parse(spreadsheetId, raw, farm, db.configDao().getConfig(spreadsheetId))
+            writeBlocks(authHeader, spreadsheetId, linkedMapOf(
+                SheetReports.FEED_LEDGER to SheetReports.feedLedger(c), SheetReports.DAILY_SUMMARY to SheetReports.dailySummary(c)), addActivityLog = false)
+        } catch (e: Exception) { Log.w(TAG, "pushReports: ${e.message}"); false }
+    }
+
+    /**
+     * Upserts a single day's inputs into the DailyData tab (find row by FlockId+Day, else append), then
+     * brings the report tabs up to date ([updateReports] false when several days are sent in a row).
+     */
+    suspend fun pushDayEntry(spreadsheetId: String, day: DailyDataEntity, updateReports: Boolean = true): Result<Unit> =
         withContext(Dispatchers.IO) {
             val authHeader = authManager.getAuthHeader() ?: return@withContext Result.success(Unit)
             ensureLayout(authHeader, spreadsheetId)
@@ -340,8 +366,9 @@ class SheetsSyncManager(
                 for ((idx, r) in rows.withIndex()) if (r.s(0) == day.flockId && r.i(1) == day.dayNumber) { rowNum = idx + 2; break }
                 val values = SheetSchema.dayValues(day)
                 val writes = mutableListOf<ValueRange>()
-                // a feed variety with no column yet gets one at the end of the header
-                val missing = SheetSchema.usedSplit(day).keys.map { SheetSchema.usedHeader(it) }
+                // a feed variety or an extra sample location with no column yet gets one at the end of the header
+                // (the next layout check moves it beside its neighbours)
+                val missing = (SheetSchema.usedSplit(day).keys.map { SheetSchema.usedHeader(it) } + SheetSchema.sampleColumns(day).keys)
                     .filter { name -> header.none { SheetSchema.norm(it) == SheetSchema.norm(name) } }
                 if (missing.isNotEmpty()) {
                     growColumns(authHeader, spreadsheetId, "DailyData", header.size + missing.size)
@@ -350,7 +377,7 @@ class SheetsSyncManager(
                 }
                 val ok = if (rowNum > 0) {
                     // only the columns the app knows, in runs, so the farm's own columns keep their values
-                    val known = header.indices.filter { SheetSchema.norm(header[it]) in values.keys || SheetSchema.isUsedColumn(header[it]) }
+                    val known = header.indices.filter { SheetSchema.norm(header[it]) in values.keys || SheetSchema.isDynamicColumn(header[it]) }
                     var i = 0
                     while (i < known.size) {
                         var j = i
@@ -366,6 +393,8 @@ class SheetsSyncManager(
                         BatchUpdateValuesRequest(valueInputOption = RAW, data = writes)).isSuccessful
                     headerOk && appendRows(authHeader, spreadsheetId, "DailyData", listOf(header.map { values[SheetSchema.norm(it)] ?: "" }))
                 }
+                if (missing.isNotEmpty()) { layoutOk -= spreadsheetId; upgradeTried -= spreadsheetId }   // columns were added at the end: tidy the layout next time
+                if (ok && updateReports) pushReports(spreadsheetId)
                 if (ok) Result.success(Unit) else Result.failure(Exception("DailyData write failed"))
             } catch (e: Exception) { Result.failure(e) }
         }
@@ -657,7 +686,9 @@ class SheetsSyncManager(
         val farm = db.farmDao().getFarm(spreadsheetId) ?: FarmEntity(spreadsheetId = spreadsheetId)
         val config = db.configDao().getConfig(spreadsheetId)
         val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
-        copyAsBackup(authHeader, spreadsheetId, "$SNAPSHOT_PREFIX — ${farm.farmName} — $stamp", "snapshot", raw.schema)
+        // a current file whose only fault is a column the app itself added at the end is just tidied: no snapshot needed
+        val tidyOnly = raw.schema >= SheetSchema.VERSION && reasons.all { it == "DailyData columns differ" }
+        if (!tidyOnly) copyAsBackup(authHeader, spreadsheetId, "$SNAPSHOT_PREFIX — ${farm.farmName} — $stamp", "snapshot", raw.schema)
         val content = SheetSchema.parse(spreadsheetId, raw, farm, config)
         val problems = writeAndVerify(authHeader, spreadsheetId, content, SheetSchema.primaryMeta(content.farm.farmId, raw.schema))
         if (problems.isNotEmpty()) {
@@ -675,7 +706,7 @@ class SheetsSyncManager(
                 tagBackup(authHeader, b.id, spreadsheetId, null); upgraded++
             }
         }
-        logActivity(spreadsheetId, "UPGRADE", "Sheet brought to schema ${SheetSchema.VERSION} (${reasons.joinToString("; ")}) · $upgraded backup(s) upgraded · old sheet kept as a snapshot")
+        if (!tidyOnly) logActivity(spreadsheetId, "UPGRADE", "Sheet brought to schema ${SheetSchema.VERSION} (${reasons.joinToString("; ")}) · $upgraded backup(s) upgraded · old sheet kept as a snapshot")
         return true
     }
 
@@ -890,6 +921,8 @@ class SheetsSyncManager(
                     Sheet(SheetProperties(title = "Flocks", gridProperties = GridProperties(rowCount = 50, columnCount = 20))),
                     Sheet(SheetProperties(title = "DailyData", gridProperties = GridProperties(rowCount = 200, columnCount = 80))),
                     Sheet(SheetProperties(title = "Tasks", gridProperties = GridProperties(rowCount = 200, columnCount = 20))),
+                    Sheet(SheetProperties(title = SheetReports.FEED_LEDGER, gridProperties = GridProperties(rowCount = 200, columnCount = 40))),
+                    Sheet(SheetProperties(title = SheetReports.DAILY_SUMMARY, gridProperties = GridProperties(rowCount = 200, columnCount = 40))),
                     Sheet(SheetProperties(title = "ActivityLog", gridProperties = GridProperties(rowCount = 200, columnCount = 5)))
                 )
             )
@@ -942,7 +975,10 @@ class SheetsSyncManager(
             putBlock(authHeader, spreadsheetId, "_FeedTypes", feedTypeBlock)
             val okFlocksHdr = putBlock(authHeader, spreadsheetId, "Flocks", listOf(FLOCK_HEADERS))
             val okDailyHdr = putBlock(authHeader, spreadsheetId, "DailyData",
-                listOf(DAILY_HEADERS + feedTypes.sortedBy { it.sortOrder }.map { SheetSchema.usedHeader(it.code) }))
+                listOf(SheetSchema.dailyHeader(feedTypes.sortedBy { it.sortOrder }.map { it.code }, 5)))
+            val empty = SheetSchema.Content(farm, config, feedTypes, emptyList(), emptyList(), emptyList())
+            putBlock(authHeader, spreadsheetId, SheetReports.FEED_LEDGER, SheetReports.feedLedger(empty))
+            putBlock(authHeader, spreadsheetId, SheetReports.DAILY_SUMMARY, SheetReports.dailySummary(empty))
             putBlock(authHeader, spreadsheetId, "Tasks", listOf(TASK_HEADERS))
             putBlock(authHeader, spreadsheetId, "ActivityLog", activityBlock)
 

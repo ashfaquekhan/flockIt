@@ -42,6 +42,14 @@ val MIGRATION_14_15 = object : androidx.room.migration.Migration(14, 15) {
     }
 }
 
+/** v15 → v16: sample locations beyond the fifth, and how many locations a day shows. */
+val MIGRATION_15_16 = object : androidx.room.migration.Migration(15, 16) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE daily_data ADD COLUMN moreSamples TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE daily_data ADD COLUMN locCount INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 @Database(
     entities = [
         StandardsEntity::class,
@@ -53,7 +61,7 @@ val MIGRATION_14_15 = object : androidx.room.migration.Migration(14, 15) {
         DailyDataEntity::class,
         TaskEntity::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = false
 )
 abstract class FlockDatabase : RoomDatabase() {
@@ -78,7 +86,7 @@ abstract class FlockDatabase : RoomDatabase() {
                     FlockDatabase::class.java,
                     "flockit_database"
                 )
-                    .addMigrations(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
+                    .addMigrations(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
                     .fallbackToDestructiveMigration()
                     .addCallback(FlockDatabaseCallback(scope))
                     .build()

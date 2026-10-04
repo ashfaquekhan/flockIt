@@ -86,9 +86,12 @@ com.example.flock
 │  └─ FlockViewModel  screen state (StateFlow) + user actions; survives rotation
 ├─ domain/        pure Kotlin rules with unit tests, no Android imports:
 │                 DaySchedule (dark, feed, refill, walk times) · FeedCorrection (capped feed advice)
+│                 IntakeForecast (Kalman filter on appetite → bags, range, chances) · GrowthForecast (target day,
+│                 harvest weight) · FlockKpis (ADG, 7-day FCR, mortality windows, projection checks)
 ├─ engine/        pure Kotlin biology and climate maths (PhysiologicalEngine, IbController, CompanyStandard)
 ├─ data/          Room entities, DAOs, migrations, FlockRepository (recalculates a batch, single source of truth)
-├─ sync/          Google Sheets: SheetSchema (layout rules, read by header, upgrades) · SheetsSyncManager · auth
+├─ sync/          Google Sheets: SheetSchema (layout rules, read by header, upgrades) · SheetReports (report tabs
+│                 rebuilt from the input rows, never read back) · SheetsSyncManager · auth
 ├─ network/       weather client
 └─ notify/        task alarms
 ```

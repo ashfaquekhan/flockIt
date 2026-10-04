@@ -16,7 +16,7 @@ class SheetSchemaTest {
     private val farm = FarmEntity(spreadsheetId = sid, farmName = "Maa Tarini", farmId = "farm_1")
 
     private fun rawOf(blocks: Map<String, List<List<Any>>>) = SheetSchema.RawFile(
-        titles = SheetSchema.TABS.toSet(), meta = blocks["_Meta"], farm = blocks["_Farm"], config = blocks["_Config"],
+        titles = (SheetSchema.TABS + com.example.flock.sync.SheetReports.TABS).toSet(), meta = blocks["_Meta"], farm = blocks["_Farm"], config = blocks["_Config"],
         feedTypes = blocks["_FeedTypes"], flocks = blocks["Flocks"], days = blocks["DailyData"], tasks = blocks["Tasks"])
 
     @Test fun olderDailyLayoutReadsByHeaderName() {
@@ -45,11 +45,13 @@ class SheetSchemaTest {
         // rewritten: current columns first, the farm's own column kept at the right with its value
         val b = SheetSchema.blocks(c, SheetSchema.primaryMeta("farm_1", 2))
         val hdr = b["DailyData"]!![0]
-        assertEquals(SheetSchema.DAILY_HEADERS, hdr.take(SheetSchema.DAILY_HEADERS.size))
+        val layout = SheetSchema.dailyHeader(listOf("B1"), 5)
+        assertEquals(layout, hdr.take(layout.size))
         assertEquals("Vet visit", hdr.last())
         val row = b["DailyData"]!![1]
-        assertEquals(7, row[SheetSchema.DAILY_HEADERS.indexOf("Mortality")])          // a real number, not text
-        assertEquals(12.5, row[SheetSchema.DAILY_HEADERS.indexOf("FeedBagsUsed")])
+        assertEquals(7, row[hdr.indexOf("Mortality")])          // a real number, not text
+        assertEquals(12.5, row[hdr.indexOf("FeedBagsUsed")])
+        assertEquals(12.5, row[hdr.indexOf("Used B1")])         // the variety beside the total
         assertEquals("yes", row.last())
     }
 

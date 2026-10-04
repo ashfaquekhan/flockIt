@@ -35,11 +35,22 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O27 | Access token cached in plain preferences and app backup allowed | See ARCHITECTURE.md §10; fix with the P6 sign-in change. |
 | O28 | Larger refactor (use cases, DI, Gradle modules) is planned, not done | Steps listed in ARCHITECTURE.md §9; done gradually so each release installs over a live flock. |
 | O30 | Stock page does not plan orders | By request: received, used and in store only. Needed / to order / days left can come back later. |
+| O31 | Which chart day is which flock day is an assumption | Taken as: the chart's day 1 is the placement day (the app's day 0). If the company counts the day AFTER placement as day 1, feed and commercial mortality should move back one row — say so and it is a one-line change (`CompanyStandard.duringDay`). |
+| O32 | Curves past day 49 (breed) and day 55 (company) are modelled, not from a table | Gompertz weight, maintenance + growth feed. Replace with the published rows if the farm keeps flocks that long. |
+| O33 | Feeding suggestion and growth forecast need data | 3 days of feed entries / at least one weighing; before that they say so. Their noise settings (3 % a weighing, 0.6 % drift a day) are sensible defaults, not fitted to this farm yet. |
+| O34 | Sheet schema 6 upgrade is tested on data, not against a live Google account | As O22: the layout logic is unit-tested; the Drive / Sheets calls need a real run. A snapshot of the old sheet is made first. |
+| O35 | App font not chosen yet | Six options in design/font-options.png. |
 | O21 | Output review checklist (keep / change / drop) is waiting for the farm's choices | https://claude.ai/artifact/VDtyZmDKtLiJBu5Nxq6B3g |
 
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v41 | Feed and commercial mortality one day behind the company chart | The chart starts at day 1 (placement day), the app at day 0; "during the day" figures used the same row number as the morning weight | During flock day N = chart row N + 1 (`CompanyStandard.duringDay`); ration read one chart day after the flock's weight |
+| v41 | Feed used by variety hard to find in the sheet | The per-variety columns were added at the far right; no running totals anywhere | Columns beside the total; FeedLedger and DailySummary tabs |
+| v41 | Flock stopped at the harvest day | Day rows, the day bar and the curves all ended at harvestAge (curves at day 49 / 55) | Rows added as the flock runs on, up to day 70; curves carried on |
+| v41 | Weight shown green before it was measured (animation box, named birds); FCR / mortality green before the day's entries | Fixed colours instead of the value's kind | Kinds for weight, mortality and FCR drive the colours everywhere |
+| v41 | Only five sample locations | Five fixed columns | Any number from 1 to 12 (extra columns in DB and sheet) |
+| v41 | Feeding logged for the animation always at "now" | No time field | Time picker beside the bags |
 | v40 | App icon and loading animation looked off | Drawn without options to choose from (v38) | Four sheets of options (design/icon-options*.png); option 45 chosen; loader assembles the same mark from its parts |
 | v40 | Start-up screen flashed the phone's default background | Theme had no window background | Black window and splash background |
 | v39 | Words broken mid-word although there was room (Temperature, Humidity, Static pressure…) | The name shared its width with the long line of references under the value, leaving it a few characters | Name gets the whole first line beside the value; references on their own line |

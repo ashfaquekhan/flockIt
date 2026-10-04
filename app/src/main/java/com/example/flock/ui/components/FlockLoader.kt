@@ -85,7 +85,7 @@ private fun DrawScope.drawMark(progress: Float, alpha: Float) {
 
 /** The mark, [progress] of the way through being put together; 1 = whole. Drawn on nothing (no box behind it). */
 @Composable
-fun FlockMark(progress: Float, modifier: Modifier = Modifier, size: Dp = 44.dp, alpha: Float = 1f) {
+fun FlockMark(progress: Float, modifier: Modifier = Modifier, size: Dp = 56.dp, alpha: Float = 1f) {
     Canvas(modifier.size(size)) { drawMark(progress.coerceIn(0f, 1f) * Mark.BUILT + if (progress >= 1f) 0.01f else 0f, alpha) }
 }
 
@@ -94,7 +94,7 @@ fun FlockMark(progress: Float, modifier: Modifier = Modifier, size: Dp = 44.dp, 
  * beak, eye — held for a moment, then cleared and built again.
  */
 @Composable
-fun FlockLoader(modifier: Modifier = Modifier, size: Dp = 44.dp) {
+fun FlockLoader(modifier: Modifier = Modifier, size: Dp = 56.dp) {
     val t = rememberInfiniteTransition(label = "loader")
     val p by t.animateFloat(0f, 1f, infiniteRepeatable(tween(1900, easing = LinearEasing), RepeatMode.Restart), label = "build")
     Canvas(modifier.size(size).testTag("flockLoader")) {
@@ -104,15 +104,29 @@ fun FlockLoader(modifier: Modifier = Modifier, size: Dp = 44.dp) {
 }
 
 /**
- * Pull-to-refresh indicator: pulling down puts the mark together (the further the pull, the more of it is in
- * place); while refreshing it builds over and over. No box behind it.
+ * Pull-to-refresh indicator, in the middle of the screen: pulling down puts the mark together (the further
+ * the pull, the more of it is in place); while refreshing it builds over and over. Behind it only a soft
+ * dark glow that fades out to nothing, so the mark reads over whatever is on the page — no box, no edge.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BoxScope.FlockPullIndicator(state: PullToRefreshState, refreshing: Boolean) {
     val f = if (refreshing) 1f else state.distanceFraction.coerceIn(0f, 1f)
     if (f <= 0.01f) return
-    Box(Modifier.align(Alignment.TopCenter).offset(y = (f * 60f).dp - 44.dp)) {
-        if (refreshing) FlockLoader() else FlockMark(progress = f)
+    Box(Modifier.align(Alignment.Center), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.size(190.dp)) {
+            drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color.Black.copy(alpha = 0.92f * f), Color.Black.copy(alpha = 0.75f * f), Color.Transparent)), size.minDimension / 2)
+        }
+        if (refreshing) FlockLoader(size = 68.dp) else FlockMark(progress = f, size = 68.dp)
     }
+}
+
+/**
+ * The app opening: the mark alone in the middle of a black screen, put together once and held.
+ */
+@Composable
+fun FlockOpening(modifier: Modifier = Modifier, size: Dp = 132.dp) {
+    val p = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { p.animateTo(1f, tween(1250, easing = LinearEasing)) }
+    FlockMark(progress = p.value, modifier = modifier.testTag("flockOpening"), size = size)
 }

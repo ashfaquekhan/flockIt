@@ -103,27 +103,27 @@ fun KeyKpis(d: OutputData, feeder: FeederState) {
     val bag = d.bagKg
     OutputCard(title = "Today", info = "kpis") {
         KpiLine(Kpi("Body weight", "g", d.bw, d.vk, d.bwCom, d.bwIdeal, Better.HIGHER, 1, totalFactor = live / 1000, totalUnit = "kg"))
-        KpiLine(Kpi("FCR", "", e.fcr, P, d.fcrCom, d.fcrIdeal, Better.LOWER, 3, settling = d.day < 7))
-        KpiLine(Kpi("Mortality till date", "%", d.mortTDPct, P, d.comCumPct, d.ceilingPct, Better.LOWER, 2,
+        KpiLine(Kpi("FCR", "", e.fcr, d.fcrKind, d.fcrCom, d.fcrIdeal, Better.LOWER, 3, settling = d.day < 7))
+        KpiLine(Kpi("Mortality till date", "%", d.mortTDPct, d.mk, d.comCumPct, d.ceilingPct, Better.LOWER, 2,
             totalFactor = d.entryBirds / 100.0, totalUnit = "birds", totalDec = 0))
         KpiLine(Kpi("Feed today", "bags", d.giveBags, PR, d.comPerBird?.let { it * live / 1000 / bag }, d.idealPerBird * live / 1000 / bag, Better.CLOSER, 2))
-        ValueRow(listOf(vi(d.live, P, "Live birds"), v(d.dayBags, 2, PR, "Bags to load"), v(e.totalWaterL, 1, PR, "Water L")))
+        ValueRow(listOf(vi(d.live, d.mk, "Live birds"), v(d.dayBags, 2, PR, "Bags to load"), v(e.totalWaterL, 1, PR, "Water L")))
     }
 }
 
 /** Birds: how many, deaths, growth, uniformity, comfort and the curves — everything about the birds in one place. */
 @Composable
-fun BirdsTab(d: OutputData) {
+fun BirdsTab(d: OutputData, onFlockPlan: ((Double, Int) -> Unit)? = null) {
     val e = d.e
     val live = d.live.toDouble()
     val comCumBirds = d.comCumPct * d.entryBirds / 100.0
     KpiCard("Flock", listOf(
-        Kpi("Live birds", "", live, P, d.entryBirds - comCumBirds, null, Better.HIGHER, 0),
-        Kpi("Deaths today", "%", d.mortTodayPct, P, d.comDailyPct, null, Better.LOWER, 3,
+        Kpi("Live birds", "", live, d.mk, d.entryBirds - comCumBirds, null, Better.HIGHER, 0),
+        Kpi("Deaths today", "%", d.mortTodayPct, d.mk, d.comDailyPct, null, Better.LOWER, 3,
             totalFactor = (d.live + d.mortToday) / 100.0, totalUnit = "birds", totalDec = 0),
-        Kpi("Mortality till date", "%", d.mortTDPct, P, d.comCumPct, d.ceilingPct, Better.LOWER, 2,
+        Kpi("Mortality till date", "%", d.mortTDPct, d.mk, d.comCumPct, d.ceilingPct, Better.LOWER, 2,
             totalFactor = d.entryBirds / 100.0, totalUnit = "birds", totalDec = 0),
-        Kpi("Livability", "%", e.livability, P, 100 - d.comCumPct, 100 - d.ceilingPct, Better.HIGHER, 2)
+        Kpi("Livability", "%", e.livability, d.mk, 100 - d.comCumPct, 100 - d.ceilingPct, Better.HIGHER, 2)
     ), info = "flock")
     OutputCard(title = "Start and removals") {
         Param("Start", "", vi(d.placed, P, "Placed"), vi(d.reception, P, "Reception"), vi(d.entryBirds, P, "Entry"))
@@ -132,10 +132,13 @@ fun BirdsTab(d: OutputData) {
     KpiCard("Growth", listOf(
         Kpi("Body weight", "g", d.bw, d.vk, d.bwCom, d.bwIdeal, Better.HIGHER, 1, totalFactor = live / 1000, totalUnit = "kg"),
         Kpi("Daily gain", "g/day", d.gain, d.gainKind, d.gainCom, d.gainIdeal, Better.HIGHER, 1, totalFactor = live / 1000, totalUnit = "kg"),
-        Kpi("FCR", "", e.fcr, P, d.fcrCom, d.fcrIdeal, Better.LOWER, 3, settling = d.day < 7),
-        Kpi("cFCR", "2 kg", e.cFcr, P, d.cfcrCom, d.cfcrIdeal, Better.LOWER, 3, settling = d.day < 7),
-        Kpi("EPEF", "", d.epef, P, d.epefCom, d.epefIdeal, Better.HIGHER, 1, settling = d.day < 7)
+        Kpi("FCR", "", e.fcr, d.fcrKind, d.fcrCom, d.fcrIdeal, Better.LOWER, 3, settling = d.day < 7),
+        Kpi("cFCR", "2 kg", e.cFcr, d.fcrKind, d.cfcrCom, d.cfcrIdeal, Better.LOWER, 3, settling = d.day < 7),
+        Kpi("EPEF", "", d.epef, d.fcrKind, d.epefCom, d.epefIdeal, Better.HIGHER, 1, settling = d.day < 7)
     ), info = "growth")
+    TrendsCard(d)
+    ForecastCard(d, onFlockPlan)
+    AccuracyCard(d)
     UniformityCard(d)
     OutputCard(title = "Comfort", info = "comfort") {
         RangeParam("Vent temp", "°C", d.bodyTemp.first, d.bodyTemp.second, d.bodyTemp.third, null)
@@ -146,6 +149,107 @@ fun BirdsTab(d: OutputData) {
         RangeParam("Light intensity", "lux", d.lightLux.first, null, d.lightLux.second, e.luxPerFt2, idealBand = d.lightLux)
     }
     BirdCharts(d)
+}
+
+/** Trends worked out from the flock's own weights, feed and deaths. */
+@Composable
+private fun TrendsCard(d: OutputData) {
+    val k = d.kpis
+    OutputCard(title = "Flock trends", info = "trends") {
+        KpiLine(Kpi("Average daily gain", "g/day", k.adg, d.vk, d.adgCom, d.adgIdeal, Better.HIGHER, 1))
+        KpiLine(Kpi("FCR, last 7 days", "", k.fcr7, d.fcr7Kind, d.fcr7Com, d.fcr7Ideal, Better.LOWER, 3))
+        // growth in days: + ahead of the standard, − behind it
+        Param("Days ahead (+) or behind (−)", "", vt(Fmt.signed(d.daysAheadCom, 1), d.vk, "vs commercial"), vt(Fmt.signed(d.daysAheadIdeal, 1), d.vk, "vs ideal"))
+        KpiLine(Kpi("First-week mortality", "%", k.firstWeekMortPct, if (k.firstWeekComplete) P else PR, d.firstWeekMortCom, d.firstWeekMortIdeal, Better.LOWER, 2,
+            settling = !k.firstWeekComplete))
+        KpiLine(Kpi("Mortality, last 7 days", "%", k.mort7Pct, d.mk, d.mort7Com, null, Better.LOWER, 2))
+        KpiLine(Kpi("FCR with losses counted", "", k.adjFcr, d.fcrKind, null, null, Better.LOWER, 3))
+    }
+}
+
+/** The target the flock is grown to, when the flock's own weighings say it will get there, and what it will weigh at harvest. */
+@Composable
+private fun ForecastCard(d: OutputData, onFlockPlan: ((Double, Int) -> Unit)?) {
+    val g = d.growth
+    var edit by remember { androidx.compose.runtime.mutableStateOf(false) }
+    val start = remember(d.flock?.startDate) { try { java.time.LocalDate.parse(d.flock?.startDate) } catch (e: Exception) { null } }
+    fun dateOf(day: Int?) = if (day == null || start == null) null else start.plusDays(day.toLong()).format(java.time.format.DateTimeFormatter.ofPattern("dd MMM", java.util.Locale.US))
+    OutputCard(title = "Target and forecast", info = "forecast") {
+        ValueRow(listOf(v(d.targetG, 1, I, "Target g"), vi(d.harvestAge, I, "Harvest day"), v(g.share * 100, 1, if (g.samples > 0) P else PR, "% of com")), "plan")
+        // when the target weight is reached: the likely day, with the earliest and the latest it may be
+        ValueRow(listOf(
+            vt(g.targetDay?.let { "day $it" } ?: "—", PR, dateOf(g.targetDay) ?: "Likely"),
+            vt(g.targetDayEarly?.let { "day $it" } ?: "—", MN, "Earliest"),
+            vt(g.targetDayLate?.let { "day $it" } ?: "—", MX, "Latest")), "target")
+        g.atHarvest?.let { h ->
+            ValueRow(listOf(v(h.mean, 1, PR, "Weight g"), v(h.low, 1, MN, "Low"), v(h.high, 1, MX, "High")), "harvest")
+            ValueRow(listOf(v((g.chanceTargetAtHarvest ?: 0.0) * 100, 1, PR, "Chance of target %"), vi(g.samples, P, "Weighings used")), "chance")
+        }
+        if (onFlockPlan != null) androidx.compose.material3.OutlinedButton(onClick = { edit = true },
+            border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine), modifier = Modifier.fillMaxWidth()) {
+            Text("Set target weight and harvest day", color = Color.White)
+        }
+    }
+    if (edit && onFlockPlan != null) {
+        var w by remember { androidx.compose.runtime.mutableStateOf(Fmt.n(d.targetG, 0).replace(",", "")) }
+        var h by remember { androidx.compose.runtime.mutableStateOf(d.harvestAge.toString()) }
+        val wv = w.replace(",", "").toDoubleOrNull(); val hv = h.toIntOrNull()
+        val ok = wv != null && wv in 500.0..6000.0 && hv != null && hv in 14..PhysiologicalEngine.MAX_FLOCK_DAY
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { edit = false },
+            title = { Text("Target for this flock") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    androidx.compose.material3.OutlinedTextField(value = w, onValueChange = { w = it.filter { c -> c.isDigit() || c == '.' } }, singleLine = true,
+                        label = { Text("Target weight, g (500 – 6,000)") },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
+                    androidx.compose.material3.OutlinedTextField(value = h, onValueChange = { h = it.filter { c -> c.isDigit() } }, singleLine = true,
+                        label = { Text("Planned harvest day (14 – ${PhysiologicalEngine.MAX_FLOCK_DAY})") },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+                    Text("The flock can run past the harvest day: the day bar grows by a day at a time, up to day ${PhysiologicalEngine.MAX_FLOCK_DAY}.",
+                        style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
+                }
+            },
+            confirmButton = { androidx.compose.material3.TextButton(enabled = ok, onClick = { onFlockPlan(wv!!, hv!!); edit = false }) { Text("Save") } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { edit = false }) { Text("Cancel") } }
+        )
+    }
+}
+
+/** How close the app's projections were to what was then entered: the latest check and the average miss. */
+@Composable
+private fun AccuracyCard(d: OutputData) {
+    data class Line(val name: String, val acc: com.example.flock.domain.FlockKpis.Accuracy, val dec: Int)
+    val lines = listOf(Line("Weight g", d.weightAccuracy.upTo(d.day), 1), Line("Feed bags", d.feedAccuracy.upTo(d.day), 2), Line("FCR", d.fcrAccuracy.upTo(d.day), 3))
+    fun offColor(pct: Double?) = when { pct == null -> Color.White.copy(alpha = 0.5f); abs(pct) <= 3 -> TrendGood; abs(pct) <= 8 -> TrendAverage; else -> TrendBad }
+    val mono = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp)
+    val grey = Color.White.copy(alpha = 0.6f)
+    OutputCard(title = "Projection check", info = "accuracy") {
+        Column(Modifier.fillMaxWidth().border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(Modifier.fillMaxWidth()) {
+                Spacer(Modifier.weight(1.1f))
+                listOf("Projected" to 1.3f, "Actual" to 1.05f, "Off %" to 0.85f, "Avg %" to 0.85f).forEach { (t, w) ->
+                    Text(t, Modifier.weight(w), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = grey, textAlign = TextAlign.End, maxLines = 1, softWrap = false)
+                }
+            }
+            lines.forEach { l ->
+                val c = l.acc.on(d.day) ?: l.acc.latest
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1.1f)) {
+                        Text(l.name, style = MaterialTheme.typography.labelMedium, color = grey, maxLines = 1, softWrap = false)
+                        Text(c?.let { "day ${it.day}" } ?: "no check yet", style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace), color = grey.copy(alpha = 0.45f), maxLines = 1, softWrap = false)
+                    }
+                    Text(c?.let { Fmt.n(it.projected, l.dec) } ?: "—", Modifier.weight(1.3f), style = mono, color = if (c == null) grey else kindColor(PR), textAlign = TextAlign.End, maxLines = 1, softWrap = false)
+                    Text(c?.let { Fmt.n(it.actual, l.dec) } ?: "—", Modifier.weight(1.05f), style = mono, color = if (c == null) grey else kindColor(P), textAlign = TextAlign.End, maxLines = 1, softWrap = false)
+                    Text(c?.let { Fmt.signed(it.errorPct, 1) } ?: "—", Modifier.weight(0.85f), style = mono, color = offColor(c?.errorPct), textAlign = TextAlign.End, maxLines = 1, softWrap = false)
+                    Text(l.acc.averageMissPct?.let { Fmt.n(it, 1) } ?: "—", Modifier.weight(0.85f), style = mono, color = offColor(l.acc.averageMissPct), textAlign = TextAlign.End, maxLines = 1, softWrap = false)
+                }
+            }
+        }
+        Text("Off %: + the app projected too high, − too low. Avg %: the average miss over ${lines.maxOf { it.acc.checks.size }} checks so far.",
+            style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.55f))
+    }
 }
 
 /**
@@ -306,6 +410,7 @@ private fun FeedingPlanCard(d: OutputData, pick: Int, onPick: (Int) -> Unit) {
         KpiLine(Kpi("Feed needed", "bags", d.giveBags, PR, d.comPerBird?.let { it * live / 1000 / bag }, d.idealPerBird * live / 1000 / bag, Better.CLOSER, 2))
         KpiLine(Kpi("Feed per bird", "g", d.givePerBird, PR, d.comPerBird, d.idealPerBird, Better.CLOSER, 1))
         ValueRow(listOf(v(d.dayBags, 2, PR, "Full bags"), v(d.extraBags, 2, PR, "Rounding up")), "give")
+        IntakeSuggestion(d)
         // weight / FCR correction (small, conditional) — the ⓘ says when and why
         val c = d.correction
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -330,7 +435,7 @@ private fun FeedingPlanCard(d: OutputData, pick: Int, onPick: (Int) -> Unit) {
             MMRow("Bags", v(o.bagsPerFeeding, 2, PR), v(o.bagsPerLine, 2, PR), null),
             MMRow("kg", v(o.bagsPerFeeding * bag, 1, PR), v(o.kgPerLine, 1, PR), v(if (pat.openPerLine > 0) o.kgPerLine / pat.openPerLine else null, 2, PR)),
             MMRow("Pans on", vi(pat.openPerLine * lines, PR), vi(pat.openPerLine, PR), null),
-            MMRow("Birds", vi(d.live, P), v(live / lines, 1, P), v(pat.birdsPerPan, 1, if (pat.birdsPerPan <= d.birdsPerPanMax) PR else MX)),
+            MMRow("Birds", vi(d.live, d.mk), v(live / lines, 1, d.mk), v(pat.birdsPerPan, 1, if (pat.birdsPerPan <= d.birdsPerPanMax) PR else MX)),
             MMRow("Floor ft²", v(d.areaInUseFt2, 1, P), v(d.areaInUseFt2 / lines, 1, P), v(pat.cellFt2, 1, PR)),
             MMRow("Travel m", null, null, v(pat.travelM, 2, if (pat.travelM <= ALLOWED_TRAVEL_M) PR else MX))
         ))
@@ -339,6 +444,34 @@ private fun FeedingPlanCard(d: OutputData, pick: Int, onPick: (Int) -> Unit) {
         KeyLine(kindColor(PR) to "on", Color.White.copy(alpha = 0.6f) to "off", Color.White to "sensor", kindColor(MN) to "drinker")
         PanCellView(d, pat)
     }
+}
+
+/**
+ * More or fewer bags than the plan? What this flock is likely to eat today, learned from what it has eaten
+ * so far (its appetite against the plan, tracked day by day), with the range it will most likely fall in and
+ * the chance each whole-bag amount is enough.
+ */
+@Composable
+private fun IntakeSuggestion(d: OutputData) {
+    val f = d.intake
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("From this flock's own feed record", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
+        InfoButton("suggest")
+    }
+    if (f.days < 3) {
+        ValueRow(listOf(vi(f.days, P, "Days of feed entered"), vi(3, MN, "Needed")), "learn")
+        return
+    }
+    val a = d.intakeAdvice
+    ValueRow(listOf(v(a.forecastBags, 2, PR, "Likely"), v(a.lowBags, 2, MN, "Low"), v(a.highBags, 2, MX, "High")), "eat")
+    // each whole-bag amount near the plan: the chance it is enough for the day
+    val near = a.choices.filter { abs(it.bags - d.dayBags) <= 1.01 }.ifEmpty { a.choices.take(3) }
+    // "enough" = the chance that many whole bags cover the day
+    ValueRow(near.map { c -> vt(Fmt.n(c.chanceEnough * 100, 1) + " %", if (c.chanceEnough >= 0.8) P else if (c.chanceEnough >= 0.5) PR else MX, Fmt.i(c.bags.toInt()) + " bags") }, "enough")
+    ValueRow(listOf(v(a.safeFrom, 2, MN, "From bags"), v(a.safeTo, 2, MX, "To bags")), "safe")
+    ValueRow(listOf(vt(when (a.direction) { 1 -> "give more: " + Fmt.n(a.suggestedBags, 2) + " bags"; -1 -> "can give less: " + Fmt.n(a.suggestedBags, 2) + " bags"; else -> "keep the plan: " + Fmt.n(d.dayBags, 2) + " bags" },
+        if (a.direction == 0) P else PR, "Suggestion")), "advice")
+    ValueRow(listOf(v(f.ratio * 100, 1, P, "Appetite %"), v(f.pastErrorPct, 1, PR, "Avg miss %"), vi(f.days, P, "Days used")), "flock")
 }
 
 /** The farm's time zone (the phone's if the setting can't be read). */
@@ -369,7 +502,7 @@ private fun EatenCard(d: OutputData) {
     val codes = (order + d.usedByCode.keys.sorted()).distinct().filter { (d.usedByCode[it] ?: 0.0) > 0 }
     OutputCard(title = "Eaten", info = "eaten") {
         KpiLine(Kpi("Yesterday", "g/bird", d.usedPerBirdY, P, d.comPerBirdY, d.idealPerBirdY, Better.CLOSER, 1, totalFactor = yLive / 1000, totalUnit = "kg"))
-        KpiLine(Kpi("Till date", "g/bird", d.cumPerBird, P, d.cumPerBirdCom, d.cumPerBirdIdeal, Better.CLOSER, 1, totalFactor = d.live / 1000.0, totalUnit = "kg"))
+        KpiLine(Kpi("Till date", "g/bird", d.cumPerBird, d.fk, d.cumPerBirdCom, d.cumPerBirdIdeal, Better.CLOSER, 1, totalFactor = d.live / 1000.0, totalUnit = "kg"))
         Text("Used till date, by feed type", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.65f))
         ValueRow(codes.map { v(d.usedByCode[it], 2, P, it) } + v(d.usedBagsTD, 2, P, "Total"), "bags")
         ValueRow(codes.map { v((d.usedByCode[it] ?: 0.0) * d.kgPerBag(it), 1, P, it) } + v(d.usedKgTD, 1, P, "Total"), "kg")

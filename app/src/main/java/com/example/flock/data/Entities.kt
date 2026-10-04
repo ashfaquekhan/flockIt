@@ -284,7 +284,11 @@ data class DailyDataEntity(
     // Spread between the 5 location averages, % (bulk weighing: not the bird-to-bird CV)
     val locSpreadPct: Double? = null,
     // Birds within ±10 % of the mean, % (needs individual weights)
-    val uniformityPct: Double? = null
+    val uniformityPct: Double? = null,
+    // Sample locations beyond the fifth, "weight:count;weight:count" (a blank location is ":") (v41)
+    val moreSamples: String = "",
+    // How many sample locations the day's entry shows (0 = not set: as the last weighing, else 5)
+    val locCount: Int = 0
 )
 
 @Entity(
@@ -333,6 +337,38 @@ data class TaskEntity(
         if (done) set.add(day) else set.remove(day)
         return copy(completedDays = set.sorted().joinToString(","))
     }
+}
+
+/** The most sample locations a day can have. */
+const val MAX_LOCATIONS = 12
+
+/** "5200:14;:;4800:13" → locations 6, 7, 8 … as (total weight g, birds); a blank location is (null, null). */
+fun parseMoreSamples(raw: String): List<Pair<Double?, Int?>> =
+    if (raw.isBlank()) emptyList() else raw.split(";").map { part ->
+        val p = part.split(":")
+        p.getOrNull(0)?.trim()?.toDoubleOrNull() to p.getOrNull(1)?.trim()?.toDoubleOrNull()?.let { kotlin.math.round(it).toInt() }
+    }.take(MAX_LOCATIONS - 5)
+
+/** The reverse of [parseMoreSamples]; blank locations at the end are dropped. */
+fun formatMoreSamples(list: List<Pair<Double?, Int?>>): String {
+    val l = list.take(MAX_LOCATIONS - 5).dropLastWhile { it.first == null && it.second == null }
+    fun num(v: Double) = if (v == kotlin.math.floor(v)) v.toLong().toString() else v.toString()
+    return l.joinToString(";") { (w, n) -> (w?.let { num(it) } ?: "") + ":" + (n?.toString() ?: "") }
+}
+
+/** Every sample location of the day, in order: the five fixed ones, then the extra ones. */
+fun DailyDataEntity.sampleList(): List<Pair<Double?, Int?>> =
+    listOf(w1 to n1, w2 to n2, w3 to n3, w4 to n4, w5 to n5) + parseMoreSamples(moreSamples)
+
+/** The day's locations with a weight and a bird count. */
+fun DailyDataEntity.filledSamples(): List<Pair<Double, Int>> =
+    sampleList().mapNotNull { (w, n) -> if ((w ?: 0.0) > 0 && (n ?: 0) > 0) w!! to n!! else null }
+
+/** Locations to show for a day: what was set, else as many as hold a value (at least 1). */
+fun DailyDataEntity.locationsShown(): Int {
+    if (locCount > 0) return locCount.coerceIn(1, MAX_LOCATIONS)
+    val lastFilled = sampleList().indexOfLast { it.first != null || it.second != null } + 1
+    return lastFilled.coerceIn(0, MAX_LOCATIONS)
 }
 
 /**

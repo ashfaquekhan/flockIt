@@ -85,7 +85,9 @@ data class CoopInput(
     val nh3Max: Double = 10.0, val co2Max: Double = 3000.0,
     val ventC: Triple<Double, Double, Double>? = null, val feetC: Double? = null,
     /** breaths a minute at the house's ideal (resting birds) and where panting starts */
-    val breaths: Pair<Double, Double> = 20.0 to 40.0, val pantAbove: Double = 60.0
+    val breaths: Pair<Double, Double> = 20.0 to 40.0, val pantAbove: Double = 60.0,
+    /** false when the day has no weighing yet: the weight is the app's projection */
+    val weightMeasured: Boolean = true
 )
 
 /**
@@ -728,7 +730,7 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
                 Row(Modifier.fillMaxWidth()) {
                     Text(b.name, Modifier.width(52.dp), style = lab, color = Color.White)
                     Text(b.trait.label, Modifier.weight(1.2f), style = lab, color = Color.White.copy(alpha = 0.55f), maxLines = 1)
-                    Text(Fmt.n(b.weightG, 1) + " g", Modifier.weight(1f), style = num, color = ValuePresent, maxLines = 1)
+                    Text(Fmt.n(b.weightG, 1) + " g", Modifier.weight(1f), style = num, color = if (inp.weightMeasured) ValuePresent else ValuePredicted, maxLines = 1)
                     Text(Fmt.n(b.fullness * 100, 1) + "%", Modifier.weight(0.8f), style = num, color = ValuePredicted, maxLines = 1)
                     Text(stateWord(b.state), Modifier.weight(1.1f), style = lab, color = Color.White.copy(alpha = 0.7f), maxLines = 1)
                 }
@@ -746,7 +748,7 @@ private fun CoopStats(inp: CoopInput) {
     data class Cell(val label: String, val value: String, val unit: String, val col: Color)
     val v = inp.ventC
     val cells = listOf(
-        Cell("Weight", Fmt.n(inp.meanG, 1), "g", ValuePresent),
+        Cell(if (inp.weightMeasured) "Weight" else "Weight, projected", Fmt.n(inp.meanG, 1), "g", if (inp.weightMeasured) ValuePresent else ValuePredicted),
         Cell("Ideal temp", Fmt.n(inp.idealC, 1), "°C", ValueIdeal),
         Cell("Min vent / bird", Fmt.n(inp.minVentCfmBird, 3), "cfm", ValuePredicted),
         Cell("Min vent, house", Fmt.n(inp.minVentCfm, 1), "cfm", ValuePredicted),
@@ -761,7 +763,7 @@ private fun CoopStats(inp: CoopInput) {
     val num = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
     Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp).testTag("coopStats"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Text("Day ${inp.age} · targets (weight is measured)", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.weight(1f))
+            Text("Day ${inp.age} · targets" + if (inp.weightMeasured) " (weight is measured)" else " (weight is projected)", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.weight(1f))
             InfoButton("window")
         }
         cells.chunked(2).forEach { row ->

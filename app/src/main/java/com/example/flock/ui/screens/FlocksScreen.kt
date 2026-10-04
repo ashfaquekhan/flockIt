@@ -218,7 +218,7 @@ private fun FlockCard(
         try {
             val zone = ZoneId.of(timeZone)
             val start = LocalDate.parse(flock.startDate, DateTimeFormatter.ISO_LOCAL_DATE)
-            ChronoUnit.DAYS.between(start, LocalDate.now(zone)).toInt().coerceIn(0, flock.harvestAge)
+            ChronoUnit.DAYS.between(start, LocalDate.now(zone)).toInt().coerceIn(0, com.example.flock.engine.PhysiologicalEngine.MAX_FLOCK_DAY)
         } catch (e: Exception) { 0 }
     }
     val startPretty = remember(flock.startDate) {

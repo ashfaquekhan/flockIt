@@ -1,3 +1,5 @@
+<p align="center"><img src="design/logo.png" width="128" alt="FlockIt logo: the letter F as a rooster"></p>
+
 # FlockIt — Broiler Farm Management, on Google Sheets
 
 FlockIt is a native **Android** app (Kotlin + Jetpack Compose) for managing broiler

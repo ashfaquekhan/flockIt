@@ -4,6 +4,7 @@ import com.example.flock.data.DailyDataEntity
 import com.example.flock.data.FarmEntity
 import com.example.flock.data.FeedTypeEntity
 import com.example.flock.data.FlockEntity
+import com.example.flock.data.savedGroups
 import com.example.flock.engine.CompanyStandard
 import com.example.flock.engine.IbController
 import com.example.flock.engine.PhysiologicalEngine
@@ -62,10 +63,27 @@ class OutputData(
     val day = e.dayNumber
     val breed = flock?.breed ?: "Ross308"
     val harvestAge = flock?.harvestAge ?: 42
+    /** The company chart's day for what happens DURING this flock day (the chart starts at day 1, the flock at day 0). */
+    val chartDay = CompanyStandard.duringDay(day)
     /** Weight-derived numbers: Present when a sample was entered today, else Projected. */
     val vk = if (e.projected) ValueKind.PREDICTED else ValueKind.PRESENT
     val byDay = rows.associateBy { it.dayNumber }
     val upto = rows.filter { it.dayNumber <= day }
+    /** A day after today: nothing in it has happened yet. */
+    val isFuture: Boolean = try {
+        java.time.LocalDate.parse(e.date).isAfter(java.time.LocalDate.now(java.time.ZoneId.of(farm.timeZone)))
+    } catch (ex: Exception) { false }
+    private val savedGroups = e.savedGroups()
+    /** Today's deaths / yesterday's feed have been entered (a past day counts as entered: nothing more will come). */
+    val mortEntered = "M" in savedGroups || e.mortality > 0
+    val feedEntered = "F" in savedGroups || e.feedBagsUsed > 0 || day == 0
+    private val open = isToday || isFuture
+    /** Bird counts and mortality: Present once today's deaths are in, else Projected (yesterday's count carried on). */
+    val mk = if (mortEntered || !open) ValueKind.PRESENT else ValueKind.PREDICTED
+    /** Feed used to date: Present once yesterday's feed is in. */
+    val fk = if (feedEntered || !open) ValueKind.PRESENT else ValueKind.PREDICTED
+    /** FCR, cFCR and EPEF need today's weight and yesterday's feed: Present only with both. */
+    val fcrKind = if (vk == ValueKind.PRESENT && fk == ValueKind.PRESENT) ValueKind.PRESENT else ValueKind.PREDICTED
 
     // ------------------------------- birds -------------------------------
     val placed = flock?.birdsPlaced ?: 0
@@ -76,10 +94,11 @@ class OutputData(
     /** Birds that started the flock: placed minus reception / transit deaths (those are not flock mortality). */
     val entryBirds = max(1, placed - reception)
     val mortTD = upto.sumOf { it.mortality }
-    val mortTodayPct: Double? = if (live + mortToday > 0) mortToday * 100.0 / (live + mortToday) else null
+    /** Today's deaths as a share of the birds: unknown (—) until they are entered. */
+    val mortTodayPct: Double? = if ((mortEntered || !open) && live + mortToday > 0) mortToday * 100.0 / (live + mortToday) else null
     val mortTDPct: Double? = if (placed > 0) mortTD * 100.0 / entryBirds else e.cumMortPct
-    val comDailyPct = CompanyStandard.dailyMortPct(day)
-    val comCumPct = CompanyStandard.cumMortPct(day)
+    val comDailyPct = CompanyStandard.dailyMortPct(chartDay)
+    val comCumPct = CompanyStandard.cumMortPct(chartDay)
     val comMortBirdsToday = comDailyPct * (live + mortToday) / 100.0
     /** Industry benchmark mortality (shown as the Ideal). */
     val ceilingPct = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MAXMORT_BY_AGE, day.toDouble())
@@ -118,9 +137,10 @@ class OutputData(
     val giveKg = e.totalFeedKg
     val giveBags = giveKg / bagKg
     val givePerBird = e.feedPerBird
-    val comPerBird: Double? = CompanyStandard.feedPerDay(max(1, day))
-    val idealPerBird = PhysiologicalEngine.dailyFeedFromDay(max(1, day).toDouble(), breed)
-    val phase = CompanyStandard.feedPhase(day)
+    /** What the birds eat during this day: the chart's next row (see [chartDay]). */
+    val comPerBird: Double? = CompanyStandard.feedPerDay(chartDay)
+    val idealPerBird = PhysiologicalEngine.dailyFeedFromDay((day + 1).toDouble(), breed)
+    val phase = CompanyStandard.feedPhase(chartDay)
     val nextPhaseDay: Int? = (day + 1..CompanyStandard.MAX_DAY).firstOrNull { CompanyStandard.feedPhase(it) != phase }
 
     /** Feed logged today = what the birds ate yesterday. */
@@ -128,17 +148,18 @@ class OutputData(
     val usedKgToday = usedKg(e)
     private val yLive = byDay[day - 1]?.liveBirds?.takeIf { it > 0 } ?: liveSafe
     val usedPerBirdY: Double? = if (usedKgToday > 0 && day >= 1) usedKgToday * 1000.0 / yLive else null
-    val comPerBirdY: Double? = CompanyStandard.feedPerDay(day - 1)
-    val idealPerBirdY = PhysiologicalEngine.dailyFeedFromDay(max(1, day - 1).toDouble(), breed)
+    /** Yesterday's feed (flock day − 1) is the chart's row for today's number. */
+    val comPerBirdY: Double? = CompanyStandard.feedPerDay(day)
+    val idealPerBirdY = PhysiologicalEngine.dailyFeedFromDay(max(1, day).toDouble(), breed)
     val usedBagsTD = upto.sumOf { usedByType(it).values.sum() }
     val usedKgTD = upto.sumOf { usedKg(it) }
     val planKgTD = rows.filter { it.dayNumber < day }.sumOf { it.totalFeedKg }
     /** Commercial / ideal feed the flock should have eaten up to yesterday, for the birds actually alive each day. */
-    val comKgTD = rows.filter { it.dayNumber in 1 until day }.sumOf { (CompanyStandard.feedPerDay(it.dayNumber) ?: 0.0) * it.liveBirds / 1000.0 }
-    val idealKgTD = rows.filter { it.dayNumber in 1 until day }.sumOf { PhysiologicalEngine.dailyFeedFromDay(it.dayNumber.toDouble(), breed) * it.liveBirds / 1000.0 }
+    val comKgTD = rows.filter { it.dayNumber in 0 until day }.sumOf { (CompanyStandard.feedPerDay(it.dayNumber + 1) ?: 0.0) * it.liveBirds / 1000.0 }
+    val idealKgTD = rows.filter { it.dayNumber in 0 until day }.sumOf { PhysiologicalEngine.dailyFeedFromDay((it.dayNumber + 1).toDouble(), breed) * it.liveBirds / 1000.0 }
     val cumPerBird: Double? = if (usedKgTD > 0) usedKgTD * 1000.0 / liveSafe else null
-    val cumPerBirdCom: Double? = CompanyStandard.cumFeed(day - 1)
-    val cumPerBirdIdeal: Double? = if (day >= 2) PhysiologicalEngine.cumFeedFromDay((day - 1).toDouble(), breed) else null
+    val cumPerBirdCom: Double? = CompanyStandard.cumFeed(day)
+    val cumPerBirdIdeal: Double? = if (day >= 1) PhysiologicalEngine.cumFeedFromDay(day.toDouble(), breed) else null
     val remainPlanKg = rows.filter { it.dayNumber in day..harvestAge }.sumOf { it.totalFeedKg }
 
     // ------------------------------- stock -------------------------------
@@ -517,6 +538,68 @@ class OutputData(
             e.measuredPressure?.let { v -> if (v < 15 || v > 45) add(TopicAlert(1, "Static pressure ${Fmt.n(v, 1)} Pa outside 15.0–45.0")) }
         })
     }
+
+    // ------------------------------- trends from the flock's own records -------------------------------
+    private fun weightOn(r: DailyDataEntity) = r.avgWeight ?: PhysiologicalEngine.bwFromDay(r.weightAge, breed)
+    /** Feed per bird (g) eaten during flock day [d] — entered the next morning; null until then. */
+    fun eatenOn(d: Int): Double? {
+        val next = byDay[d + 1] ?: return null
+        if (next.dayNumber > day) return null
+        val liveThen = byDay[d]?.liveBirds?.takeIf { it > 0 } ?: return null
+        return usedKg(next).takeIf { it > 0 }?.let { it * 1000 / liveThen }
+    }
+    val kpis: com.example.flock.domain.FlockKpis.Result = com.example.flock.domain.FlockKpis.compute(
+        upto.sortedBy { it.dayNumber }.map { r ->
+            com.example.flock.domain.FlockKpis.Day(r.dayNumber, weightOn(r), r.avgWeight != null, eatenOn(r.dayNumber), r.mortality, r.lameSeparated, r.liveBirds)
+        }, day, entryBirds, usedKgTD)
+    val adgCom: Double? = if (day >= 1) bwCom?.let { it / day } else null
+    val adgIdeal: Double? = if (day >= 1) bwIdeal / day else null
+    private fun comBw(d: Int) = CompanyStandard.bw(d) ?: CompanyStandard.CHICK_G
+    val fcr7Com: Double? = if (day >= 7) ((CompanyStandard.cumFeed(day) ?: 0.0) - (CompanyStandard.cumFeed(day - 7) ?: 0.0)) / (comBw(day) - comBw(day - 7)) else null
+    val fcr7Ideal: Double? = if (day >= 7) (PhysiologicalEngine.cumFeedFromDay(day.toDouble(), breed) - PhysiologicalEngine.cumFeedFromDay(day - 7.0, breed)) /
+        (bwIdeal - PhysiologicalEngine.bwFromDay(day - 7.0, breed)) else null
+    val fcr7Kind = if (kpis.fcr7Measured) ValueKind.PRESENT else ValueKind.PREDICTED
+    /** The age at which the standard reaches the flock's weight, minus the flock's age: + ahead, − behind. */
+    val daysAheadCom: Double = CompanyStandard.ageForWeight(bw) - day
+    val daysAheadIdeal: Double = PhysiologicalEngine.weightAgeFromBW(bw, breed) - day
+    val firstWeekMortCom = CompanyStandard.cumMortPct(7)
+    val firstWeekMortIdeal = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MAXMORT_BY_AGE, 7.0)
+    val mort7Com: Double = (max(0, day - 6)..day).sumOf { CompanyStandard.dailyMortPct(CompanyStandard.duringDay(it)) }
+
+    // ------------------------------- forecasts -------------------------------
+    /** The weight the flock is grown to (flock setting). */
+    val targetG: Double = flock?.targetWeight?.takeIf { it > 0 } ?: 2200.0
+    val growth: com.example.flock.domain.GrowthForecast.Result = com.example.flock.domain.GrowthForecast.forecast(
+        rows.filter { it.avgWeight != null && it.dayNumber <= day }.map { com.example.flock.domain.GrowthForecast.Sample(it.dayNumber, it.avgWeight!!) },
+        { d -> comBw(d) }, day, PhysiologicalEngine.MAX_FLOCK_DAY, targetG, harvestAge)
+    /** Each past day's plan against what was then entered as eaten (kg, whole house). */
+    val intakeHistory: List<com.example.flock.domain.IntakeForecast.Day> = rows.filter { it.dayNumber in 0 until day }.mapNotNull { r ->
+        val next = byDay[r.dayNumber + 1] ?: return@mapNotNull null
+        val eaten = usedKg(next)
+        if (eaten <= 0 || r.totalFeedKg <= 0) null else com.example.flock.domain.IntakeForecast.Day(r.dayNumber, r.totalFeedKg, eaten)
+    }
+    val intake: com.example.flock.domain.IntakeForecast.Result = com.example.flock.domain.IntakeForecast.forecast(intakeHistory, giveKg)
+    val intakeAdvice: com.example.flock.domain.IntakeForecast.Advice get() = com.example.flock.domain.IntakeForecast.advise(intake, bagKg, dayBags)
+
+    // ------------------------------- how good the app's projections were -------------------------------
+    /** Each weighing against the weight the app was showing for that day (carried on from the weighing before). */
+    val weightAccuracy: com.example.flock.domain.FlockKpis.Accuracy = run {
+        val s = rows.filter { it.avgWeight != null }.sortedBy { it.dayNumber }
+        com.example.flock.domain.FlockKpis.Accuracy(s.mapIndexed { i, r ->
+            val proj = if (i == 0) PhysiologicalEngine.bwFromDay(r.dayNumber.toDouble(), breed)
+                else PhysiologicalEngine.bwFromDay(s[i - 1].weightAge + (r.dayNumber - s[i - 1].dayNumber), breed)
+            com.example.flock.domain.FlockKpis.Check(r.dayNumber, proj, r.avgWeight!!)
+        }.filter { it.day in 1..day })
+    }
+    /** The feed the plan expected for a day against what was entered as used the next morning (bags). */
+    val feedAccuracy = com.example.flock.domain.FlockKpis.Accuracy(
+        intakeHistory.map { com.example.flock.domain.FlockKpis.Check(it.day + 1, it.planned / bagKg, it.eaten / bagKg) })
+    /** The FCR the app was showing with the projected weight against the FCR with the weighing. */
+    val fcrAccuracy: com.example.flock.domain.FlockKpis.Accuracy = com.example.flock.domain.FlockKpis.Accuracy(
+        weightAccuracy.checks.mapNotNull { c ->
+            val f = byDay[c.day]?.fcr ?: return@mapNotNull null
+            if (c.projected <= 0 || c.day < 5) null else com.example.flock.domain.FlockKpis.Check(c.day, f * c.actual / c.projected, f)
+        })
 
     /** Growth stage name for the day. */
     val stage = when { day <= 3 -> "Day-old chick"; day <= 10 -> "Starter chick"; day <= 21 -> "Grower"; day <= 35 -> "Finisher"; else -> "Market weight" }

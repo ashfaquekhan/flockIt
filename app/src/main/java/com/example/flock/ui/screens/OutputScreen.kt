@@ -34,6 +34,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Color
@@ -120,7 +121,9 @@ fun OutputScreen(
     isToday: Boolean = false,
     onCloseBatch: (() -> Unit)? = null,
     onFarmChange: ((FarmEntity) -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** sets the flock's target weight (g) and planned harvest day */
+    onFlockPlan: ((Double, Int) -> Unit)? = null
 ) {
     // one scroll position for every day; the section being read stays put when the day changes
     val scroll = rememberScrollState()
@@ -169,7 +172,7 @@ fun OutputScreen(
             d.barricadeFtNow, d.live.toDouble() / d.areaInUseFt2),
         minVentCfmBird = d.minVentCfmBird, minVentCfm = d.minVentCfmBird * d.live, idealC = entry.tempIdeal,
         nh3Max = entry.nh3Max, co2Max = entry.co2Max, ventC = d.bodyTemp, feetC = d.footTemp.second,
-        breaths = d.breathsIdeal, pantAbove = PANT_ABOVE_PER_MIN
+        breaths = d.breathsIdeal, pantAbove = PANT_ABOVE_PER_MIN, weightMeasured = d.vk == ValueKind.PRESENT
     )
     var confirmClose by remember { mutableStateOf(false) }
 
@@ -182,22 +185,30 @@ fun OutputScreen(
         TagLegend()
         // the animation, then the day's clock, the key numbers and alerts; details in the tabs below
         Anchored("coop") { GlassBox(Modifier.fillMaxWidth()) { Coop3D(coop) } }
+        // a feeding given to the birds in the window: how many bags and at what time
+        Anchored("feedlog") {
+            FeedEntryRow(d, feeder, zone,
+                onFeed = { bags, at -> events = FeedLog.add(ctx, flockKey, bags, at); now = System.currentTimeMillis() },
+                onUndo = { events = FeedLog.undoLast(ctx, flockKey); now = System.currentTimeMillis() })
+        }
         // how many times to feed today: chosen in the feeding plan, used by the clock too
         var feedPick by rememberSaveable(d.day, d.recommendedOption) { androidx.compose.runtime.mutableIntStateOf(d.recommendedOption) }
-        val feedings = d.feedOptions.getOrNull(feedPick)?.feedings ?: d.feedings
-        Anchored("clock") { OutputCard(title = "Day clock", info = "clock") { FarmDayClock(d.daySchedule(feedings), farmZone(d.farm)) } }
+        val feedOpt = d.feedOptions.getOrNull(feedPick)
+        val feedings = feedOpt?.feedings ?: d.feedings
+        Anchored("clock") {
+            OutputCard(title = "Day clock", info = "clock") {
+                FarmDayClock(d.daySchedule(feedings), farmZone(d.farm),
+                    amounts = DayAmounts(feedOpt?.bagsPerFeeding, feedOpt?.bagsPerLine, entry.totalWaterL / d.waterRefills))
+            }
+        }
         Anchored("kpis") { KeyKpis(d, feeder) }
         Anchored("alerts") { AlertList(d.allAlerts) }
         var tab by rememberSaveable { androidx.compose.runtime.mutableIntStateOf(0) }
         Anchored("tabs") { OutputTabs(listOf("Birds", "Ventilation", "Feed & water"), tab.coerceIn(0, 2)) { tab = it } }
         when (tab) {
-            0 -> BirdsTab(d)
+            0 -> BirdsTab(d, onFlockPlan)
             1 -> VentTab(d)
-            else -> FeedTab(d, feedPick, { feedPick = it }, onFarmChange) {
-                FeedEntryRow(d, feeder,
-                    onFeed = { bags -> events = FeedLog.add(ctx, flockKey, bags); now = System.currentTimeMillis() },
-                    onUndo = { events = FeedLog.undoLast(ctx, flockKey); now = System.currentTimeMillis() })
-            }
+            else -> FeedTab(d, feedPick, { feedPick = it }, onFarmChange)
         }
         if (onCloseBatch != null && flock?.status != "closed") {
             OutlinedButton(onClick = { confirmClose = true }, modifier = Modifier.fillMaxWidth(),
@@ -243,26 +254,44 @@ fun StockScreen(
     }
 }
 
-/** Log a feeding: type the bags poured into the lines and press Enter. */
+/**
+ * Log a feeding for the birds in the window: the bags poured into the lines and the time they were given
+ * (now, unless another time is picked — a feeding given earlier can be logged afterwards).
+ */
 @Composable
-private fun FeedEntryRow(d: OutputData, feeder: FeederState, onFeed: (Double) -> Unit, onUndo: () -> Unit) {
+private fun FeedEntryRow(d: OutputData, feeder: FeederState, zone: java.time.ZoneId, onFeed: (Double, Long) -> Unit, onUndo: () -> Unit) {
     var text by remember { mutableStateOf("") }
-    fun submit() { text.replace(",", ".").toDoubleOrNull()?.takeIf { it > 0 }?.let { onFeed(it); text = "" } }
+    var picked by remember { mutableStateOf<String?>(null) }          // null = now
+    val nowHHmm = java.time.ZonedDateTime.now(zone).let { String.format("%02d:%02d", it.hour, it.minute) }
+    fun submit() {
+        val bags = text.replace(",", ".").toDoubleOrNull()?.takeIf { it > 0 } ?: return
+        val at = picked?.let { t ->
+            val h = t.substringBefore(":").toIntOrNull() ?: return@let null
+            val m = t.substringAfter(":").toIntOrNull() ?: return@let null
+            val z = java.time.ZonedDateTime.now(zone).withHour(h).withMinute(m).withSecond(0).withNano(0)
+            // a time later than now means that time yesterday
+            (if (z.toInstant().toEpochMilli() > System.currentTimeMillis() + 60_000) z.minusDays(1) else z).toInstant().toEpochMilli()
+        } ?: System.currentTimeMillis()
+        onFeed(bags, at); text = ""; picked = null
+    }
     GlassBox(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 androidx.compose.material3.OutlinedTextField(
                     value = text, onValueChange = { text = it.filter { c -> c.isDigit() || c == '.' || c == ',' } },
-                    label = { Text("Bags fed now") }, singleLine = true,
+                    label = { Text("Bags fed") }, singleLine = true,
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal, imeAction = androidx.compose.ui.text.input.ImeAction.Done),
                     keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { submit() }),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f).testTag("feed_bags")
                 )
-                OutlinedButton(onClick = { submit() }, border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine)) { Text("Feed", color = MaterialTheme.colorScheme.onSurface) }
+                com.example.flock.ui.components.TimePickerField(label = if (picked == null) "At (now)" else "At", valueHHmm = picked ?: nowHHmm,
+                    onPick = { picked = it }, modifier = Modifier.weight(1.15f).testTag("feed_time"))
+                OutlinedButton(onClick = { submit() }, border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp)) { Text("Feed", color = MaterialTheme.colorScheme.onSurface) }
             }
             Text(
                 "Given today ${Fmt.n(feeder.givenTodayBags, 2)} of ${Fmt.n(d.planBags, 2)} bags" +
-                    (feeder.lastFedAt?.let { " · last at " + java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()).toLocalTime().withNano(0).toString().take(5) } ?: ""),
+                    (feeder.lastFedAt?.let { " · last at " + java.time.Instant.ofEpochMilli(it).atZone(zone).toLocalTime().withNano(0).toString().take(5) } ?: ""),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             if (feeder.lastFedAt != null) androidx.compose.material3.TextButton(onClick = onUndo, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {

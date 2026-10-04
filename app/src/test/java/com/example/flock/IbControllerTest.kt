@@ -70,8 +70,8 @@ class IbControllerTest {
             assertEquals("FCR day ${r.day}", r.fcr, r.cumFeed.toDouble() / r.bw, 0.011)
         }
         assertEquals(0.15 * 12 + 0.10 * 16 + 0.15 * 7, CompanyStandard.cumMortPct(35), 1e-9)
-        // ration follows the company feed curve at the flock's weight
-        assertEquals(CompanyStandard.feedPerDay(24)!!, CompanyStandard.feedForWeight(CompanyStandard.bw(24)!!), 1e-9)
+        // ration follows the company feed curve at the flock's weight: a bird at the chart's day-24 weight eats day 25's feed
+        assertEquals(CompanyStandard.feedPerDay(25)!!, CompanyStandard.feedForWeight(CompanyStandard.bw(24)!!), 1e-9)
         assertEquals(CompanyStandard.feedPerDay(1)!!, CompanyStandard.feedForWeight(40.0), 1e-9)
     }
 }

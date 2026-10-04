@@ -111,11 +111,13 @@ class FlockRepository(
     private suspend fun resendDirtyDays(spreadsheetId: String) {
         val s = sync ?: return
         if (!s.isOnline()) return
+        var sent = 0
         flockDao.getAllFlocksList(spreadsheetId).forEach { f ->
             dailyDataDao.getDailyDataList(spreadsheetId, f.flockId).filter { it.dirty }.forEach { row ->
-                if (s.pushDayEntry(spreadsheetId, row).isSuccess) clearDirty(spreadsheetId, row.flockId, row.dayNumber)
+                if (s.pushDayEntry(spreadsheetId, row, updateReports = false).isSuccess) { clearDirty(spreadsheetId, row.flockId, row.dayNumber); sent++ }
             }
         }
+        if (sent > 0) s.pushReports(spreadsheetId)      // the report tabs once, after all the rows
     }
 
     suspend fun registerFarm(
@@ -222,13 +224,13 @@ class FlockRepository(
             birdsPlaced = birdsPlaced,
             receptionMort = receptionMort,
             targetWeight = targetWeight,
-            harvestAge = harvestAge,
+            harvestAge = harvestAge.coerceIn(14, PhysiologicalEngine.MAX_FLOCK_DAY),
             season = season,
             status = "active"
         )
         flockDao.insertFlock(flock)
 
-        // Generate day rows 0..harvestAge
+        // Generate day rows 0..harvestAge (more are added as the flock runs on, see ensureDayRows)
         val parsedStart = try {
             sdfDate.parse(flock.startDate) ?: Date()
         } catch (e: Exception) {
@@ -236,7 +238,7 @@ class FlockRepository(
         }
         val cal = Calendar.getInstance(tz).apply { time = parsedStart }
         val dayRows = mutableListOf<DailyDataEntity>()
-        for (d in 0..harvestAge) {
+        for (d in 0..harvestAge.coerceIn(1, PhysiologicalEngine.MAX_FLOCK_DAY)) {
             val dateStr = sdfDate.format(cal.time)
             dayRows.add(
                 DailyDataEntity(
@@ -255,6 +257,36 @@ class FlockRepository(
         // Persist the flock + its day rows to the authoritative Google Sheet.
         cloudPush("Flock \"${flock.name}\"") { it.pushFlock(spreadsheetId, flock, dayRows) }
         flockId
+    }
+
+    /**
+     * A flock has no fixed last day: it has a row for every day up to the planned harvest age, and for
+     * every day it has lived beyond that (plus tomorrow), up to the oldest a broiler is kept.
+     */
+    fun lastDayFor(flock: FlockEntity, timeZone: String): Int =
+        max(flock.harvestAge, calculateCurrentDay(flock.startDate, timeZone) + 1).coerceIn(1, PhysiologicalEngine.MAX_FLOCK_DAY)
+
+    /** Adds the day rows a flock is missing up to [lastDayFor]. Returns true when rows were added. */
+    private suspend fun ensureDayRows(flock: FlockEntity, timeZone: String, existing: List<DailyDataEntity>): Boolean {
+        val last = lastDayFor(flock, timeZone)
+        val have = existing.map { it.dayNumber }.toSet()
+        val start = try { LocalDate.parse(flock.startDate, DateTimeFormatter.ISO_LOCAL_DATE) } catch (e: Exception) { return false }
+        val add = (0..last).filter { it !in have }.map { d ->
+            DailyDataEntity(spreadsheetId = flock.spreadsheetId, flockId = flock.flockId, dayNumber = d,
+                date = start.plusDays(d.toLong()).format(DateTimeFormatter.ISO_LOCAL_DATE))
+        }
+        if (add.isEmpty()) return false
+        dailyDataDao.insertDailyData(add)
+        return true
+    }
+
+    /** Target weight and planned harvest age of a flock (they steer the forecasts, not the records). */
+    suspend fun updateFlockPlan(spreadsheetId: String, flockId: String, targetWeightG: Double, harvestAge: Int) = withContext(Dispatchers.IO) {
+        val flock = flockDao.getFlockById(spreadsheetId, flockId) ?: return@withContext
+        val updated = flock.copy(targetWeight = targetWeightG.coerceIn(500.0, 6000.0), harvestAge = harvestAge.coerceIn(14, PhysiologicalEngine.MAX_FLOCK_DAY))
+        flockDao.updateFlock(updated)
+        recomputeFlock(spreadsheetId, flockId)
+        cloudPush("Flock plan") { it.upsertFlock(spreadsheetId, updated) }
     }
 
     /**
@@ -280,7 +312,7 @@ class FlockRepository(
                 ?: return@withContext Result.failure(Exception("Day entry not found"))
             val cleared = existing.copy(
                 w1 = null, n1 = null, w2 = null, n2 = null, w3 = null, n3 = null,
-                w4 = null, n4 = null, w5 = null, n5 = null, indivWeights = "",
+                w4 = null, n4 = null, w5 = null, n5 = null, indivWeights = "", moreSamples = "",
                 mortality = 0, feedBagsUsed = 0.0, feedUsedType = "B1", feedUsedBreakdown = "",
                 birdsLifted = 0, weightLifted = 0.0, lameSeparated = 0,
                 feedRecB1 = 0.0, feedRecB2 = 0.0, feedRecB3 = 0.0,
@@ -471,6 +503,7 @@ class FlockRepository(
                 modified.w3 != existing.w3 || modified.n3 != existing.n3 ||
                 modified.w4 != existing.w4 || modified.n4 != existing.n4 ||
                 modified.w5 != existing.w5 || modified.n5 != existing.n5 ||
+                modified.moreSamples != existing.moreSamples ||
                 modified.indivWeights != existing.indivWeights
         val mortChanged = modified.mortality != existing.mortality
         val feedChanged = modified.feedBagsUsed != existing.feedBagsUsed || modified.feedUsedBreakdown != existing.feedUsedBreakdown
@@ -488,11 +521,7 @@ class FlockRepository(
         }
 
         // Bug 4 Fix: sampleEntered is ONLY true when at least one location has BOTH weight > 0 AND count > 0
-        val hasSample = ((modified.w1 ?: 0.0) > 0 && (modified.n1 ?: 0) > 0) ||
-                ((modified.w2 ?: 0.0) > 0 && (modified.n2 ?: 0) > 0) ||
-                ((modified.w3 ?: 0.0) > 0 && (modified.n3 ?: 0) > 0) ||
-                ((modified.w4 ?: 0.0) > 0 && (modified.n4 ?: 0) > 0) ||
-                ((modified.w5 ?: 0.0) > 0 && (modified.n5 ?: 0) > 0) ||
+        val hasSample = modified.filledSamples().isNotEmpty() ||
                 PhysiologicalEngine.parseWeights(modified.indivWeights).isNotEmpty()
 
         val newSaved = saved.toMutableSet()
@@ -519,8 +548,10 @@ class FlockRepository(
         val flock = flockDao.getFlockById(spreadsheetId, flockId) ?: return@withContext
         val farm = getFarm(spreadsheetId)
         val config = getConfig(spreadsheetId)
-        val rows = dailyDataDao.getDailyDataList(spreadsheetId, flockId).sortedBy { it.dayNumber }
+        var rows = dailyDataDao.getDailyDataList(spreadsheetId, flockId).sortedBy { it.dayNumber }
         if (rows.isEmpty()) return@withContext
+        // a flock that has run past its planned harvest age gets the days it is missing
+        if (ensureDayRows(flock, farm.timeZone, rows)) rows = dailyDataDao.getDailyDataList(spreadsheetId, flockId).sortedBy { it.dayNumber }
 
         val bagKg = farm.feedBagKg
         val kgOf = feedTypeDao.getFeedTypes(spreadsheetId).associate { it.code to it.bagKg }
@@ -576,14 +607,8 @@ class FlockRepository(
             var live = flock.birdsPlaced - flock.receptionMort - cumMort - cumLift - cumLame
             if (live < 0) live = 0
 
-            // 5 locations calculation
-            val samples = listOf(
-                PhysiologicalEngine.LocationSample(r.w1 ?: 0.0, r.n1 ?: 0),
-                PhysiologicalEngine.LocationSample(r.w2 ?: 0.0, r.n2 ?: 0),
-                PhysiologicalEngine.LocationSample(r.w3 ?: 0.0, r.n3 ?: 0),
-                PhysiologicalEngine.LocationSample(r.w4 ?: 0.0, r.n4 ?: 0),
-                PhysiologicalEngine.LocationSample(r.w5 ?: 0.0, r.n5 ?: 0)
-            )
+            // every sample location of the day (five, or as many as were added)
+            val samples = r.sampleList().map { (w, n) -> PhysiologicalEngine.LocationSample(w ?: 0.0, n ?: 0) }
             val sampleRes = PhysiologicalEngine.computeWeightSamples(samples, PhysiologicalEngine.parseWeights(r.indivWeights))
 
             val weightAge: Double
@@ -695,7 +720,7 @@ class FlockRepository(
             val airspeed = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_AIRSPEED_BY_AGE, day.toDouble())
             val windChill = if (tempKnown) meanTemp - (0.0114 * airspeed) else null
 
-            val lightHours = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_LIGHT_BY_AGE, day.toDouble())
+            val lightHours = PhysiologicalEngine.lightHours(day, flock.harvestAge)
             val maxMortCeil = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MAXMORT_BY_AGE, day.toDouble())
 
             val ventText = when (ventPlan.mode) {

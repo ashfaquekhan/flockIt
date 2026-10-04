@@ -6,6 +6,7 @@ import com.example.flock.data.FarmEntity
 import com.example.flock.data.FeedTypeEntity
 import com.example.flock.data.FlockEntity
 import com.example.flock.data.TaskEntity
+import com.example.flock.data.filledSamples
 import kotlin.math.min
 
 /**
@@ -21,8 +22,12 @@ object SheetSchema {
      * 4: tables read by header, every tab present, flock deletedAt, feeder-layout farm keys (v34).
      * 5: numbers and true/false written as real cell values (no text with a leading '), one "Used <code>"
      *    column of bags per feed variety, individually weighed birds.
+     * 6: DailyData laid out to be read by a person — the "Used <code>" columns sit beside FeedBagsUsed, any
+     *    number of sample locations (W6 / N6 … beside W5 / N5) with a Locations count — and two report tabs
+     *    the app keeps up to date: FeedLedger (received / used / in store by variety, with running totals)
+     *    and DailySummary (birds, deaths, weight, feed and FCR with running totals).
      */
-    const val VERSION = 5
+    const val VERSION = 6
 
     val FLOCK_HEADERS = listOf(
         "flockId", "name", "breed", "startDate", "startTime", "birdsPlaced", "receptionMort",
@@ -36,8 +41,30 @@ object SheetSchema {
         "BroodingLength", "ActualFans", "ActualFanTime", "OutTemp", "OutRH", "Notes",
         "WaterTempC", "WaterPh", "FeedMoisturePct", "MeasuredCo2", "MeasuredNh3", "MeasuredO2",
         "MeasuredPressure", "MeasuredAirspeed", "PadWetMin", "PadDryMin", "LuxPerFt2", "DieselCansUsed",
-        "UpdatedAt", "UpdatedBy", "Committed", "FeedUsedBreakdown", "SavedFields", "IndividualWeights"
+        "UpdatedAt", "UpdatedBy", "Committed", "FeedUsedBreakdown", "SavedFields", "IndividualWeights", "Locations"
     )
+
+    // ---- how DailyData is written (schema 6): related columns side by side, per-variety and extra-location columns in place
+    private val LAYOUT_A = listOf("FlockId", "Day", "Date", "Locked", "SampleEntered", "Locations",
+        "W1", "N1", "W2", "N2", "W3", "N3", "W4", "N4", "W5", "N5")
+    private val LAYOUT_B = listOf("IndividualWeights", "Mortality", "BirdsLifted", "WeightLifted", "LameSeparated", "FeedBagsUsed")
+    private val LAYOUT_C = listOf("FeedUsedType", "FeedUsedBreakdown",
+        "FeedRecB1", "FeedTypeB1", "FeedRecB2", "FeedTypeB2", "FeedRecB3", "FeedTypeB3", "DieselCansUsed", "Notes",
+        "BroodingLength", "ActualFans", "ActualFanTime", "OutTemp", "OutRH",
+        "WaterTempC", "WaterPh", "FeedMoisturePct", "MeasuredCo2", "MeasuredNh3", "MeasuredO2",
+        "MeasuredPressure", "MeasuredAirspeed", "PadWetMin", "PadDryMin", "LuxPerFt2",
+        "UpdatedAt", "UpdatedBy", "Committed", "SavedFields")
+    /** The DailyData header for these feed varieties and this many sample locations. */
+    fun dailyHeader(codes: List<String>, locations: Int): List<String> =
+        LAYOUT_A + (6..locations.coerceIn(5, com.example.flock.data.MAX_LOCATIONS)).flatMap { listOf("W$it", "N$it") } +
+            LAYOUT_B + codes.map { usedHeader(it) } + LAYOUT_C
+
+    /** "W6" / "N7" … → the location number (6 and up); null for anything else. */
+    fun sampleIndex(name: String): Int? =
+        Regex("^[wn](\\d{1,2})$").find(norm(name))?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it in 6..com.example.flock.data.MAX_LOCATIONS }
+    private fun isSampleCol(name: String) = sampleIndex(name) != null
+    /** A column the app writes that isn't one of the fixed fields. */
+    fun isDynamicColumn(name: String) = isUsedCol(name) || isSampleCol(name)
     /** Bags of one feed variety used that day — one column per variety, after the fixed columns. */
     fun usedHeader(code: String) = "Used $code"
     fun isUsedColumn(name: String) = isUsedCol(name)
@@ -96,7 +123,7 @@ object SheetSchema {
         /** Columns that match none of [fields] (kept at the right when the tab is rewritten). */
         fun extras(fields: List<String>): List<Int> {
             val used = fields.mapNotNull { col(it) }.toSet()
-            return names.indices.filter { it !in used && norm(names[it]).isNotEmpty() && !isUsedCol(names[it]) }
+            return names.indices.filter { it !in used && norm(names[it]).isNotEmpty() && !isUsedCol(names[it]) && !isSampleCol(names[it]) }
         }
     }
 
@@ -113,6 +140,17 @@ object SheetSchema {
         /** Bags per feed variety from the "Used <code>" columns (empty when the sheet has none). */
         fun usedByCode(): Map<String, Double> = h.names.withIndex().filter { isUsedCol(it.value) }
             .mapNotNull { (i, n) -> num(cells.getOrNull(i))?.let { usedCode(n) to it } }.filter { it.first.isNotBlank() }.toMap()
+        /** Sample locations 6 and up from the "W6" / "N6" … columns, in "w:n;w:n" form. */
+        fun moreSamples(): String {
+            val w = HashMap<Int, Double?>(); val n = HashMap<Int, Int?>()
+            h.names.forEachIndexed { i, name ->
+                val k = sampleIndex(name) ?: return@forEachIndexed
+                val v = num(cells.getOrNull(i))
+                if (norm(name).startsWith("w")) w[k] = v else n[k] = v?.let { kotlin.math.round(it).toInt() }
+            }
+            val top = (w.filterValues { it != null }.keys + n.filterValues { it != null }.keys).maxOrNull() ?: return ""
+            return com.example.flock.data.formatMoreSamples((6..top).map { w[it] to n[it] })
+        }
     }
 
     fun num(raw: Any?): Double? {
@@ -177,7 +215,8 @@ object SheetSchema {
             dieselCansUsed = r.d("DieselCansUsed") ?: 0.0,
             updatedAt = r.l("UpdatedAt") ?: 0L, updatedBy = r.s("UpdatedBy"),
             committed = r.b("Committed"), feedUsedBreakdown = r.s("FeedUsedBreakdown"), savedFields = r.s("SavedFields"),
-            indivWeights = r.s("IndividualWeights")
+            indivWeights = r.s("IndividualWeights"),
+            moreSamples = r.moreSamples(), locCount = (r.i("Locations") ?: 0).coerceIn(0, com.example.flock.data.MAX_LOCATIONS)
         )
         // The per-variety columns are the bags record when the sheet has them: they set the split and the total.
         val perType = r.usedByCode().filterValues { it > 0 }
@@ -198,8 +237,7 @@ object SheetSchema {
             partSum > 0 -> parts.joinToString(";") { (c, b) -> "$c=${b * d.feedBagsUsed / partSum}" }
             else -> "${d.feedUsedType}=${d.feedBagsUsed}"
         }
-        val hasSample = listOf(d.w1 to d.n1, d.w2 to d.n2, d.w3 to d.n3, d.w4 to d.n4, d.w5 to d.n5).any { (w, n) -> (w ?: 0.0) > 0 && (n ?: 0) > 0 } ||
-            d.indivWeights.isNotBlank()
+        val hasSample = d.filledSamples().isNotEmpty() || d.indivWeights.isNotBlank()
         return d.copy(feedUsedBreakdown = breakdown, sampleEntered = hasSample)
     }
     fun dayRow(d: DailyDataEntity): List<Any> = listOf(
@@ -210,8 +248,15 @@ object SheetSchema {
         n(d.broodingLength), n(d.actualFans), n(d.actualFanTime), n(d.outTemp), n(d.outRH), d.notes,
         n(d.waterTempC), n(d.waterPh), n(d.feedMoisturePct), n(d.measuredCo2), n(d.measuredNh3), n(d.measuredO2),
         n(d.measuredPressure), n(d.measuredAirspeed), n(d.padWetMin), n(d.padDryMin), n(d.luxPerFt2), d.dieselCansUsed,
-        d.updatedAt, d.updatedBy, d.committed, d.feedUsedBreakdown, d.savedFields, d.indivWeights
+        d.updatedAt, d.updatedBy, d.committed, d.feedUsedBreakdown, d.savedFields, d.indivWeights,
+        if (d.locCount > 0) d.locCount else ""
     )
+    /** Sample locations 6 and up as column name → value. */
+    fun sampleColumns(d: DailyDataEntity): Map<String, Any> = buildMap {
+        com.example.flock.data.parseMoreSamples(d.moreSamples).forEachIndexed { i, (wt, cnt) -> put("W${i + 6}", n(wt)); put("N${i + 6}", n(cnt)) }
+    }
+    /** How many sample locations a day row needs columns for (5, or up to its last extra location). */
+    fun locationsOf(d: DailyDataEntity): Int = 5 + com.example.flock.data.parseMoreSamples(d.moreSamples).size
     /** Bags per variety a day row used (from its split, else its one type). */
     fun usedSplit(d: DailyDataEntity): Map<String, Double> {
         val b = com.example.flock.data.parseFeedBreakdown(d.feedUsedBreakdown)
@@ -220,7 +265,10 @@ object SheetSchema {
     }
     /** Every value of a day row keyed by its normalised column name, per-variety columns included. */
     fun dayValues(d: DailyDataEntity): Map<String, Any> =
-        DAILY_HEADERS.map { norm(it) }.zip(dayRow(d)).toMap() + usedSplit(d).mapKeys { norm(usedHeader(it.key)) }
+        DAILY_HEADERS.map { norm(it) }.zip(dayRow(d)).toMap() + usedSplit(d).mapKeys { norm(usedHeader(it.key)) } +
+            sampleColumns(d).mapKeys { norm(it.key) }
+    /** A day row laid out for [header] (a column the row has no value for is left blank). */
+    fun dayCells(d: DailyDataEntity, header: List<String>): List<Any> = dayValues(d).let { v -> header.map { v[norm(it)] ?: "" } }
     fun dayKey(d: DailyDataEntity) = d.flockId + "|" + d.dayNumber
 
     fun task(sid: String, r: Row): TaskEntity? {
@@ -427,7 +475,7 @@ object SheetSchema {
     fun upgradeReasons(raw: RawFile): List<String> {
         val out = mutableListOf<String>()
         if (raw.schema < VERSION) out += "schema ${raw.schema} → $VERSION"
-        val missing = TABS.filter { it !in raw.titles }
+        val missing = (TABS + SheetReports.TABS).filter { it !in raw.titles }
         if (missing.isNotEmpty()) out += "missing tabs: ${missing.joinToString()}"
         fun check(name: String, values: List<List<Any?>>?, fields: List<String>) {
             if (values == null) return
@@ -436,7 +484,16 @@ object SheetSchema {
             if (t.header.names.take(fields.size) != fields) out += "$name columns differ"
         }
         check("Flocks", raw.flocks, FLOCK_HEADERS)
-        check("DailyData", raw.days, DAILY_HEADERS)
+        raw.days?.let { values ->
+            val t = tab(values, DAILY_HEADERS)
+            if (!t.hadHeader) { if (t.rows.isNotEmpty() || values.isEmpty()) out += "DailyData has no header row" }
+            else {
+                // the varieties and extra locations the file already has, in the order the current layout puts them
+                val names = t.header.names
+                val expected = dailyHeader(names.filter { isUsedCol(it) }.map { usedCode(it) }, names.mapNotNull { sampleIndex(it) }.maxOrNull() ?: 5)
+                if (names.take(expected.size) != expected) out += "DailyData columns differ"
+            }
+        }
         check("Tasks", raw.tasks, TASK_HEADERS)
         check("_FeedTypes", raw.feedTypes, FEED_HEADERS)
         return out
@@ -494,10 +551,12 @@ object SheetSchema {
         out["_Config"] = c.config?.let { configToKV(it) } ?: listOf(listOf("Key", "Value"))
         out["_FeedTypes"] = listOf<List<Any>>(FEED_HEADERS) + c.feedTypes.map { feedRow(it) }
         out["Flocks"] = listOf<List<Any>>(FLOCK_HEADERS + c.flockExtra.names) + c.flocks.map { flockRow(it) + c.flockExtra.of(it.flockId) }
-        val codes = usedCodes(c)
-        out["DailyData"] = listOf<List<Any>>(DAILY_HEADERS + codes.map { usedHeader(it) } + c.dayExtra.names) +
-            c.days.map { d -> val u = usedSplit(d); dayRow(d) + codes.map { code -> u[code] ?: "" } + c.dayExtra.of(dayKey(d)) }
+        val header = dailyHeader(usedCodes(c), c.days.maxOfOrNull { locationsOf(it) } ?: 5)
+        out["DailyData"] = listOf<List<Any>>(header + c.dayExtra.names) + c.days.map { d -> dayCells(d, header) + c.dayExtra.of(dayKey(d)) }
         out["Tasks"] = listOf<List<Any>>(TASK_HEADERS + c.taskExtra.names) + c.tasks.map { taskRow(it) + c.taskExtra.of(it.taskId) }
+        // report tabs: worked out from the rows above, never read back
+        out[SheetReports.FEED_LEDGER] = SheetReports.feedLedger(c)
+        out[SheetReports.DAILY_SUMMARY] = SheetReports.dailySummary(c)
         return out
     }
 

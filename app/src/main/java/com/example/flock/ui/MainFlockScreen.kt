@@ -31,6 +31,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.flock.data.locationsShown
+import com.example.flock.data.sampleList
 import com.example.flock.ui.components.TopFlockBar
 import com.example.flock.ui.components.WeatherForecastDialog
 import com.example.flock.ui.screens.EntriesScreen
@@ -92,9 +94,10 @@ fun MainFlockScreen(
             .map { it.value.last() }
     }
     val previousCounts = remember(dailyRows, selectedDay) {
-        dailyRows.filter { it.dayNumber < selectedDay && listOf(it.n1, it.n2, it.n3, it.n4, it.n5).any { n -> n != null } }
+        // every location of the last weighing (so today's entry opens with the same number of locations)
+        dailyRows.filter { it.dayNumber < selectedDay && it.sampleList().any { s -> s.second != null } }
             .maxByOrNull { it.dayNumber }
-            ?.let { listOf(it.n1, it.n2, it.n3, it.n4, it.n5) } ?: List(5) { null }
+            ?.let { r -> r.sampleList().map { it.second }.take(maxOf(r.locationsShown(), 1)) } ?: List(5) { null }
     }
 
     val (dayDateStr, yesterdayDateStr) = remember(activeFlock, selectedDay, farm.timeZone) {
@@ -120,6 +123,9 @@ fun MainFlockScreen(
         } catch (e: Exception) { 0 }
     }
 
+    // no fixed last day: the planned harvest age, or tomorrow once the flock has run past it (up to the oldest a broiler is kept)
+    val lastDay = maxOf(activeFlock?.harvestAge ?: 42, currentFlockDay + 1).coerceIn(1, com.example.flock.engine.PhysiologicalEngine.MAX_FLOCK_DAY)
+
     Scaffold(
         modifier = modifier.fillMaxSize().testTag("main_flock_screen"),
         topBar = {
@@ -134,13 +140,13 @@ fun MainFlockScreen(
                 syncStatus = syncStatus,
                 onPrevDay = { if (selectedDay > 0) viewModel.selectDay(selectedDay - 1) },
                 onNextDay = {
-                    val maxDay = activeFlock?.harvestAge ?: 42
-                    if (selectedDay < maxDay) viewModel.selectDay(selectedDay + 1)
+                    if (selectedDay < lastDay) viewModel.selectDay(selectedDay + 1)
                 },
                 onSelectDay = { viewModel.selectDay(it) },
                 onFarmClick = onNavFarms,
                 onFlockClick = onNavFlocks,
-                onWeatherClick = { viewModel.openWeatherForecast() }
+                onWeatherClick = { viewModel.openWeatherForecast() },
+                lastDay = lastDay
             )
         },
         bottomBar = {
@@ -202,7 +208,8 @@ fun MainFlockScreen(
                     onSave = { inputs -> viewModel.saveDayEntry(inputs) },
                     onToggleLockTimer = { viewModel.toggleCutoffLock() },
                     onRevertDay = { viewModel.revertDay() },
-                    onClearDay = { viewModel.clearDay() }
+                    onClearDay = { viewModel.clearDay() },
+                    farm = farm
                 )
                 FlockNavTab.OUTPUT -> OutputScreen(
                     flock = activeFlock,
@@ -215,7 +222,8 @@ fun MainFlockScreen(
                     hourly = hourly,
                     isToday = selectedDay == currentFlockDay,
                     onCloseBatch = activeFlock?.let { f -> { viewModel.closeFlock(f.flockId) } },
-                    onFarmChange = { viewModel.updateFarm(it) }
+                    onFarmChange = { viewModel.updateFarm(it) },
+                    onFlockPlan = { w, h -> viewModel.updateFlockPlan(w, h) }
                 )
                 FlockNavTab.STOCK -> StockScreen(
                     flock = activeFlock,
@@ -227,7 +235,7 @@ fun MainFlockScreen(
                 FlockNavTab.TASKS -> TasksScreen(
                     allTasks = tasks,
                     dayNumber = selectedDay,
-                    harvestAge = activeFlock?.harvestAge ?: 42,
+                    harvestAge = lastDay,
                     onSaveTask = { id, block, label, time, s, e, rec, n, alert, kind ->
                         viewModel.saveTask(id, block, label, time, s, e, rec, n, alert, kind)
                     },

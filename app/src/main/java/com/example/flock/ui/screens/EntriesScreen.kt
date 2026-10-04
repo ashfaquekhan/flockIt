@@ -62,6 +62,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalContext
 import com.example.flock.data.savedGroups
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
+import com.example.flock.data.sampleList
+import androidx.compose.material.icons.filled.Remove
 import com.example.flock.ui.EntryDrafts
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
@@ -73,6 +77,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.flock.data.DailyDataEntity
 import com.example.flock.data.FeedTypeEntity
 import com.example.flock.data.parseFeedBreakdown
@@ -86,6 +91,13 @@ import com.example.ui.theme.StatusGood
 import com.example.ui.theme.StatusGoodWash
 import com.example.ui.theme.StatusWarn
 import com.example.ui.theme.StatusWarnWash
+
+/** One sample location: total weight of the birds caught there (g) and how many. */
+private class LocRow(w: String = "", n: String = "") {
+    var w by mutableStateOf(w)
+    var n by mutableStateOf(n)
+    val blank get() = w.isBlank() && n.isBlank()
+}
 
 /** One editable "feed used" line (type + bags). */
 private class FeedUseRow(type: String, bags: String) {
@@ -109,18 +121,12 @@ fun EntriesScreen(
     onToggleLockTimer: () -> Unit,
     onRevertDay: () -> Unit,
     onClearDay: () -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** the house, for the sampling map (null: no map) */
+    farm: com.example.flock.data.FarmEntity? = null
 ) {
-    var w1 by remember { mutableStateOf("") }
-    var n1 by remember { mutableStateOf("") }
-    var w2 by remember { mutableStateOf("") }
-    var n2 by remember { mutableStateOf("") }
-    var w3 by remember { mutableStateOf("") }
-    var n3 by remember { mutableStateOf("") }
-    var w4 by remember { mutableStateOf("") }
-    var n4 by remember { mutableStateOf("") }
-    var w5 by remember { mutableStateOf("") }
-    var n5 by remember { mutableStateOf("") }
+    // sample locations: as many as the last weighing had (5 to start with); + and − change the number
+    val locs = remember { mutableStateListOf<LocRow>() }
     // birds weighed one by one (grams) — gives the true CV and uniformity
     var singles by remember { mutableStateOf("") }
 
@@ -156,9 +162,8 @@ fun EntriesScreen(
     val context = LocalContext.current
     val saved = entry?.savedGroups() ?: emptySet()
 
-    fun currentValues(): Map<String, String> = mapOf(
-        "w1" to w1, "n1" to n1, "w2" to w2, "n2" to n2, "w3" to w3, "n3" to n3,
-        "w4" to w4, "n4" to n4, "w5" to w5, "n5" to n5, "indiv" to singles,
+    fun currentValues(): Map<String, String> = locs.flatMapIndexed { i, l -> listOf("w${i + 1}" to l.w, "n${i + 1}" to l.n) }.toMap() + mapOf(
+        "locs" to locs.size.toString(), "indiv" to singles,
         "mort" to mortality,
         "feed" to feedUse.joinToString(";") { "${it.type}=${it.bags}" },
         "lift" to birdsLifted, "liftKg" to weightLifted, "lame" to lameSeparated,
@@ -169,11 +174,16 @@ fun EntriesScreen(
 
     // Load the saved day, overlay any unsaved draft typed earlier, then keep the draft updated.
     LaunchedEffect(entry?.updatedAt, entry != null, draftKey) {
-        w1 = entry?.w1?.fmt() ?: ""; n1 = entry?.n1?.toString() ?: ""
-        w2 = entry?.w2?.fmt() ?: ""; n2 = entry?.n2?.toString() ?: ""
-        w3 = entry?.w3?.fmt() ?: ""; n3 = entry?.n3?.toString() ?: ""
-        w4 = entry?.w4?.fmt() ?: ""; n4 = entry?.n4?.toString() ?: ""
-        w5 = entry?.w5?.fmt() ?: ""; n5 = entry?.n5?.toString() ?: ""
+        // how many locations: what this day was saved with, else as many as it holds, else as the last weighing (else 5)
+        val savedSamples = entry?.sampleList().orEmpty()
+        val draft0 = EntryDrafts.load(context, draftKey)
+        val shown = listOf(
+            entry?.locCount ?: 0,
+            savedSamples.indexOfLast { it.first != null || it.second != null } + 1,
+            if ((entry?.locCount ?: 0) > 0 || "W" in saved) 0 else (draft0["locs"]?.toIntOrNull() ?: previousCounts.size.takeIf { it > 0 } ?: 5)
+        ).max().coerceIn(1, com.example.flock.data.MAX_LOCATIONS)
+        locs.clear()
+        repeat(shown) { i -> locs.add(LocRow(savedSamples.getOrNull(i)?.first?.fmt() ?: "", savedSamples.getOrNull(i)?.second?.toString() ?: "")) }
         singles = entry?.indivWeights ?: ""
 
         mortality = if ("M" in saved) (entry?.mortality ?: 0).toString()
@@ -205,13 +215,10 @@ fun EntriesScreen(
         // Unsaved draft typed earlier (only for fields that are still open).
         val d = EntryDrafts.load(context, draftKey)
         if ("W" !in saved) {
-            d["w1"]?.let { w1 = it }; d["n1"]?.let { n1 = it }; d["w2"]?.let { w2 = it }; d["n2"]?.let { n2 = it }
-            d["w3"]?.let { w3 = it }; d["n3"]?.let { n3 = it }; d["w4"]?.let { w4 = it }; d["n4"]?.let { n4 = it }
-            d["w5"]?.let { w5 = it }; d["n5"]?.let { n5 = it }; d["indiv"]?.let { singles = it }
+            locs.forEachIndexed { i, l -> d["w${i + 1}"]?.let { l.w = it }; d["n${i + 1}"]?.let { l.n = it } }
+            d["indiv"]?.let { singles = it }
             // Bird counts per location rarely change: carry the last weighing's counts forward.
-            val counts = listOf(n1, n2, n3, n4, n5).toMutableList()
-            for (i in 0 until 5) if (counts[i].isBlank()) previousCounts.getOrNull(i)?.let { counts[i] = it.toString() }
-            n1 = counts[0]; n2 = counts[1]; n3 = counts[2]; n4 = counts[3]; n5 = counts[4]
+            locs.forEachIndexed { i, l -> if (l.n.isBlank()) previousCounts.getOrNull(i)?.let { l.n = it.toString() } }
         }
         if ("M" !in saved) d["mort"]?.let { mortality = it }
         if ("F" !in saved) d["feed"]?.takeIf { it.isNotBlank() }?.let { f ->
@@ -239,13 +246,7 @@ fun EntriesScreen(
     val feedEnabled = openDay && "F" !in saved
     val scrollState = rememberScrollState()
 
-    val liveSamples = listOf(
-        PhysiologicalEngine.LocationSample(w1.toDoubleOrNull() ?: 0.0, n1.toIntOrNull() ?: 0),
-        PhysiologicalEngine.LocationSample(w2.toDoubleOrNull() ?: 0.0, n2.toIntOrNull() ?: 0),
-        PhysiologicalEngine.LocationSample(w3.toDoubleOrNull() ?: 0.0, n3.toIntOrNull() ?: 0),
-        PhysiologicalEngine.LocationSample(w4.toDoubleOrNull() ?: 0.0, n4.toIntOrNull() ?: 0),
-        PhysiologicalEngine.LocationSample(w5.toDoubleOrNull() ?: 0.0, n5.toIntOrNull() ?: 0)
-    )
+    val liveSamples = locs.map { PhysiologicalEngine.LocationSample(it.w.toDoubleOrNull() ?: 0.0, it.n.toIntOrNull() ?: 0) }
     val liveSampleRes = PhysiologicalEngine.computeWeightSamples(liveSamples, PhysiologicalEngine.parseWeights(singles))
 
     Column(
@@ -280,7 +281,7 @@ fun EntriesScreen(
         }
 
         // SECTION 1: 5 Location Weight Samples
-        Section(title = "1. Weight samples (5 locations)", subtitle = "Zig-zag across 5 house spots before the ${lockStatus.cutoffTime} cutoff") {
+        Section(title = "1. Weight samples (${locs.size} locations)", subtitle = "Zig-zag across ${locs.size} house spots before the ${lockStatus.cutoffTime} cutoff") {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -290,11 +291,25 @@ fun EntriesScreen(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Chicks Count", style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1.5f))
             }
-            WeightSampleRow("Loc 1", w1, n1, weightsEnabled, { w1 = it }, { n1 = it }, "w1_input", "n1_input")
-            WeightSampleRow("Loc 2", w2, n2, weightsEnabled, { w2 = it }, { n2 = it }, "w2_input", "n2_input")
-            WeightSampleRow("Loc 3", w3, n3, weightsEnabled, { w3 = it }, { n3 = it }, "w3_input", "n3_input")
-            WeightSampleRow("Loc 4", w4, n4, weightsEnabled, { w4 = it }, { n4 = it }, "w4_input", "n4_input")
-            WeightSampleRow("Loc 5", w5, n5, weightsEnabled, { w5 = it }, { n5 = it }, "w5_input", "n5_input")
+            locs.forEachIndexed { i, l ->
+                WeightSampleRow("Loc ${i + 1}", l.w, l.n, weightsEnabled, { l.w = it }, { l.n = it }, "w${i + 1}_input", "n${i + 1}_input")
+            }
+            // more or fewer locations; the number is kept for the next weighing
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("${locs.size} locations", style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+                    modifier = Modifier.weight(1f), maxLines = 1, softWrap = false)
+                OutlinedButton(onClick = { if (locs.size > 1) locs.removeAt(locs.size - 1) },
+                    enabled = weightsEnabled && locs.size > 1 && locs.last().w.isBlank(),
+                    shape = RoundedCornerShape(10.dp), modifier = Modifier.testTag("loc_remove")) {
+                    Icon(Icons.Default.Remove, contentDescription = "One location fewer", modifier = Modifier.size(18.dp))
+                }
+                OutlinedButton(onClick = { locs.add(LocRow("", locs.lastOrNull()?.n ?: "")) },
+                    enabled = weightsEnabled && locs.size < com.example.flock.data.MAX_LOCATIONS,
+                    shape = RoundedCornerShape(10.dp), modifier = Modifier.testTag("loc_add")) {
+                    Icon(Icons.Default.Add, contentDescription = "One more location", modifier = Modifier.size(18.dp))
+                }
+            }
+            if (farm != null) SampleMap(locs.size, farm, entry?.occupiedFt2 ?: 0.0)
 
             OutlinedTextField(
                 colors = entryFieldColors(),
@@ -504,11 +519,13 @@ fun EntriesScreen(
                 val firstType = rows.firstOrNull()?.type ?: (feedTypes.firstOrNull()?.code ?: "B1")
                 onSave(
                     DailyInputs(
-                        w1 = w1.toDoubleOrNull(), n1 = n1.toIntOrNull(),
-                        w2 = w2.toDoubleOrNull(), n2 = n2.toIntOrNull(),
-                        w3 = w3.toDoubleOrNull(), n3 = n3.toIntOrNull(),
-                        w4 = w4.toDoubleOrNull(), n4 = n4.toIntOrNull(),
-                        w5 = w5.toDoubleOrNull(), n5 = n5.toIntOrNull(),
+                        w1 = locs.getOrNull(0)?.w?.toDoubleOrNull(), n1 = locs.getOrNull(0)?.n?.toIntOrNull(),
+                        w2 = locs.getOrNull(1)?.w?.toDoubleOrNull(), n2 = locs.getOrNull(1)?.n?.toIntOrNull(),
+                        w3 = locs.getOrNull(2)?.w?.toDoubleOrNull(), n3 = locs.getOrNull(2)?.n?.toIntOrNull(),
+                        w4 = locs.getOrNull(3)?.w?.toDoubleOrNull(), n4 = locs.getOrNull(3)?.n?.toIntOrNull(),
+                        w5 = locs.getOrNull(4)?.w?.toDoubleOrNull(), n5 = locs.getOrNull(4)?.n?.toIntOrNull(),
+                        moreSamples = com.example.flock.data.formatMoreSamples(locs.drop(5).map { it.w.toDoubleOrNull() to it.n.toIntOrNull() }),
+                        locCount = locs.size,
                         indivWeights = PhysiologicalEngine.parseWeights(singles).joinToString(", ") { it.fmt() },
                         mortality = mortality.trim().toIntOrNull(),
                         feedBagsUsed = feedSum,
@@ -568,6 +585,71 @@ fun EntriesScreen(
         )
 
         Spacer(modifier = Modifier.height(96.dp).navigationBarsPadding())
+    }
+}
+
+/**
+ * Where to catch the birds for weighing: the birds' floor (front wall to the barricade) from above, with the
+ * feeder (gold) and drinker (blue) lines, and one numbered spot per location — spread evenly along the house
+ * and switching sides, so the sample covers the front, the middle and the back, left and right. The dashed
+ * line is the walk.
+ */
+@Composable
+fun SampleMap(locations: Int, farm: com.example.flock.data.FarmEntity, occupiedFt2: Double, modifier: Modifier = Modifier) {
+    val widthFt = farm.usableWidthFt.coerceAtLeast(1.0)
+    val lenFt = (if (occupiedFt2 > 0) occupiedFt2 / widthFt else farm.usableLengthFt).coerceIn(10.0, farm.usableLengthFt.coerceAtLeast(10.0))
+    val n = locations.coerceIn(1, com.example.flock.data.MAX_LOCATIONS)
+    // along: evenly spaced; across: left third / right third in turn (a single spot goes in the middle)
+    val spots = (0 until n).map { i -> ((i + 0.5) / n) to (if (n == 1) 0.5 else if (i % 2 == 0) 0.28 else 0.72) }
+    val gold = com.example.ui.theme.ValuePredicted; val blue = com.example.ui.theme.ValueMin
+    Column(modifier.fillMaxWidth().testTag("sample_map"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Where to catch the birds", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
+        androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(118.dp)) {
+            val px = density
+            val padL = 34f * px; val padR = 8f * px; val padT = 6f * px; val padB = 20f * px
+            val w = size.width - padL - padR; val h = size.height - padT - padB
+            fun x(f: Double) = padL + (f * w).toFloat()
+            fun y(f: Double) = padT + (f * h).toFloat()
+            drawRect(Color.White.copy(alpha = 0.06f), androidx.compose.ui.geometry.Offset(padL, padT), androidx.compose.ui.geometry.Size(w, h))
+            drawRect(Color.White.copy(alpha = 0.7f), androidx.compose.ui.geometry.Offset(padL, padT), androidx.compose.ui.geometry.Size(w, h),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(1.4f * px))
+            // feeder and drinker lines, spread across the width
+            val fl = farm.feederLines.coerceAtLeast(0); val dl = farm.drinkerLines.coerceAtLeast(0)
+            for (i in 0 until fl) { val yy = y((i + 0.5) / fl); drawLine(gold.copy(alpha = 0.55f), androidx.compose.ui.geometry.Offset(padL, yy), androidx.compose.ui.geometry.Offset(padL + w, yy), 1.3f * px) }
+            for (i in 0 until dl) { val yy = y((i + 0.5) / dl); drawLine(blue.copy(alpha = 0.45f), androidx.compose.ui.geometry.Offset(padL, yy), androidx.compose.ui.geometry.Offset(padL + w, yy), 1f * px,
+                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(4f * px, 4f * px))) }
+            // the walk: in at the front, spot to spot
+            val pts = listOf(androidx.compose.ui.geometry.Offset(padL, y(0.5))) + spots.map { androidx.compose.ui.geometry.Offset(x(it.first), y(it.second)) }
+            for (i in 1 until pts.size) drawLine(Color.White.copy(alpha = 0.55f), pts[i - 1], pts[i], 1.4f * px,
+                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6f * px, 5f * px)))
+            val paint = android.graphics.Paint().apply { isAntiAlias = true; textAlign = android.graphics.Paint.Align.CENTER; typeface = android.graphics.Typeface.MONOSPACE; isFakeBoldText = true }
+            spots.forEachIndexed { i, s ->
+                val c = androidx.compose.ui.geometry.Offset(x(s.first), y(s.second))
+                drawCircle(Color.Black, 10.5f * px, c); drawCircle(Color.White, 10.5f * px, c, style = androidx.compose.ui.graphics.drawscope.Stroke(1.6f * px))
+                paint.textSize = 11.5f * px; paint.color = android.graphics.Color.WHITE
+                drawContext.canvas.nativeCanvas.drawText("${i + 1}", c.x, c.y + paint.textSize * 0.36f, paint)
+            }
+            // front wall, and feet along the bottom
+            paint.isFakeBoldText = false; paint.textSize = 10f * px; paint.color = Color.White.copy(alpha = 0.65f).toArgb()
+            drawContext.canvas.nativeCanvas.drawText("front", padL / 2, padT + h / 2 + paint.textSize * 0.36f, paint)
+            listOf(0.0, 0.5, 1.0).forEach { f ->
+                paint.textAlign = if (f == 0.0) android.graphics.Paint.Align.LEFT else if (f == 1.0) android.graphics.Paint.Align.RIGHT else android.graphics.Paint.Align.CENTER
+                drawContext.canvas.nativeCanvas.drawText(String.format("%.1f ft", lenFt * f), x(f), size.height - 5f * px, paint)
+            }
+        }
+        // each spot: how far from the front wall, and which side — two to a line
+        spots.withIndex().chunked(2).forEach { pair ->
+            Row(Modifier.fillMaxWidth()) {
+                pair.forEach { (i, s) ->
+                    Text("${i + 1}  ${String.format("%.1f", s.first * lenFt)} ft  " + (if (n == 1) "middle" else if (s.second < 0.5) "left" else "right"),
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, letterSpacing = 0.sp), color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1, softWrap = false, modifier = Modifier.weight(1f))
+                }
+                if (pair.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+        Text("Catch the birds at each number, between a feeder and a drinker line and away from the walls; about the same number at every spot.",
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

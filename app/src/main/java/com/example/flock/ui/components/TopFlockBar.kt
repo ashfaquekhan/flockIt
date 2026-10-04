@@ -73,9 +73,11 @@ fun TopFlockBar(
     onSelectDay: (Int) -> Unit,
     onFarmClick: () -> Unit,
     onFlockClick: () -> Unit,
-    onWeatherClick: () -> Unit = {}
+    onWeatherClick: () -> Unit = {},
+    /** the last day the day bar reaches: the planned harvest age, or further once the flock has run past it */
+    lastDay: Int? = null
 ) {
-    val harvestAge = flock?.harvestAge ?: 42
+    val harvestAge = lastDay ?: flock?.harvestAge ?: 42
     Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
         modifier = Modifier
             .fillMaxWidth()

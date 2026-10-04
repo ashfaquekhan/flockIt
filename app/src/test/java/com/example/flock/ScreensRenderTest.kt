@@ -86,7 +86,8 @@ class ScreensRenderTest {
             val bw = (CompanyStandard.bw(d) ?: 42.0) * 0.97
             val open = if (d >= 11) 1.0 else 0.3 + 0.7 * d / 11.0
             val feed = CompanyStandard.feedForWeight(bw) * live / 1000.0
-            val bags = if (d >= 1) (CompanyStandard.feedPerDay(d - 1) ?: 13.0) * live / 1000.0 / 50.0 else 0.0
+            // feed entered on day d is what the birds ate the day before: the chart's row d; this flock eats a little under it
+            val bags = if (d >= 1) (CompanyStandard.feedPerDay(d) ?: 13.0) * (0.95 + 0.02 * Math.sin(d * 1.3)) * live / 1000.0 / 50.0 else 0.0
             DailyDataEntity(spreadsheetId = "t", flockId = "f", dayNumber = d, date = java.time.LocalDate.now().minusDays((upTo - d).toLong()).toString(),
                 mortality = mort, liveBirds = live, avgWeight = if (d % 3 == 0 && d > 0) bw else null, sampleEntered = d % 3 == 0 && d > 0,
                 projected = d % 3 != 0, cv = 8.4, weightAge = PhysiologicalEngine.weightAgeFromBW(bw, "Ross308"),
@@ -124,7 +125,7 @@ class ScreensRenderTest {
 
     @Composable private fun entry() = Dash(0) {
         val r = rows(11)
-        EntriesScreen(r.last(), 11, "30 Sep", "29 Sep", feedTypes, lock, true, "k", listOf(null, null, null, null, null), emptyList(), {}, {}, {})
+        EntriesScreen(r.last(), 11, "30 Sep", "29 Sep", feedTypes, lock, true, "k", listOf(50, 50, 50, 50, 50, 50), emptyList(), {}, {}, {}, farm = farm)
     }
     @Composable private fun output() = Dash(1) {
         val r = rows(11)
@@ -145,6 +146,16 @@ class ScreensRenderTest {
 
     @Config(qualifiers = "w360dp-h780dp-xhdpi") @Test fun entrySmall() = shoot("entry_small") { entry() }
     @Config(qualifiers = "w412dp-h915dp-xxhdpi") @Test fun entryLarge() = shoot("entry_large") { entry() }
+    /** Six locations (as the last weighing) with the sampling map under them. */
+    @Config(qualifiers = "w360dp-h1500dp-xhdpi") @Test fun entryLong() = shoot("entry_long") { entry() }
+    /** The app opening: the mark alone in the middle of a black screen. */
+    @Config(qualifiers = "w360dp-h780dp-xhdpi") @Test fun opening() {
+        rule.mainClock.autoAdvance = false
+        rule.setContent { MyApplicationTheme { Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            com.example.flock.ui.components.FlockOpening() } } }
+        rule.mainClock.advanceTimeBy(1400)
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_opening.png")
+    }
     @Config(qualifiers = "w360dp-h780dp-xhdpi") @Test fun outputSmall() = shoot("output_small") { output() }
     @Config(qualifiers = "w412dp-h915dp-xxhdpi") @Test fun outputLarge() = shoot("output_large") { output() }
     @Config(qualifiers = "w360dp-h780dp-xhdpi") @Test fun tasksSmall() = shoot("tasks_small") { tasks() }
@@ -174,9 +185,9 @@ class ScreensRenderTest {
         rule.mainClock.advanceTimeBy(600)
         // scroll with the finger (in the page margin, clear of the map and the clocks) until the plan is near the top
         var guard = 0
-        // slow, short swipes (no fling) until the plan's title sits in the upper half of the screen
-        while (rule.onAllNodesWithText("Feeding plan")[0].getUnclippedBoundsInRoot().top.value > 350f && guard++ < 80) {
-            rule.onRoot().performTouchInput { swipe(Offset(8f, height * 0.7f), Offset(8f, height * 0.5f), 1200) }
+        // slow, short swipes (no fling) until the plan is the card at the top of the screen (the one being read)
+        while (rule.onAllNodesWithText("Feeding plan")[0].getUnclippedBoundsInRoot().top.value > 12f && guard++ < 120) {
+            rule.onRoot().performTouchInput { swipe(Offset(8f, height * 0.7f), Offset(8f, height * 0.6f), 1200) }
             rule.mainClock.advanceTimeBy(1500)
         }
         val before = rule.onAllNodesWithText("Feeding plan")[0].getUnclippedBoundsInRoot().top
@@ -184,20 +195,20 @@ class ScreensRenderTest {
         rule.mainClock.advanceTimeBy(900)
         val after = rule.onAllNodesWithText("Feeding plan")[0].getUnclippedBoundsInRoot().top
         println("feeding plan top: day 11 ${before.value} dp, day 4 ${after.value} dp")
-        assertTrue("the title is on screen, not clipped at the top", before.value in 40f..350f)
+        assertTrue("the plan is the card at the top", before.value in -80f..12f)
         assertEquals(before.value, after.value, 30f)
         day = 11
         rule.mainClock.advanceTimeBy(900)
         assertEquals(before.value, rule.onAllNodesWithText("Feeding plan")[0].getUnclippedBoundsInRoot().top.value, 30f)
     }
-    @Config(qualifiers = "w360dp-h6000dp-xhdpi") @Test fun outputLong() = shoot("output_long") { output() }
+    @Config(qualifiers = "w360dp-h9000dp-xhdpi") @Test fun outputLong() = shoot("output_long") { output() }
     /** System text at 130 %: nothing may break mid-word. */
-    @Config(qualifiers = "w360dp-h7000dp-xhdpi") @Test fun outputLongBigText() = shoot("output_long_bigtext") {
+    @Config(qualifiers = "w360dp-h11000dp-xhdpi") @Test fun outputLongBigText() = shoot("output_long_bigtext") {
         val dens = androidx.compose.ui.platform.LocalDensity.current
         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(dens.density, 1.3f)) { output() }
     }
     @Config(qualifiers = "w360dp-h5200dp-xhdpi") @Test fun outputLongVent() = shootTab(1, "output_long_vent")
-    @Config(qualifiers = "w360dp-h7200dp-xhdpi") @Test fun outputLongFeed() = shootTab(2, "output_long_feed")
+    @Config(qualifiers = "w360dp-h8200dp-xhdpi") @Test fun outputLongFeed() = shootTab(2, "output_long_feed")
     @Config(qualifiers = "w360dp-h1500dp-xhdpi") @Test fun stockSmall() = shoot("stock_small") { stock() }
     /** The quarter-width window and its stats grid. */
     @Config(qualifiers = "w360dp-h1500dp-xhdpi") @Test fun outputQuarter() {

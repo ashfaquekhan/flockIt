@@ -8,6 +8,60 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v41 — 2026-10-04 · Feed by variety in the sheet, report tabs, any number of weighing spots, forecasts, projection check · **DB v16 (non-destructive)** · sheet schema 6
+- **Sheet (schema 6)** — upgrades itself the first time the app opens the farm (a snapshot of the old sheet
+  is kept in Drive; backups are upgraded too; nothing is dropped):
+  - **DailyData**: each feed variety's bags sit in their own column right beside the total
+    (`FeedBagsUsed · Used B1 · Used B2 …`) instead of at the far right; sample locations beyond the fifth
+    get their own columns (`W6 · N6 …`) beside the first five, with a `Locations` count.
+  - **FeedLedger** (new tab, kept up to date by the app): for every flock day, each variety's bags
+    received, used, received and used till date and in store, then all varieties together, and kg.
+  - **DailySummary** (new tab): live birds, deaths, culls and lifting with running totals, mortality %,
+    locations and birds weighed, average weight, CV, feed bags and kg with running totals, feed per bird,
+    FCR, diesel.
+  - The two report tabs are rebuilt from the input rows on every save and every repair, and are never read
+    back, so an edit made in them cannot corrupt anything.
+- **Company chart checked.** All 55 rows match the chart. The chart starts at day 1 (the first day in the
+  house: 13 g eaten, 50 g at the end of it); the app starts at day 0 (placement). The weights were aligned
+  correctly, but feed and deaths were one day behind: what happens during flock day N is the chart's row
+  N + 1. Fixed — today's ration, "eaten yesterday", feed till date, the commercial mortality and the feed
+  curves now use the right row. Example, day 11 at 370.5 g: 64.6 g a bird (was 59.5 g).
+- **No fixed last day.** A flock has a row for every day up to its planned harvest day, and gets one more
+  each day it runs past it, up to day 70. The Ross / Cobb table (to day 49) and the company chart (to day
+  55) are carried on to day 70 with a growth model: weight on a Gompertz curve fitted to the table, daily
+  feed = maintenance + growth, FCR from those; the company curve grows in step with the breed curve and
+  keeps its 180 g a day.
+- **Target weight and harvest day** are set on the Output page (Birds → Target and forecast). The card shows
+  the day the flock's own weighings say the target will be reached (likely, earliest, latest), the forecast
+  weight at the harvest day with its range, and the chance the target is met by then.
+- **Flock trends** (new card, from the flock's own records): average daily gain, FCR of the last 7 days, days
+  ahead of or behind the standard, first-week mortality, mortality of the last 7 days, and FCR with the
+  birds lost counted in. Nothing was removed.
+- **Feeding suggestion** in the feeding plan: what the flock is likely to eat today, learned from what it has
+  eaten so far (a Kalman filter on its appetite against the plan), the range it will most likely fall in,
+  the chance each whole-bag amount is enough, the safe range to load, and whether to keep the plan, give
+  more or give less.
+- **Projection check** (new card): for weight, feed and FCR, what the app projected against what was then
+  entered — the latest check and the average miss over all checks.
+- **Colours follow what has been entered.** Weight, and everything worked out from it, is yellow
+  (projected) until the day is weighed — also in the animation box and the named birds; live birds,
+  mortality and livability are yellow until today's deaths are in; FCR, cFCR and EPEF need both today's
+  weight and yesterday's feed; "deaths today" shows — until entered.
+- **Weight samples**: + and − add or remove a location (1 to 12); the entry opens with as many as the last
+  weighing had. A map of the birds' floor under it shows where to catch them: spread evenly along the
+  house, switching sides, with the walk and each spot's distance from the front.
+- **Feeding the birds in the animation**: the bags-fed box sits right under the animation, with the time
+  of the feeding (now, or pick the time it was given).
+- **Day clock**: every hour numbered on the dial; under it the day's totals (how often, how much each time),
+  and the whole day in order — time, job, which of how many, bags or litres.
+- **Opening and loading**: the app opens on its mark alone in the middle of a black screen, put together
+  once; the loading animation is in the middle of the screen and a little bigger, on a soft dark glow.
+- **Logo in the repository**: `design/logo.png` / `logo.svg`, shown at the top of the README.
+- **Font**: six options with the logo in `design/font-options.png`; the app keeps its current type until
+  one is chosen.
+- Tests: `DataBackendTest` (layout, upgrade from schema 5, report tabs), `ForecastTest` (curves to day 70,
+  chart-day alignment, feed and growth forecasts, trend measures), `MigrationTest` (v12 → v16).
+
 ## v40 — 2026-10-03 · New app icon and loading animation (the leaning F rooster) · installs over a live flock
 - **App icon**: option 45 from the icon sheets — the letter F built from three white bars, leaning
   forward, its stem a rooster with a red comb, an orange beak and an eye, on pure black. Adaptive icon

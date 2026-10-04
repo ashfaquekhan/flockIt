@@ -73,26 +73,62 @@ private const val FIRE = "🔥"    // 🔥
 
 private fun fwd(a: Double, b: Double) = ((b - a) % 24 + 24) % 24
 
+/** How much each feeding and each tank refill is (shown beside their times). */
+data class DayAmounts(val bagsEachFeed: Double? = null, val bagsPerLine: Double? = null, val litresEachRefill: Double? = null)
+
 /**
- * The farm's day on one 24-hour dial (midnight at the top) — to look at, not to set. The outer ring is the
- * day in sections: sleep, light, and the hot hours. Inside it each job has its own lane: walks, feed loads,
- * tank refills. A hand points at the time now. What is next, and every time, are listed under the dial.
- * The times come from [DaySchedule].
+ * The farm's day — to look at, not to set. A 24-hour dial (midnight at the top, every hour numbered): the
+ * outer ring is the day in sections (sleep, light, the hot hours); inside it each job has its own lane
+ * (walks, feed loads, tank refills); a bar marks the time now. Under it: the day's totals, what is next,
+ * and the whole day in order with its times and amounts. The times come from [DaySchedule].
  */
 @Composable
-fun FarmDayClock(plan: DaySchedule.Plan, zone: java.time.ZoneId, modifier: Modifier = Modifier) {
+fun FarmDayClock(plan: DaySchedule.Plan, zone: java.time.ZoneId, modifier: Modifier = Modifier, amounts: DayAmounts = DayAmounts()) {
     var nowH by remember { mutableDoubleStateOf(hourNow(zone)) }
     LaunchedEffect(zone) { while (true) { nowH = hourNow(zone); kotlinx.coroutines.delay(30_000) } }
     val kinds = kindsOf(plan)
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            val dia = min(maxWidth.value, 310f)
+            val dia = min(maxWidth.value, 320f)
             Canvas(Modifier.size(dia.dp).testTag("dayClock")) { drawDay(plan, kinds, nowH) }
         }
+        Totals(plan, kinds, amounts)
         NextUp(kinds, plan, nowH)
-        kinds.forEach { TimesRow(it, nowH) }
-        SpanRow(SLEEP, "Sleep", SleepColor, plan.darkStart, plan.darkEnd)
-        SpanRow(FIRE, "Hot", HotColor, plan.hotFrom, plan.hotTo)
+        Agenda(plan, kinds, amounts, nowH)
+    }
+}
+
+/** The day's totals in clear numbers: how often and how much. */
+@Composable
+private fun Totals(plan: DaySchedule.Plan, kinds: List<Kind>, a: DayAmounts) {
+    data class Cell(val emoji: String, val name: String, val value: String, val sub: String, val col: Color)
+    val dark = fwd(plan.darkStart, plan.darkEnd)
+    val cells = listOf(
+        Cell(kinds[0].emoji, "Feed", "${plan.feeds.size}×", a.bagsEachFeed?.let { Fmt.n(it, 2) + " bags" } ?: "", ValuePredicted),
+        Cell(kinds[1].emoji, "Water", "${plan.refills.size}×", a.litresEachRefill?.let { Fmt.n(it, 1) + " L" } ?: "", ValueMin),
+        Cell(kinds[2].emoji, "Walk", "${plan.walks.size}×", "", WalkColor),
+        Cell(SUN, "Light", Fmt.n(24 - dark, 1) + " h", "${hhmmOf(plan.darkEnd)}–${hhmmOf(plan.darkStart)}", LightFill),
+        Cell(SLEEP, "Sleep", Fmt.n(dark, 1) + " h", "${hhmmOf(plan.darkStart)}–${hhmmOf(plan.darkEnd)}", SleepColor),
+        Cell(FIRE, "Hot", Fmt.n(fwd(plan.hotFrom, plan.hotTo), 1) + " h", "${hhmmOf(plan.hotFrom)}–${hhmmOf(plan.hotTo)}", HotColor)
+    )
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        cells.chunked(2).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                row.forEach { c ->
+                    Row(Modifier.weight(1f).border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text(c.emoji, style = MaterialTheme.typography.titleMedium, maxLines = 1, softWrap = false)
+                        Column(Modifier.padding(start = 8.dp)) {
+                            Row(verticalAlignment = Alignment.Bottom) {
+                                Text(c.name + " ", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.65f), maxLines = 1, softWrap = false)
+                                Text(c.value, style = MaterialTheme.typography.titleSmall.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold), color = c.col, maxLines = 1, softWrap = false)
+                            }
+                            if (c.sub.isNotEmpty()) Text(c.sub, style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace), color = c.col.copy(alpha = 0.8f), maxLines = 1, softWrap = false)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -114,37 +150,40 @@ private fun NextUp(kinds: List<Kind>, plan: DaySchedule.Plan, nowH: Double) {
     }
 }
 
-/** One job: its picture, name, how many times, and every time (the next one bright, the ones gone by dim). */
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * The whole day in order, one line each: the time, what to do (which of how many) and how much. What has
+ * gone by is dim; the next one is outlined.
+ */
 @Composable
-private fun TimesRow(k: Kind, nowH: Double) {
-    val next = k.times.minByOrNull { fwd(nowH, it) }
+private fun Agenda(plan: DaySchedule.Plan, kinds: List<Kind>, a: DayAmounts, nowH: Double) {
+    data class Item(val h: Double, val emoji: String, val what: String, val amount: String, val col: Color)
+    val items = buildList {
+        plan.refills.sorted().forEachIndexed { i, t -> add(Item(t, kinds[1].emoji, "Refill tank ${i + 1}/${plan.refills.size}", a.litresEachRefill?.let { Fmt.n(it, 1) + " L" } ?: "", ValueMin)) }
+        plan.feeds.sorted().forEachIndexed { i, t -> add(Item(t, kinds[0].emoji, "Load feeders ${i + 1}/${plan.feeds.size}", a.bagsEachFeed?.let { Fmt.n(it, 2) + " bags" } ?: "", ValuePredicted)) }
+        plan.walks.sorted().forEachIndexed { i, t -> add(Item(t, kinds[2].emoji, "Walk house ${i + 1}/${plan.walks.size}", "", WalkColor)) }
+        add(Item(plan.darkEnd, SUN, "Lights on", Fmt.n(24 - fwd(plan.darkStart, plan.darkEnd), 1) + " h", LightFill))
+        add(Item(plan.hotFrom, FIRE, "Hot hours start", "to " + hhmmOf(plan.hotTo), HotColor))
+        add(Item(plan.darkStart, SLEEP, "Lights off", Fmt.n(fwd(plan.darkStart, plan.darkEnd), 1) + " h", SleepColor))
+    }.sortedBy { fwd(plan.darkEnd - 1.0, it.h) }          // the farm's day starts an hour before the lights come on
+    val next = items.minByOrNull { fwd(nowH, it.h) }
+    // how far through the farm's day it is now, to dim what has gone by
+    val nowPos = fwd(plan.darkEnd - 1.0, nowH)
     val fs = androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceIn(1f, 1.5f)
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        Text(k.emoji, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(28.dp * fs))
-        Text(k.name, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = Color.White.copy(alpha = 0.85f), modifier = Modifier.width(52.dp * fs), maxLines = 1, softWrap = false)
-        Text("${k.times.size}×", style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold), color = k.color, modifier = Modifier.width(30.dp * fs), maxLines = 1, softWrap = false)
-        FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            k.times.sorted().forEach { t ->
-                val isNext = t == next
-                Text(hhmmOf(t), style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = if (isNext) FontWeight.Bold else FontWeight.Medium),
-                    color = if (isNext) k.color else k.color.copy(alpha = if (t < nowH) 0.4f else 0.75f), maxLines = 1, softWrap = false)
+    Column(Modifier.fillMaxWidth().testTag("clockAgenda"), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        items.forEach { it ->
+            val isNext = it === next
+            val gone = !isNext && fwd(plan.darkEnd - 1.0, it.h) < nowPos
+            val alpha = if (isNext) 1f else if (gone) 0.42f else 0.82f
+            Row(Modifier.fillMaxWidth().then(if (isNext) Modifier.border(1.dp, it.col.copy(alpha = 0.7f), RoundedCornerShape(6.dp)) else Modifier).padding(horizontal = 4.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text(hhmmOf(it.h), style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+                    color = it.col.copy(alpha = alpha), modifier = Modifier.width(52.dp * fs), maxLines = 1, softWrap = false)
+                Text(it.emoji, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(26.dp * fs), maxLines = 1, softWrap = false)
+                Text(it.what, style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = alpha), modifier = Modifier.weight(1f), maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                if (it.amount.isNotEmpty()) Text(it.amount, style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+                    color = it.col.copy(alpha = alpha), maxLines = 1, softWrap = false)
             }
-        }
-    }
-}
-
-/** A stretch of the day (sleep, the hot hours): from – to and how long, lined up with the times above. */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun SpanRow(emoji: String, name: String, color: Color, from: Double, to: Double) {
-    val fs = androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceIn(1f, 1.5f)
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        Text(emoji, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(28.dp * fs))
-        Text(name, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = Color.White.copy(alpha = 0.85f), modifier = Modifier.width((52.dp + 30.dp) * fs), maxLines = 1, softWrap = false)
-        FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text("${hhmmOf(from)} – ${hhmmOf(to)}", style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold), color = color, maxLines = 1, softWrap = false)
-            Text(Fmt.n(fwd(from, to), 1) + " h", style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium), color = color.copy(alpha = 0.75f), maxLines = 1, softWrap = false)
         }
     }
 }
@@ -192,7 +231,9 @@ private fun DrawScope.drawDay(plan: DaySchedule.Plan, kinds: List<Kind>, nowH: D
     for (h in 0 until 24) {
         val major = h % 3 == 0
         drawLine(Color.White.copy(alpha = if (major) 0.75f else 0.35f), at(h.toDouble(), rDay + ringW / 2), at(h.toDouble(), rDay + ringW / 2 + (if (major) 6f else 3.5f) * px), (if (major) 1.6f else 1f) * px)
-        if (major) text(String.format("%02d", h), at(h.toDouble(), rOut - 8f * px), 10.5f, Color.White.copy(alpha = if (h % 6 == 0) 0.8f else 0.5f))
+        // every hour numbered; the quarters of the day stand out
+        text(String.format("%02d", h), at(h.toDouble(), rOut - 8f * px), if (h % 6 == 0) 11.5f else 9.5f,
+            Color.White.copy(alpha = if (h % 6 == 0) 0.95f else if (major) 0.7f else 0.5f), bold = h % 6 == 0)
     }
 
     // lanes: walk, feed, water — a faint circle each, the job's picture at every time

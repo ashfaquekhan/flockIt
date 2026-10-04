@@ -55,6 +55,8 @@ data class DailyInputs(
     val w1: Double?, val n1: Int?, val w2: Double?, val n2: Int?, val w3: Double?, val n3: Int?,
     val w4: Double?, val n4: Int?, val w5: Double?, val n5: Int?,
     val indivWeights: String = "",
+    /** sample locations beyond the fifth ("w:n;w:n") and how many locations the entry showed */
+    val moreSamples: String = "", val locCount: Int = 0,
     val mortality: Int?, val feedBagsUsed: Double, val feedUsedType: String,
     val feedUsedBreakdown: String = "",
     val birdsLifted: Int, val weightLifted: Double, val lameSeparated: Int,
@@ -332,8 +334,10 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
             if (flock == null) return@launch
 
             // Calculate current real flock day in farm's timezone
+            // a flock has no fixed last day: make sure it has a row for every day it has lived (and tomorrow)
+            repository.recomputeFlock(spreadsheetId, flockId)
             val curDay = repository.calculateCurrentDay(flock.startDate, _farm.value.timeZone)
-            val clampedDay = curDay.coerceIn(0, flock.harvestAge)
+            val clampedDay = curDay.coerceIn(0, repository.lastDayFor(flock, _farm.value.timeZone))
             _selectedDay.value = clampedDay
 
             // Collect DailyData
@@ -361,7 +365,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectDay(day: Int) {
         val flock = _activeFlock.value ?: return
-        val clamped = day.coerceIn(0, flock.harvestAge)
+        val clamped = day.coerceIn(0, repository.lastDayFor(flock, _farm.value.timeZone))
         _selectedDay.value = clamped
         _currentDayEntry.value = _dailyRows.value.firstOrNull { it.dayNumber == clamped }
         updateLockStatus()
@@ -474,6 +478,17 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         _userMessage.value = if (_cutoffLockEnabled.value) "Cut-off timer lock ON" else "Cut-off timer lock OFF — you can edit past the cut-off"
     }
 
+    /** Sets the active flock's target weight (g) and planned harvest age (days). */
+    fun updateFlockPlan(targetWeightG: Double, harvestAge: Int) {
+        val flock = _activeFlock.value ?: return
+        viewModelScope.launch {
+            repository.updateFlockPlan(_selectedSpreadsheetId.value, flock.flockId, targetWeightG, harvestAge)
+            _activeFlock.value = _flocks.value.firstOrNull { it.flockId == flock.flockId }
+                ?: flock.copy(targetWeight = targetWeightG, harvestAge = harvestAge)
+            _userMessage.value = "Target ${targetWeightG.toInt()} g at day $harvestAge saved"
+        }
+    }
+
     /** Unlocks the selected day for editing; every value stays so only the wrong ones need changing. */
     fun revertDay() {
         val flock = _activeFlock.value ?: return
@@ -525,6 +540,8 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
                     w4 = if (keepW) existing.w4 else inputs.w4, n4 = if (keepW) existing.n4 else inputs.n4,
                     w5 = if (keepW) existing.w5 else inputs.w5, n5 = if (keepW) existing.n5 else inputs.n5,
                     indivWeights = if (keepW) existing.indivWeights else inputs.indivWeights,
+                    moreSamples = if (keepW) existing.moreSamples else inputs.moreSamples,
+                    locCount = if (keepW) existing.locCount else inputs.locCount,
                     mortality = if ("M" in locked) existing.mortality else (inputs.mortality ?: existing.mortality),
                     feedBagsUsed = if (day == 0) 0.0 else if (keepF) existing.feedBagsUsed else inputs.feedBagsUsed,
                     feedUsedType = if (keepF) existing.feedUsedType else inputs.feedUsedType,
@@ -633,8 +650,8 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
             val t = _tasks.value.firstOrNull { it.taskId == taskId } ?: return@launch
             val copy = t.copy(
                 taskId = "tsk_" + System.currentTimeMillis(),
-                startDay = fromDay.coerceIn(0, flock.harvestAge),
-                endDay = toDay.coerceIn(0, flock.harvestAge),
+                startDay = fromDay.coerceIn(0, com.example.flock.engine.PhysiologicalEngine.MAX_FLOCK_DAY),
+                endDay = toDay.coerceIn(0, com.example.flock.engine.PhysiologicalEngine.MAX_FLOCK_DAY),
                 recurrence = "daily", everyDay = true, dayNumber = null, completedDays = ""
             )
             repository.upsertTask(copy)
@@ -649,7 +666,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         TaskNotify.scheduleUpcoming(
             getApplication(),
             _selectedSpreadsheetId.value, flock.flockId,
-            _tasks.value, curDay, flock.harvestAge
+            _tasks.value, curDay, repository.lastDayFor(flock, _farm.value.timeZone)
         )
     }
 

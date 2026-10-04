@@ -20,6 +20,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.background
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.flock.data.FarmRegistryEntity
@@ -164,6 +167,15 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
                     modifier = Modifier.fillMaxSize()
                 )
             }
+        }
+        // The app opens on its mark alone, in the middle of a black screen: it is put together once, then the app shows.
+        var opening by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
+        LaunchedEffect(Unit) { if (opening) { kotlinx.coroutines.delay(1650); opening = false } }
+        androidx.compose.animation.AnimatedVisibility(visible = opening, enter = androidx.compose.animation.EnterTransition.None,
+            exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(380))) {
+            Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)
+                .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent().changes.forEach { it.consume() } } },
+                contentAlignment = Alignment.Center) { com.example.flock.ui.components.FlockOpening() }
         }
     }
 

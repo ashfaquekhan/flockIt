@@ -182,6 +182,8 @@ private fun StandardChart(
 }
 
 private fun chartMaxDay(d: OutputData) = max(d.harvestAge, d.day).coerceIn(14, CompanyStandard.MAX_DAY)
+/** The top of an axis: the next whole [step] above [v] (with a little headroom). */
+private fun niceTop(v: Double, step: Double): Double = kotlin.math.ceil(v * 1.04 / step) * step
 
 /** Weight, FCR, cFCR and mortality: Present vs Ideal (Ross) vs Commercial. */
 @Composable
@@ -198,7 +200,7 @@ fun BirdCharts(d: OutputData) {
                 Line("Ideal", Style.IDEAL) { day -> PhysiologicalEngine.bwFromDay(day.toDouble(), d.breed) },
                 Line("Commercial", Style.COMPANY) { day -> CompanyStandard.bw(day) }
             ),
-            maxDay, d.day, 0.0, 3600.0, 1000.0, 1, companyBand = true, presentKind = d.vk
+            maxDay, d.day, 0.0, niceTop(maxOf(CompanyStandard.bw(maxDay) ?: 0.0, PhysiologicalEngine.bwFromDay(maxDay.toDouble(), d.breed)), 1000.0), 1000.0, 1, companyBand = true, presentKind = d.vk
         )
         StandardChart(
             "FCR", "",
@@ -225,7 +227,7 @@ fun BirdCharts(d: OutputData) {
                 Line("Ideal", Style.IDEAL) { day -> PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MAXMORT_BY_AGE, day.toDouble()) },
                 Line("Commercial", Style.COMPANY) { day -> CompanyStandard.cumMortPct(day) }
             ),
-            maxDay, d.day, 0.0, 7.0, 1.0, 2, companyBand = false
+            maxDay, d.day, 0.0, niceTop(maxOf(CompanyStandard.cumMortPct(maxDay), d.mortTDPct ?: 0.0), 1.0), if (maxDay > 49) 2.0 else 1.0, 2, companyBand = false
         )
     }
 }
@@ -235,17 +237,20 @@ fun BirdCharts(d: OutputData) {
 fun FeedCharts(d: OutputData) {
     val maxDay = chartMaxDay(d)
     val by = d.byDay
-    // feed logged on day d+1 is what the birds ate on day d
+    // The x-axis is the standard's day. Feed entered on flock day x is what the birds ate the day before —
+    // the standard's day x (it starts at day 1) — so it is plotted at x against the standard's row x.
     val perBird = { day: Int ->
-        val next = by[day + 1]
-        val live = by[day]?.liveBirds?.takeIf { it > 0 }
-        if (next == null || live == null || day + 1 > d.day) null else d.usedKg(next).takeIf { it > 0 }?.let { it * 1000 / live }
+        val row = by[day]
+        val live = by[day - 1]?.liveBirds?.takeIf { it > 0 }
+        if (row == null || live == null || day > d.day) null else d.usedKg(row).takeIf { it > 0 }?.let { it * 1000 / live }
     }
     val cumPerBird = { day: Int ->
         val live = by[day]?.liveBirds?.takeIf { it > 0 }
-        if (live == null || day + 1 > d.day) null
-        else d.rows.filter { it.dayNumber <= day + 1 }.sumOf { d.usedKg(it) }.takeIf { it > 0 }?.let { it * 1000 / live }
+        if (live == null || day > d.day) null
+        else d.rows.filter { it.dayNumber <= day }.sumOf { d.usedKg(it) }.takeIf { it > 0 }?.let { it * 1000 / live }
     }
+    val cumTop = niceTop(maxOf(CompanyStandard.cumFeed(maxDay) ?: 0.0, PhysiologicalEngine.cumFeedFromDay(maxDay.toDouble(), d.breed)), 1000.0)
+    val dayTop = niceTop(maxOf(CompanyStandard.feedPerDay(maxDay) ?: 0.0, PhysiologicalEngine.dailyFeedFromDay(maxDay.toDouble(), d.breed)), 60.0)
     OutputCard(title = "Feed curves") {
         StandardsLegend()
         StandardChart(
@@ -255,7 +260,7 @@ fun FeedCharts(d: OutputData) {
                 Line("Ideal", Style.IDEAL) { day -> PhysiologicalEngine.dailyFeedFromDay(max(1, day).toDouble(), d.breed) },
                 Line("Commercial", Style.COMPANY) { day -> CompanyStandard.feedPerDay(day) }
             ),
-            maxDay, max(1, d.day - 1), 0.0, 240.0, 60.0, 1, companyBand = false, fromDay = 1
+            maxDay, max(1, d.day), 0.0, dayTop, 60.0, 1, companyBand = false, fromDay = 1
         )
         StandardChart(
             "Cumulative feed per bird", "g",
@@ -264,7 +269,7 @@ fun FeedCharts(d: OutputData) {
                 Line("Ideal", Style.IDEAL) { day -> PhysiologicalEngine.cumFeedFromDay(day.toDouble(), d.breed) },
                 Line("Commercial", Style.COMPANY) { day -> CompanyStandard.cumFeed(day) }
             ),
-            maxDay, max(1, d.day - 1), 0.0, 7000.0, 1000.0, 1, companyBand = true, fromDay = 1
+            maxDay, max(1, d.day), 0.0, cumTop, if (cumTop > 8000) 2000.0 else 1000.0, 1, companyBand = true, fromDay = 1
         )
     }
 }

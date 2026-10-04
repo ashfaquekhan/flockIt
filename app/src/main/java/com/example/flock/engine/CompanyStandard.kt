@@ -1,7 +1,8 @@
 package com.example.flock.engine
 
 /**
- * The company's commercial standard ("All Branches" chart), days 1–55: feed phase, daily
+ * The company's commercial standard ("All Branches" chart), days 1–55 (checked line by line against the
+ * chart, v41): feed phase, daily
  * mortality %, FCR, cFCR, feed per bird per day (g), cumulative feed (g), daily gain (g) and
  * body weight (g). FCR = cumulative feed ÷ body weight; cFCR = (2 − kg) × 0.25 + FCR.
  * The company allows a 5 % tolerance from day 28 onwards.
@@ -77,10 +78,41 @@ object CompanyStandard {
         Row(p[0].toInt(), p[1], p[2].toDouble(), p[3].toDouble(), p[4].toDouble(), p[5].toInt(), p[6].toInt(), p[7].toInt(), p[8].toInt())
     }
 
-    const val MAX_DAY = 55
+    /** The chart itself ends here; the days after it are carried on (see [ROWS_ALL]). */
+    const val TABLE_END = 55
+    const val MAX_DAY = PhysiologicalEngine.MAX_FLOCK_DAY
 
-    /** Row for a flock day (clamped to 1–55); null for day 0 (placement, no standard yet). */
-    fun row(day: Int): Row? = if (day < 1) null else ROWS[day.coerceAtMost(MAX_DAY) - 1]
+    /**
+     * The chart to day 55, then carried on to day [MAX_DAY] for flocks kept longer: weight grows in step with
+     * the breed curve from the chart's last weight, feed per day stays at the chart's 180 g, mortality at
+     * 0.15 % a day; cumulative feed, FCR and cFCR follow from those.
+     */
+    private val ROWS_ALL: List<Row> = run {
+        val out = ROWS.toMutableList()
+        val last = ROWS.last()
+        val ross55 = PhysiologicalEngine.bwFromDay(TABLE_END.toDouble(), "Ross308")
+        var cum = last.cumFeed; var prevBw = last.bw
+        for (d in TABLE_END + 1..MAX_DAY) {
+            val bw = (last.bw * PhysiologicalEngine.bwFromDay(d.toDouble(), "Ross308") / ross55).toInt()
+            cum += last.feedPerDay
+            val fcr = Math.round(cum.toDouble() / bw * 100) / 100.0
+            out += Row(d, last.feed, last.mortPct, fcr, Math.round(((2 - bw / 1000.0) * 0.25 + fcr) * 100) / 100.0, last.feedPerDay, cum, bw - prevBw, bw)
+            prevBw = bw
+        }
+        out
+    }
+
+    /**
+     * WHICH CHART DAY IS WHICH FLOCK DAY. The chart starts at day 1: its first row is the first day in the
+     * house (13 g eaten, 50 g at the end of it). The app counts the placement day as day 0. So:
+     *  - what happens DURING flock day N (feed eaten, deaths) is the chart's row N + 1  → [duringDay];
+     *  - the weight on the MORNING of flock day N is the chart's weight at the end of row N → [bw] (N);
+     *    cumulative feed, FCR and cFCR that morning are row N too.
+     */
+    fun duringDay(flockDay: Int): Int = (flockDay + 1).coerceIn(1, MAX_DAY)
+
+    /** Row for a chart day (clamped to 1–[MAX_DAY]); null for day 0 (placement morning: no standard yet). */
+    fun row(day: Int): Row? = if (day < 1) null else ROWS_ALL[day.coerceAtMost(MAX_DAY) - 1]
 
     fun bw(day: Int): Double? = row(day)?.bw?.toDouble()
     fun fcr(day: Int): Double? = row(day)?.fcr
@@ -90,28 +122,40 @@ object CompanyStandard {
     fun gain(day: Int): Double? = row(day)?.gain?.toDouble()
     fun feedPhase(day: Int): String = row(day.coerceAtLeast(1))?.feed ?: "B1"
 
-    /**
-     * Company feed per bird per day (g) for a bird of [bwG] grams: finds where that weight sits on
-     * the company growth curve (fractional day) and reads the feed there, so heavy or light flocks
-     * are fed for the size they are. Below the day-1 weight it gives the day-1 ration.
-     */
-    fun feedForWeight(bwG: Double): Double {
-        if (bwG <= ROWS.first().bw) return ROWS.first().feedPerDay.toDouble()
-        for (i in 1 until ROWS.size) {
-            val a = ROWS[i - 1]; val b = ROWS[i]
-            if (bwG <= b.bw) {
-                val t = (bwG - a.bw) / (b.bw - a.bw).toDouble()
-                return a.feedPerDay + t * (b.feedPerDay - a.feedPerDay)
-            }
+    /** Weight of the chick at placement (chart day 0), g. */
+    const val CHICK_G = 40.0
+
+    /** The chart age (days, fractional) at which the company bird weighs [bwG]; 0 = placement. */
+    fun ageForWeight(bwG: Double): Double {
+        if (bwG <= CHICK_G) return 0.0
+        var prevBw = CHICK_G
+        for (r in ROWS_ALL) {
+            if (bwG <= r.bw) return (r.day - 1) + (bwG - prevBw) / (r.bw - prevBw)
+            prevBw = r.bw.toDouble()
         }
-        return ROWS.last().feedPerDay.toDouble()
+        return MAX_DAY.toDouble()
     }
+
+    /** Feed per bird (g) eaten during the chart day that ends at [age] (between days: a straight line). */
+    fun feedAtAge(age: Double): Double {
+        if (age <= 1.0) return ROWS_ALL.first().feedPerDay.toDouble()
+        if (age >= MAX_DAY) return ROWS_ALL.last().feedPerDay.toDouble()
+        val i = age.toInt(); val t = age - i
+        return ROWS_ALL[i - 1].feedPerDay + t * (ROWS_ALL[i].feedPerDay - ROWS_ALL[i - 1].feedPerDay)
+    }
+
+    /**
+     * Company feed per bird (g) for the day that STARTS with birds of [bwG] grams: finds where that weight
+     * sits on the company growth curve and reads the feed of the following chart day, so heavy or light
+     * flocks are fed for the size they are. A chick at placement gets the chart's day-1 ration.
+     */
+    fun feedForWeight(bwG: Double): Double = feedAtAge(ageForWeight(bwG) + 1.0)
 
     /** Daily mortality standard (% of live birds per day). */
     fun dailyMortPct(day: Int): Double = row(day.coerceAtLeast(1))?.mortPct ?: 0.15
 
-    /** Cumulative mortality standard (%) up to and including [day]. */
-    fun cumMortPct(day: Int): Double = (1..day.coerceIn(0, MAX_DAY)).sumOf { ROWS[it - 1].mortPct }
+    /** Cumulative mortality standard (%) up to and including chart [day]. */
+    fun cumMortPct(day: Int): Double = (1..day.coerceIn(0, MAX_DAY)).sumOf { ROWS_ALL[it - 1].mortPct }
 
     /** Whether the company's ±5 % tolerance applies on this day. */
     fun toleranceApplies(day: Int) = day >= TOLERANCE_FROM_DAY

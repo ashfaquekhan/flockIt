@@ -142,6 +142,15 @@ for i, im in enumerate((render(256), render(256, True))):
 small = render(48, True); prev.paste(small, (580, 126), small)
 prev.save(os.path.join(HERE, "app-icon-preview.png"))
 
+# the logo for the repository page (README): the icon as a 512 px picture and as a vector
+render(512).save(os.path.join(HERE, "logo.png"))
+def svg_path(path):
+    return " ".join("Z" if seg[0] == "Z" else seg[0] + " " + " ".join("%.2f,%.2f" % place(q, 1.0, 0.0) for q in seg[1:]) for seg in path)
+open(os.path.join(HERE, "logo.svg"), "w", encoding="utf-8").write(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="512" height="512">\n'
+    '  <rect width="200" height="200" rx="44" fill="#000000"/>\n' +
+    "".join('  <path fill="%s" d="%s"/>\n' % (col, svg_path(pth)) for _, col, pth in PARTS) + '</svg>\n')
+
 # ------------------------------------------------------------------ a preview of the loading animation (same steps as
 # FlockLoader.kt): each part is moved into place whole — stem, top arm, middle arm, comb, beak, eye — held, cleared.
 STEPS = {"stem": (0.00, 0.17, 0, 30), "top arm": (0.14, 0.31, 34, 0), "middle arm": (0.27, 0.44, 30, 0),

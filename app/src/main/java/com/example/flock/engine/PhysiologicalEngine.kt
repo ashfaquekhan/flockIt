@@ -30,8 +30,11 @@ object PhysiologicalEngine {
         val fcrCobb: Double
     )
 
-    // Ross 308 AP 2022 (as-hatched) & Cobb 500 Day 0 - 49
-    val STANDARDS = listOf(
+    /** The oldest a broiler flock is kept (heavy roasters); the curves run this far. */
+    const val MAX_FLOCK_DAY = 70
+
+    // Ross 308 AP 2022 (as-hatched) & Cobb 500 Day 0 - 49 (the published table)
+    private val TABLE = listOf(
         StandardPoint(0, 44.0, 42.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
         StandardPoint(1, 62.0, 64.0, 12.0, 12.4, 12.0, 12.0, 0.194, 0.188),
         StandardPoint(2, 80.0, 86.0, 16.0, 17.2, 28.0, 29.0, 0.348, 0.337),
@@ -84,6 +87,57 @@ object PhysiologicalEngine {
         StandardPoint(49, 3791.0, 3730.0, 230.0, 226.3, 6235.0, 6177.0, 1.646, 1.656)
     )
 
+    /**
+     * The table carried on to day [MAX_FLOCK_DAY] with a growth model, so an older flock still has a curve:
+     *  - weight follows a Gompertz curve fitted to the table from day 21 (growth slows as the bird nears
+     *    its mature weight), joined to the table's last weight;
+     *  - daily feed = maintenance (∝ weight^0.75) + growth (∝ daily gain), the two factors taken from the
+     *    table's days 42 and 49;
+     *  - cumulative feed and FCR follow from those.
+     */
+    val STANDARDS: List<StandardPoint> = run {
+        val last = TABLE.last()
+        fun extend(bw: (StandardPoint) -> Double, feed: (StandardPoint) -> Double, cum: (StandardPoint) -> Double): List<Triple<Double, Double, Double>> {
+            val pts = TABLE.filter { it.day >= 21 }
+            // Gompertz W = A·exp(−exp(a + b·t)): for each trial A, a straight-line fit of ln(−ln(W/A)) on t
+            var best = Triple(bw(last) * 2, 0.0, 0.0); var bestErr = Double.MAX_VALUE
+            var A = bw(last) * 1.15
+            while (A <= bw(last) * 3.0) {
+                val xs = pts.map { it.day.toDouble() }; val ys = pts.map { kotlin.math.ln(-kotlin.math.ln(bw(it) / A)) }
+                val mx = xs.average(); val my = ys.average()
+                val b = xs.indices.sumOf { (xs[it] - mx) * (ys[it] - my) } / xs.sumOf { (it - mx) * (it - mx) }
+                val a = my - b * mx
+                val err = pts.sumOf { p -> val w = A * kotlin.math.exp(-kotlin.math.exp(a + b * p.day)); (w - bw(p)) * (w - bw(p)) }
+                if (err < bestErr) { bestErr = err; best = Triple(A, a, b) }
+                A += bw(last) * 0.01
+            }
+            val (aA, aa, ab) = best
+            fun g(t: Double) = aA * kotlin.math.exp(-kotlin.math.exp(aa + ab * t))
+            val scale = bw(last) / g(last.day.toDouble())
+            // feed = m·W^0.75 + k·gain, from days 42 and 49
+            val p42 = TABLE[42]; val p41 = TABLE[41]; val p48 = TABLE[48]
+            val w1 = (bw(p42) / 1000).pow(0.75); val g1 = bw(p42) - bw(p41)
+            val w2 = (bw(last) / 1000).pow(0.75); val g2 = bw(last) - bw(p48)
+            val k = (feed(p42) * w2 - feed(last) * w1) / (g1 * w2 - g2 * w1)
+            val m = (feed(last) - k * g2) / w2
+            val out = mutableListOf<Triple<Double, Double, Double>>()
+            var prevW = bw(last); var cumF = cum(last)
+            for (d in last.day + 1..MAX_FLOCK_DAY) {
+                val w = scale * g(d.toDouble())
+                val f = m * (w / 1000).pow(0.75) + k * (w - prevW)
+                cumF += f
+                out += Triple(w, f, cumF); prevW = w
+            }
+            return out
+        }
+        val r = extend({ it.bwRoss }, { it.dFeedRoss }, { it.cumFeedRoss })
+        val c = extend({ it.bwCobb }, { it.dFeedCobb }, { it.cumFeedCobb })
+        TABLE + r.indices.map { i ->
+            StandardPoint(last.day + 1 + i, r[i].first, c[i].first, r[i].second, c[i].second, r[i].third, c[i].third,
+                r[i].third / r[i].first, c[i].third / c[i].first)
+        }
+    }
+
     // Standard curves
     // Air temperature target by body weight (g → °C). Brooding is anchored to Aviagen's table at
     // the dry (~50 % RH) air a heated house actually has: ~33 °C for a 42 g chick, easing to 20 °C at
@@ -129,8 +183,18 @@ object PhysiologicalEngine {
 
     val CURVE_MAXMORT_BY_AGE = listOf(
         0.0 to 0.0, 3.0 to 0.4, 7.0 to 1.0, 14.0 to 1.7, 21.0 to 2.4,
-        28.0 to 3.0, 35.0 to 3.7, 42.0 to 4.4
+        28.0 to 3.0, 35.0 to 3.7, 42.0 to 4.4, 49.0 to 5.1, 56.0 to 5.8, 63.0 to 6.5, 70.0 to 7.2
     )
+
+    /**
+     * Hours of light: 23 h for the first two days, down to 18 h by day 7, 18 h through the grow-out, then
+     * back up to 23 h over the last week so the birds are calm and fed at catching ([harvestAge] − 3).
+     */
+    fun lightHours(day: Int, harvestAge: Int): Double {
+        if (day <= 7) return interpolate(listOf(0.0 to 23.0, 2.0 to 23.0, 7.0 to 18.0), day.toDouble())
+        val h = max(harvestAge, 21).toDouble()
+        return interpolate(listOf(7.0 to 18.0, h - 7 to 18.0, h - 3 to 23.0), day.toDouble())
+    }
 
     val CURVE_WATERLINE_BY_AGE = listOf(
         0.0 to 4.0, 7.0 to 6.0, 14.0 to 9.0, 21.0 to 12.0, 35.0 to 16.0, 42.0 to 18.0
