@@ -8,6 +8,34 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v44 — 2026-10-09 · Hungry / thirsty / panting likelihoods instead of the feeder's "empty" time, day clock under the tasks, periods on the day slider · installs over a live flock (no database or sheet change)
+- **Why the feeder looked empty too early.** Day 20, 13 bags poured at 08:30 for 1,141 g birds: the app
+  showed the feeder empty from 14:26; the farm expected about 16:00. The farm was right, for three reasons
+  on the app's side:
+  1. it spread the day's feed evenly over the 18 lit hours — but birds with a dark period eat most in the
+     hours after the lights come on and before they go off, and least around midday (08:30–16:00 runs
+     about 16 % under the day's average);
+  2. it used the full chart ration (155 g a bird) although this flock eats about 94 % of it;
+  3. it ignored the warm afternoon (31–32 °C outside), worth a few % while it lasts.
+  131.6 kg an hour becomes about 100, and 14:26 becomes about 16:10 — between 15:00 and 17:50 if the flock
+  eats a good deal faster or slower than expected.
+- **The feeder's level, "hours left" and "empty since" are removed.** In their place, under the farm window
+  and on it: how likely the birds are **hungry, thirsty or panting** — now, and in 3 hours if nothing more
+  is poured. Likelihoods, not readings (there are no sensors): from the feedings logged (the plan's feedings
+  while none is logged today), the day's likely intake and when in the day birds eat it, the lights, and the
+  heat load from the weather at the farm. The pace is run slower and faster (±18 %) and the cases weighed,
+  so a morning feeding shows a rising chance of hunger through the afternoon instead of a minute.
+  The birds in the window pant in the same share.
+- **"Eaten today"** in the Today card follows the same rhythm of the day (it used the even spread).
+- **This flock's response to the weather cannot be read from its records yet**: every day since day 9 had
+  an outside high of 31–32.6 °C — too steady to tell hot days from cool ones. What the flock does in this
+  weather is already inside its appetite (94 % of the chart).
+- **Day clock** moved from the Output page to the **Tasks** page, under the tasks.
+- **Day slider**: a colour band under it marks the flock's periods to scale — brooding (days 0–10),
+  growing (11–27), finishing (28 to the planned harvest), and any days run past it — with a white mark at today.
+- Tests: `FlockNeedsTest` (the rhythm of the day, the farm's morning feeding, waking hungry and thirsty,
+  heat), the clock on the Tasks page, the slider's periods.
+
 ## v43 — 2026-10-09 · Basic and advanced view, weather acting on the house and birds, entered and projected kept apart, projection lines, three more sheet tabs · **DB v17 (non-destructive)** · sheet schema 7
 Checked against the farm's own flock (KGF, September 2026, entries to day 19) — the flock is now a test
 fixture, and the projection methods were chosen by replaying it.

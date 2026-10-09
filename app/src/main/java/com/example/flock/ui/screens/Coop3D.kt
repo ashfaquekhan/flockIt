@@ -101,7 +101,9 @@ data class CoopInput(
     /** true when [cvPct] is estimated from group weighings (or assumed), false when birds were weighed one by one */
     val cvEstimated: Boolean = true,
     /** the short view: the window only, without the size chips, the map and the tables */
-    val compact: Boolean = false
+    val compact: Boolean = false,
+    /** how likely the birds are hungry, thirsty or panting right now, 0–1 (null: not worked out) */
+    val hungry: Double? = null, val thirsty: Double? = null, val panting: Double? = null
 )
 
 /**
@@ -378,7 +380,9 @@ internal class CoopSim {
             if (b.state == "eat" && feedIn) b.fullness += dt * 0.02 * (1 + 2 * (1 - b.fullness))
             // heat shows bird by bird: panting first, then the wings held off the body
             val still = b.state == "rest" || b.state == "idle" || b.state == "slump" || b.state == "preen"
-            b.pant = damp(b.pant, if (lightLevel >= 0.5 && bud.pant > b.tol * 0.9 && (still || bud.pant > 0.7)) 1.0 else 0.0, 1.5, dt)
+            // as many birds pant as the likelihood says (each bird has its own threshold); moving birds a little later
+            val pantShare = inp.panting ?: bud.pant
+            b.pant = damp(b.pant, if (pantShare > b.tol * (if (still) 1.0 else 1.25)) 1.0 else 0.0, 1.5, dt)
             b.wings = damp(b.wings, if (bud.wingsOut > b.tol) 1.0 else 0.0, 1.2, dt)
             if (!feedIn) b.fullness = min(b.fullness, 1 - hunger * 0.9)
             b.fullness = b.fullness.coerceIn(0.0, 1.0)
@@ -1048,15 +1052,11 @@ private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: 
     // body temperature (measured at the vent): worked out for the air now, else the ideal
     seg(listOf("Body temp " to grey, Fmt.n(inp.bodyNowC ?: inp.bodyC, 1) to (if (inp.bodyNowC != null) ValuePredicted else ideal), "°" to grey), pad, by - lh, false)
     seg(listOf(if (awake) "Lights on (woken)" to grey else ("Dark " to grey), if (awake) "" to grey else "${hhmm(inp.light.darkStartHour)}–${hhmm(inp.light.darkEndHour)}" to ideal), pad, by, false)
-    val f = inp.feeder
-    val feederCol = if (f.levelKg <= 0 && f.hunger > 0.6) ValueMax else ValuePredicted
-    when {
-        f.lastFedAt == null -> seg(listOf("Feeder " to grey, "—" to grey), rx, by - lh * 2, true)
-        f.levelKg > 0 -> seg(listOf("Feeder " to grey, Fmt.n(f.fillFrac * 100, 1) to feederCol, "%  " to grey, Fmt.n(f.hoursToEmpty ?: 0.0, 1) to feederCol, " h" to grey), rx, by - lh * 2, true)
-        else -> seg(listOf("Empty " to grey, Fmt.n(f.emptyForH, 1) to feederCol, " h" to grey), rx, by - lh * 2, true)
+    // no sensors in the house: how likely the birds are hungry, thirsty or panting (feedings, lights, weather)
+    fun like(label: String, p: Double?, row: Int) {
+        if (p != null) seg(listOf("$label " to grey, Fmt.n(p * 100, 1) to (if (p >= 0.5) ValueMax else ValuePredicted), " %" to grey), rx, by - lh * row, true)
     }
-    seg(listOf("Water " to grey, "${Fmt.n(inp.waterC.first, 1)}–${Fmt.n(inp.waterC.second, 1)}" to ideal, "°" to grey), rx, by - lh, true)
-    seg(listOf("pH " to grey, "${Fmt.n(inp.waterPh.first, 2)}–${Fmt.n(inp.waterPh.second, 2)}" to ideal), rx, by, true)
+    like("Hungry", inp.hungry, 2); like("Thirsty", inp.thirsty, 1); like("Panting", inp.panting, 0)
 }
 
 private fun hhmm(h: Double): String { val m = ((h % 24 + 24) % 24 * 60).toInt(); return String.format("%02d:%02d", m / 60, m % 60) }

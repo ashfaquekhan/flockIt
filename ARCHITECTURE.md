@@ -91,6 +91,7 @@ com.example.flock
 │                 BirdEnvironment (air → heat load → feed, water, growth, body temperature, risk; sensor-ready sources)
 │                 BirdBehaviour (time budget and walking speed by size, heat and cold) · Projection (what was
 │                 projected for each day before its entry; the clock's share of the day) · Uniformity (CV from groups)
+│                 FeedingRhythm (when in the day birds eat) · FlockNeeds (how likely hungry, thirsty, panting)
 ├─ engine/        pure Kotlin biology and climate maths (PhysiologicalEngine, IbController, CompanyStandard)
 ├─ data/          Room entities, DAOs, migrations, FlockRepository · FlockCalc (the day-by-day calculation as one pure
 │                 function, used by the phone's database and the sheet's report tabs alike)

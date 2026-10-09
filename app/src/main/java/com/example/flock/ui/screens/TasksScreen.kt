@@ -111,7 +111,9 @@ fun TasksScreen(
     onCopyToRange: (taskId: String, fromDay: Int, toDay: Int) -> Unit,
     modifier: Modifier = Modifier,
     /** false when shown inside another scrolling page (the Output tab) */
-    scrollable: Boolean = true
+    scrollable: Boolean = true,
+    /** shown under the tasks (the day clock) */
+    footer: (@Composable () -> Unit)? = null
 ) {
     var editing by remember { mutableStateOf<TaskEntity?>(null) }
     var showAdd by remember { mutableStateOf(false) }
@@ -147,6 +149,7 @@ fun TasksScreen(
             BlockCard(block, tasks, dayNumber, blockColor(block), onToggleComplete, onToggleAlert,
                 onEdit = { editing = it; showAdd = true }, onDelete = onDeleteTask, onCopy = { copying = it })
         }
+        footer?.invoke()
         Spacer(Modifier.height(24.dp))
     }
 

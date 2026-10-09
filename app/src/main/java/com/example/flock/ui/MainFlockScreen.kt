@@ -262,7 +262,12 @@ fun MainFlockScreen(
                     onDeleteTask = { taskId -> viewModel.deleteTask(taskId) },
                     onToggleComplete = { id, day, done -> viewModel.toggleTaskComplete(id, day, done) },
                     onToggleAlert = { id, en -> viewModel.toggleTaskAlert(id, en) },
-                    onCopyToRange = { id, f, t -> viewModel.copyTaskToRange(id, f, t) }
+                    onCopyToRange = { id, f, t -> viewModel.copyTaskToRange(id, f, t) },
+                    // the day clock sits under the tasks
+                    footer = {
+                        com.example.flock.ui.screens.DayClockSection(activeFlock, farm, currentDayEntry, dailyRows, feedTypes, weather, hourly,
+                            selectedDay == currentFlockDay, weatherOn)
+                    }
                 )
             }
         }

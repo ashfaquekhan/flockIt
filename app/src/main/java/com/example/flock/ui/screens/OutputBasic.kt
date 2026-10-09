@@ -208,3 +208,26 @@ fun WeatherEffects(d: OutputData) {
         ValueRow(listOf(vi(day.hoursWarm, PR, "Warm h"), vi(day.hoursHot, if (day.hoursHot > 0) MX else PR, "Hot h"), vi(day.hoursCold, if (day.hoursCold > 0) MN else PR, "Cold h")), "hours")
     }
 }
+
+/**
+ * How likely the birds are hungry, thirsty or panting — now, and in three hours if nothing more is poured.
+ * Likelihoods, not readings: there are no sensors in the house.
+ */
+@Composable
+fun NeedsRow(now: com.example.flock.domain.FlockNeeds.State, soon: com.example.flock.domain.FlockNeeds.State, fedKnown: Boolean) {
+    fun pct(x: Double, tag: String) = vt(Fmt.n(x * 100, 1) + " %", if (x >= 0.5) MX else PR, tag)
+    GlassBox(Modifier.fillMaxWidth().testTag("needs_row")) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("How likely the birds are", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold))
+                    Text(if (fedKnown) "From the feedings logged, the lights and the weather" else "No feeding logged today: the plan's feedings are assumed",
+                        style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f))
+                }
+                InfoButton("needs")
+            }
+            ValueRow(listOf(pct(now.hungry, "Hungry"), pct(now.thirsty, "Thirsty"), pct(now.panting, "Panting")), "now")
+            ValueRow(listOf(pct(soon.hungry, "Hungry"), pct(soon.thirsty, "Thirsty"), pct(soon.panting, "Panting")), "in 3 h")
+        }
+    }
+}

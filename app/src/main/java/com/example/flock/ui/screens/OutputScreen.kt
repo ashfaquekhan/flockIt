@@ -163,14 +163,21 @@ fun OutputScreen(
     androidx.compose.runtime.LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(30_000); now = System.currentTimeMillis() } }
     val zone = remember(farm.timeZone) { try { java.time.ZoneId.of(farm.timeZone) } catch (e: Exception) { java.time.ZoneId.systemDefault() } }
     val light = LightProgram(entry.lightHours)
-    val feeder = remember(events, now, d) {
-        feederState(events, now, zone, d.giveKg, d.kgPerBag(d.phase), (d.bagsFillOpen * d.kgPerBag(d.phase)).takeIf { it > 0 } ?: d.giveKg, light)
-    }
     // the clock: the projections that move with it are worked out afresh every half minute
     val nowZ = remember(now, zone) { java.time.Instant.ofEpochMilli(now).atZone(zone) }
     val nowView = remember(d, now) { if (isToday) d.nowView(nowZ) else null }
     // the house this hour, worked out from the weather (null with the switch off: the ideal house)
     val air = d.envAt(nowZ.hour)
+    // hungry, thirsty, panting: likelihoods from the feedings (those logged today; else the plan's), the lights and the weather
+    val nowHour = nowZ.hour + nowZ.minute / 60.0
+    val logged = remember(events, now, d) { if (isToday) loggedFeedings(events, now, zone, d.kgPerBag(d.phase)) else emptyList() }
+    val fedKnown = logged.isNotEmpty()
+    val fed = if (fedKnown) logged else d.plannedFeedings
+    val needsNow = remember(d, now, events) { d.needsAt(nowHour, fed) }
+    val needsSoon = remember(d, now, events) { d.needsAt(nowHour + 3, fed) }
+    val feeder = remember(events, now, d) {
+        feederState(events, zone, needsNow, (d.bagsFillOpen * d.kgPerBag(d.phase)).takeIf { it > 0 } ?: d.giveKg)
+    }
     val coop = CoopInput(
         age = d.day, meanG = d.bw, cvPct = d.cvEst?.coerceIn(3.0, 20.0), live = d.live, entry = d.entryBirds, stage = d.stage, light = light, feeder = feeder,
         zoneId = zone, airC = air?.air?.tempC ?: entry.tempIdeal, rhPct = air?.air?.rhPct ?: entry.rhIdeal, feelsC = air?.r?.feltC ?: d.plan.comfort,
@@ -185,7 +192,8 @@ fun OutputScreen(
         breaths = d.breathsIdeal, pantAbove = PANT_ABOVE_PER_MIN, weightMeasured = d.vk == ValueKind.PRESENT,
         heatLoadC = air?.r?.heatLoadC ?: 0.0, airModelled = air != null, bodyNowC = air?.r?.bodyTempC, breathsNow = air?.r?.breathsPerMin,
         stateWord = air?.r?.state?.label, airFrom = air?.air?.source?.label,
-        densityKgFt2 = d.live * d.bw / 1000.0 / d.areaInUseFt2, cvEstimated = !d.cvMeasured, compact = basic
+        densityKgFt2 = d.live * d.bw / 1000.0 / d.areaInUseFt2, cvEstimated = !d.cvMeasured, compact = basic,
+        hungry = needsNow.hungry, thirsty = needsNow.thirsty, panting = needsNow.panting
     )
     var confirmClose by remember { mutableStateOf(false) }
 
@@ -200,22 +208,18 @@ fun OutputScreen(
         Anchored("coop") { GlassBox(Modifier.fillMaxWidth()) { Coop3D(coop) } }
         // the weather at the farm: on, it drives the birds in the window and the day's plan; off, the ideal house
         Anchored("weather") { WeatherRow(d, nowZ.hour, weatherOn, onWeatherOn) }
+        // how likely the birds are hungry, thirsty or panting — now, and in three hours if nothing more is poured
+        Anchored("needs") { NeedsRow(needsNow, needsSoon, fedKnown) }
         // a feeding given to the birds in the window: how many bags and at what time
         Anchored("feedlog") {
             FeedEntryRow(d, feeder, zone,
                 onFeed = { bags, at -> events = FeedLog.add(ctx, flockKey, bags, at); now = System.currentTimeMillis() },
                 onUndo = { events = FeedLog.undoLast(ctx, flockKey); now = System.currentTimeMillis() })
         }
-        // how many times to feed today: chosen in the feeding plan, used by the clock too
+        // how many times to feed today: chosen in the feeding plan
         var feedPick by rememberSaveable(d.day, d.recommendedOption) { androidx.compose.runtime.mutableIntStateOf(d.recommendedOption) }
         val feedOpt = d.feedOptions.getOrNull(feedPick)
         val feedings = feedOpt?.feedings ?: d.feedings
-        Anchored("clock") {
-            OutputCard(title = "Day clock", info = "clock") {
-                FarmDayClock(d.daySchedule(feedings), farmZone(d.farm),
-                    amounts = DayAmounts(feedOpt?.bagsPerFeeding, feedOpt?.bagsPerLine, d.waterL / d.waterRefills))
-            }
-        }
         // entered and projected, side by side and never in one box
         Anchored("today") { TodayCard(d, nowView) }
         Anchored("alerts") { AlertList(d.allAlerts) }
@@ -253,6 +257,25 @@ fun OutputScreen(
             confirmButton = { androidx.compose.material3.TextButton(onClick = { confirmClose = false; onCloseBatch?.invoke() }) { Text("Close batch") } },
             dismissButton = { androidx.compose.material3.TextButton(onClick = { confirmClose = false }) { Text("Cancel") } }
         )
+    }
+}
+
+/**
+ * The day clock — feed, water, walks, lights and the hot hours round the day — for the Tasks page, under the tasks.
+ */
+@Composable
+fun DayClockSection(
+    flock: FlockEntity?, farm: FarmEntity, entry: DailyDataEntity?, dailyRows: List<DailyDataEntity>, feedTypes: List<FeedTypeEntity>,
+    weather: WeatherResult?, hourly: List<HourPoint>, isToday: Boolean, weatherOn: Boolean
+) {
+    if (entry == null) return
+    val d = remember(flock, farm, entry, dailyRows, feedTypes, weather, hourly, isToday, weatherOn) {
+        OutputData(flock, farm, entry, dailyRows, feedTypes, weather, hourly, isToday, weatherOn)
+    }
+    val opt = d.feedOptions.getOrNull(d.recommendedOption)
+    OutputCard(title = "Day clock", info = "clock") {
+        FarmDayClock(d.daySchedule(opt?.feedings ?: d.feedings), farmZone(d.farm),
+            amounts = DayAmounts(opt?.bagsPerFeeding, opt?.bagsPerLine, d.waterL / d.waterRefills))
     }
 }
 

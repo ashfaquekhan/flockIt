@@ -75,45 +75,19 @@ data class FeederState(
     val hopperKg get() = max(0.0, levelKg - capacityKg)
 }
 
+/** The feedings logged in the last day and a half, on a clock where today's midnight (farm time) is 0. */
+fun loggedFeedings(events: List<FeedEvent>, now: Long, zone: ZoneId, kgPerBag: Double): List<com.example.flock.domain.FlockNeeds.Feeding> {
+    val midnight = LocalDate.now(zone).atStartOfDay(zone).toInstant().toEpochMilli()
+    return events.filter { it.t <= now && it.t >= now - 36L * 3600_000 }
+        .map { com.example.flock.domain.FlockNeeds.Feeding((it.t - midnight) / 3600_000.0, it.bags * kgPerBag) }
+}
+
 /**
- * Steps the feeder forward in 5-minute slices from the first logged feeding (last 2 days) to [now]:
- * feed goes in at each feeding and is eaten at the day's intake rate during the light hours.
+ * What the farm window shows of the feed: feed in the pans and how hungry the birds are, taken from the
+ * likelihood model ([com.example.flock.domain.FlockNeeds]) — no clock time for "empty" is claimed any more.
  */
-fun feederState(
-    events: List<FeedEvent>, now: Long, zone: ZoneId, dailyKg: Double, bagKg: Double,
-    capacityKg: Double, light: LightProgram
-): FeederState {
+fun feederState(events: List<FeedEvent>, zone: ZoneId, needs: com.example.flock.domain.FlockNeeds.State, capacityKg: Double): FeederState {
     val today = LocalDate.now(zone)
     val givenToday = events.filter { Instant.ofEpochMilli(it.t).atZone(zone).toLocalDate() == today }.sumOf { it.bags }
-    val recent = events.filter { it.t >= now - 48L * 3600_000 && it.t <= now }
-    if (recent.isEmpty()) return FeederState(0.0, capacityKg, null, if (events.isEmpty()) 0.0 else 24.0, givenToday, events.lastOrNull()?.t, if (events.isEmpty()) 0.0 else 1.0)
-    val rateLight = dailyKg / max(1.0, light.lightHours)   // kg per hour while the lights are on
-    val step = 5L * 60_000
-    var t = recent.first().t
-    var level = 0.0
-    var emptySince: Long? = null
-    var i = 0
-    while (t <= now) {
-        while (i < recent.size && recent[i].t <= t) { level += recent[i].bags * bagKg; emptySince = null; i++ }
-        val z = Instant.ofEpochMilli(t).atZone(zone)
-        val hour = z.hour + z.minute / 60.0
-        level -= rateLight * light.level(hour) * (step / 3600_000.0)
-        if (level <= 0) { level = 0.0; if (emptySince == null) emptySince = t }
-        t += step
-    }
-    val emptyFor = emptySince?.let { (now - it) / 3600_000.0 } ?: 0.0
-    // hours until empty: keep eating forward through the lighting programme (birds barely eat in the dark)
-    var toEmpty: Double? = null
-    if (level > 0 && rateLight > 0) {
-        var left = level; var tt = now; var h = 0.0
-        while (left > 0 && h < 72.0) {
-            val z = Instant.ofEpochMilli(tt).atZone(zone)
-            left -= rateLight * light.level(z.hour + z.minute / 60.0) * (step / 3600_000.0)
-            tt += step; h += step / 3600_000.0
-        }
-        toEmpty = h
-    }
-    // Crop empties ~2–3 h after the last meal; after that hunger builds over the next ~10 h.
-    val hunger = if (level > 0) min(0.15, 0.15 * (1 - level / max(1.0, capacityKg))) else (0.2 + 0.8 * ((emptyFor - 1.0) / 10.0)).coerceIn(0.15, 1.0)
-    return FeederState(level, capacityKg, toEmpty, emptyFor, givenToday, events.lastOrNull()?.t, hunger)
+    return FeederState(needs.feedLeftKg, capacityKg, null, needs.emptyForH, givenToday, events.lastOrNull()?.t, needs.hungry)
 }

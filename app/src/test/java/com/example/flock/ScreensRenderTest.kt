@@ -151,7 +151,8 @@ class ScreensRenderTest {
     }
     @Composable private fun tasks() = Dash(3) {
         TasksScreen(listOf(TaskEntity(spreadsheetId = "t", taskId = "1", flockId = "f", block = "Morning", label = "Check drinkers", time = "06:00")),
-            11, 42, { _, _, _, _, _, _, _, _, _, _ -> }, {}, { _, _, _ -> }, { _, _ -> }, { _, _, _ -> })
+            11, 42, { _, _, _, _, _, _, _, _, _, _ -> }, {}, { _, _, _ -> }, { _, _ -> }, { _, _, _ -> },
+            footer = { val r = rows(11); com.example.flock.ui.screens.DayClockSection(flock, farm, r.last(), r, feedTypes, weather, hourly(), true, true) })
     }
     @Composable private fun flocks() = FlocksScreen(farm.farmName, farm.timeZone, listOf(flock, flock.copy(flockId = "g", name = "Batch #2", status = "closed", startDate = "2026-07-01")),
         false, {}, {}, {}, { _, _, _, _, _, _, _ -> }, {}, { _, _ -> })
@@ -223,6 +224,28 @@ class ScreensRenderTest {
         val dens = androidx.compose.ui.platform.LocalDensity.current
         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(dens.density, 1.3f)) { output(basic = true) }
     }
+    /** The day clock is under the tasks now, and no longer on the Output page; the likelihoods card is. */
+    @Config(qualifiers = "w360dp-h2400dp-xhdpi") @Test fun clockLivesUnderTheTasks() {
+        rule.mainClock.autoAdvance = false
+        var showTasks by mutableStateOf(false)
+        rule.setContent { MyApplicationTheme { if (showTasks) tasks() else output(basic = true) } }
+        rule.mainClock.advanceTimeBy(1000)
+        assertTrue(rule.onAllNodesWithText("Day clock").fetchSemanticsNodes().isEmpty())
+        rule.onNodeWithTag("needs_row").assertExists()
+        assertTrue(rule.onAllNodesWithText("Hungry").fetchSemanticsNodes().size >= 2)      // now, and in 3 h
+        showTasks = true
+        rule.mainClock.advanceTimeBy(1000)
+        rule.onAllNodesWithText("Day clock")[0].assertExists()
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_tasks_clock.png")
+    }
+    /** The slider's periods: brooding, growing, finishing to the planned harvest, and the days run past it. */
+    @Test fun sliderPeriodsFollowThePlannedHarvest() {
+        val p = com.example.flock.ui.components.dayPeriods(42, 42)
+        assertEquals(listOf("Brooding" to (0 to 10), "Growing" to (11 to 27), "Finishing" to (28 to 42)), p.map { it.name to (it.from to it.to) })
+        val over = com.example.flock.ui.components.dayPeriods(47, 42)
+        assertEquals("Past harvest" to (43 to 47), over.last().name to (over.last().from to over.last().to))
+        assertEquals(listOf("Brooding" to (0 to 10), "Growing" to (11 to 21)), com.example.flock.ui.components.dayPeriods(21, 21).map { it.name to (it.from to it.to) })
+    }
     /** The weather switch off: the ideal house, as before. */
     @Config(qualifiers = "w360dp-h2600dp-xhdpi") @Test fun outputWeatherOff() = shoot("output_weather_off") { output(basic = true, weatherOn = false) }
     @Config(qualifiers = "w360dp-h2600dp-xhdpi") @Test fun entryBasicLong() {
@@ -274,10 +297,10 @@ class ScreensRenderTest {
         rule.mainClock.autoAdvance = false
         rule.setContent { MyApplicationTheme { output() } }
         rule.mainClock.advanceTimeBy(800)
-        rule.onNodeWithTag("info_clock").performClick()
+        rule.onNodeWithTag("info_needs").performClick()
         rule.mainClock.advanceTimeBy(800)
         rule.onAllNodesWithText("How it is worked out")[0].assertExists()
-        com.github.takahirom.roborazzi.captureScreenRoboImage("src/test/screenshots/screen_info_clock.png")
+        com.github.takahirom.roborazzi.captureScreenRoboImage("src/test/screenshots/screen_info_needs.png")
     }
 
     private fun shootTab(tab: Int, name: String) {

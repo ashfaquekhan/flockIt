@@ -678,6 +678,23 @@ class OutputData(
     /** Deaths to expect today from the flock's own recent days (× the weather's effect when the switch is on). */
     val expectedDeaths: Double get() = (proj[day]?.deaths ?: (comDailyPct * (live + mortToday) / 100.0)) * envMortF
 
+    // ------------------------------- hungry, thirsty, panting: likelihoods (nothing of it is measured) -------------------------------
+    /** The day's eating by quarter-hour: the meals after lights-on and before lights-off, the dark, and the hot hours when the weather is on. */
+    val eatShares: DoubleArray by lazy {
+        com.example.flock.domain.FeedingRhythm.shares(lightProg.darkEndHour, e.lightHours, { lightProg.level(it) }, { h -> envAt(h)?.r?.feedFactor ?: 1.0 })
+    }
+    /** Heat load (°C) at an hour of this day; 0 with the weather off. */
+    fun heatLoadAt(hourOfDay: Double): Double = envAt(hourOfDay.toInt())?.r?.heatLoadC ?: 0.0
+    /** The feedings the plan sets for yesterday and today — reckoned with while no feeding has been logged. */
+    val plannedFeedings: List<com.example.flock.domain.FlockNeeds.Feeding> get() {
+        val kg = bagsPerFeeding * bagKg
+        val times = daySchedule(feedings).feeds
+        return times.map { com.example.flock.domain.FlockNeeds.Feeding(it - 24, kg) } + times.map { com.example.flock.domain.FlockNeeds.Feeding(it, kg) }
+    }
+    /** How likely the birds are hungry, thirsty or panting at [hour] (hours since this day's midnight; over 24 = tomorrow). */
+    fun needsAt(hour: Double, fed: List<com.example.flock.domain.FlockNeeds.Feeding>): com.example.flock.domain.FlockNeeds.State =
+        com.example.flock.domain.FlockNeeds.at(hour, fed, likelyEatKg, eatShares, { lightProg.level(it) }, { heatLoadAt(it) })
+
     /** The projections that move with the clock. */
     data class NowView(
         val hhmm: String,
@@ -694,7 +711,8 @@ class OutputData(
     /** Where today stands at [now] (farm time): weight since the last weighing, feed and water gone, birds alive, FCR. */
     fun nowView(now: java.time.ZonedDateTime): NowView {
         val hour = now.hour + now.minute / 60.0
-        val eatShare = com.example.flock.domain.Projection.litShare(hour) { lightProg.level(it) }
+        // the share of the day's feed eaten by now: more of it in the morning and evening meals than at midday
+        val eatShare = com.example.flock.domain.FeedingRhythm.eatenBy(hour, eatShares)
         val dayShare = hour / 24.0
         val ms = now.toInstant().toEpochMilli()
         val since = weighedAtMs?.let { max(0L, ms - it) / 86_400_000.0 }

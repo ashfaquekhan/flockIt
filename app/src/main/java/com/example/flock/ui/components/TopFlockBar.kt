@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -331,6 +332,8 @@ fun TopFlockBar(
                     Icon(Icons.Default.ChevronRight, contentDescription = "Next day")
                 }
             }
+            // the flock's periods under the slider, to the same scale
+            DayPeriods(harvestAge, flock?.harvestAge ?: harvestAge, currentFlockDay)
         }
     }
 }
@@ -353,6 +356,54 @@ private fun ViewSwitch(basic: Boolean, onChange: (Boolean) -> Unit) {
                 Text(label, maxLines = 1, softWrap = false,
                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (on) FontWeight.Bold else FontWeight.Medium),
                     color = Color.White.copy(alpha = if (on) 1f else 0.6f))
+            }
+        }
+    }
+}
+
+/** One stretch of the flock's life on the day slider. */
+data class DayPeriod(val name: String, val from: Int, val to: Int, val color: Color)
+
+/** Brooding (the floor opens day by day, heat on) to day 10, growing to day 27, finishing to the planned harvest, and any days run past it. */
+fun dayPeriods(lastDay: Int, plannedHarvest: Int): List<DayPeriod> = buildList {
+    val end = lastDay.coerceAtLeast(1)
+    val harvest = plannedHarvest.coerceIn(1, end)
+    add(DayPeriod("Brooding", 0, minOf(10, harvest), Color(0xFFF0A23A)))
+    if (harvest > 10) add(DayPeriod("Growing", 11, minOf(27, harvest), Color(0xFF46B98C)))
+    if (harvest > 27) add(DayPeriod("Finishing", 28, harvest, Color(0xFF7FB2F0)))
+    if (end > harvest) add(DayPeriod("Past harvest", harvest + 1, end, Color(0xFFE5534B)))
+}
+
+/** A thin colour band under the day slider — the periods to scale, a white mark at today — and their names with their days. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun DayPeriods(lastDay: Int, plannedHarvest: Int, today: Int) {
+    val periods = dayPeriods(lastDay, plannedHarvest)
+    val span = lastDay.coerceAtLeast(1).toFloat()
+    Column(Modifier.fillMaxWidth().testTag("day_periods"), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        // lined up with the slider's track: the arrow buttons, their gaps and the thumb's half width on each side
+        androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().padding(horizontal = 46.dp).height(5.dp)) {
+            val gap = 1.5.dp.toPx()
+            periods.forEach { p ->
+                val x0 = p.from / span * size.width + (if (p.from > 0) gap else 0f)
+                val x1 = (p.to / span * size.width).coerceAtMost(size.width)
+                if (x1 > x0) drawRoundRect(p.color, androidx.compose.ui.geometry.Offset(x0, 0f), androidx.compose.ui.geometry.Size(x1 - x0, size.height),
+                    androidx.compose.ui.geometry.CornerRadius(size.height / 2, size.height / 2))
+            }
+            if (today in 0..lastDay) {
+                val x = today / span * size.width
+                drawLine(Color.White, androidx.compose.ui.geometry.Offset(x, -2.dp.toPx()), androidx.compose.ui.geometry.Offset(x, size.height + 2.dp.toPx()), 2.dp.toPx())
+            }
+        }
+        androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
+            periods.forEach { p ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(7.dp).clip(CircleShape).background(p.color))
+                    Spacer(Modifier.width(4.dp))
+                    Text(p.name + " ", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp), color = Color.White.copy(alpha = 0.75f), maxLines = 1, softWrap = false)
+                    Text(if (p.from == p.to) "${p.from}" else "${p.from}–${p.to}", style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont, fontSize = 11.sp),
+                        color = p.color, maxLines = 1, softWrap = false)
+                }
             }
         }
     }
