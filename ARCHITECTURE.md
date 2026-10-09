@@ -112,8 +112,12 @@ Patterns in use, and where:
 - **Schema versioning**: Room migrations (`MIGRATION_x_y`, tested in `MigrationTest`) and the sheet's
   schema number with automatic upgrade of older sheets and their backups (`SheetSchemaTest`). Never change
   a column or table without a migration and a test.
-- **Design tokens**: colours for value kinds (present, projected, ideal, commercial, min, max) live in
-  `ui/theme`; screens use the kit in `OutputUi`, never raw colours, so a style change is one edit.
+- **Design tokens** (`ui/theme`): the look follows Expo's design system (`@expo/styleguide`, dark theme, on
+  Radix Colors). `Color.kt` holds the screen, panel and text colours (Radix slate), the one accent (blue) and
+  the six value kinds (present, projected, ideal, commercial, min, max); `Surfaces.kt` holds the three
+  surfaces — a card (`GlassBox`: see-through fill + hairline), a value (`softBox`: faint fill, no outline),
+  the chosen one of several (`chosenBox`). Screens use these and the kit in `OutputUi`, never raw colours or
+  their own borders, so the look changes in one place. No white outlines round values.
 - **Explanations in one place**: every ⓘ reads `InfoTopics`; when a formula changes, its text changes in
   the same commit.
 

@@ -1,5 +1,13 @@
 package com.example.flock.ui.components
 
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.semantics.setProgress
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -83,13 +91,13 @@ fun TopFlockBar(
     onBasicView: (Boolean) -> Unit = {}
 ) {
     val harvestAge = lastDay ?: flock?.harvestAge ?: 42
-    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("top_flock_bar"),
-        color = MaterialTheme.colorScheme.surface,
+        color = MaterialTheme.colorScheme.background,
         tonalElevation = 0.dp,
-        shadowElevation = 3.dp
+        shadowElevation = 0.dp
     ) {
         Column(
             modifier = Modifier
@@ -105,7 +113,7 @@ fun TopFlockBar(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 // Flock & Farm Chip
-                Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
+                Surface(
                     modifier = Modifier
                         .weight(1f, fill = false)
                         .clip(RoundedCornerShape(12.dp))
@@ -153,7 +161,7 @@ fun TopFlockBar(
                 Spacer(modifier = Modifier.width(6.dp))
 
                 // Weather Chip (tap to refresh)
-                Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
+                Surface(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
                         .clickable { onWeatherClick() }
@@ -187,7 +195,7 @@ fun TopFlockBar(
                 Spacer(modifier = Modifier.width(6.dp))
 
                 // Sync status chip
-                Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
+                Surface(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
                         .clickable { onFarmClick() }
@@ -233,21 +241,28 @@ fun TopFlockBar(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.testTag("day_stepper")
                 ) {
-                    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
-                        color = androidx.compose.ui.graphics.Color.Black,
+                    Surface(
+                        color = com.example.ui.theme.SoftFill,
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text(
-                            text = "Day $selectedDay",
-                            color = androidx.compose.ui.graphics.Color(0xFFF2F2F0),
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                        )
+                        // the dot carries the colour of the period the day is in (the same colours as the slider)
+                        Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            val period = dayPeriods(harvestAge, flock?.harvestAge ?: harvestAge).firstOrNull { selectedDay in it.from..it.to }
+                            if (period != null) {
+                                Box(Modifier.size(8.dp).clip(CircleShape).background(period.color))
+                                Spacer(Modifier.width(6.dp))
+                            }
+                            Text(
+                                text = "Day $selectedDay",
+                                color = MaterialTheme.colorScheme.onSurface,
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
                     }
                     if (selectedDay != currentFlockDay) {
                         Spacer(modifier = Modifier.width(6.dp))
-                        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
-                            color = androidx.compose.ui.graphics.Color.Black,
+                        Surface(
+                            color = com.example.ui.theme.SoftFill,
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onSelectDay(currentFlockDay) }.testTag("today_button")
                         ) {
@@ -309,31 +324,12 @@ fun TopFlockBar(
                 IconButton(onClick = onPrevDay, enabled = selectedDay > 0, modifier = Modifier.size(36.dp).testTag("prev_day")) {
                     Icon(Icons.Default.ChevronLeft, contentDescription = "Previous day")
                 }
-                // Local drag state so the thumb tracks the finger smoothly (no round-trip jitter).
-                var sliderPos by remember { mutableFloatStateOf(selectedDay.toFloat()) }
-                LaunchedEffect(selectedDay) { sliderPos = selectedDay.toFloat() }
-                Slider(
-                    value = sliderPos.coerceIn(0f, harvestAge.toFloat()),
-                    onValueChange = {
-                        sliderPos = it
-                        onSelectDay(it.roundToInt().coerceIn(0, harvestAge))
-                    },
-                    valueRange = 0f..harvestAge.toFloat(),
-                    colors = SliderDefaults.colors(
-                        thumbColor = androidx.compose.ui.graphics.Color(0xFFF2F2F0),
-                        activeTrackColor = androidx.compose.ui.graphics.Color(0xFFF2F2F0),
-                        inactiveTrackColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.18f)
-                    ),
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("day_slider")
-                )
+                // the slider and the flock's periods in one: the track is coloured by period
+                DaySlider(selectedDay, harvestAge, flock?.harvestAge ?: harvestAge, currentFlockDay, onSelectDay, Modifier.weight(1f))
                 IconButton(onClick = onNextDay, enabled = selectedDay < harvestAge, modifier = Modifier.size(36.dp).testTag("next_day")) {
                     Icon(Icons.Default.ChevronRight, contentDescription = "Next day")
                 }
             }
-            // the flock's periods under the slider, to the same scale
-            DayPeriods(harvestAge, flock?.harvestAge ?: harvestAge, currentFlockDay)
         }
     }
 }
@@ -341,13 +337,13 @@ fun TopFlockBar(
 /** Two halves, one chosen: Basic (the day in brief) or Advanced (every number). */
 @Composable
 private fun ViewSwitch(basic: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().testTag("view_switch"), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Row(Modifier.fillMaxWidth().then(com.example.ui.theme.softBox(RoundedCornerShape(12.dp))).padding(3.dp).testTag("view_switch"),
+        horizontalArrangement = Arrangement.spacedBy(3.dp)) {
         listOf(true to "Basic", false to "Advanced").forEach { (isBasic, label) ->
             val on = basic == isBasic
             Box(
-                Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
-                    .border(if (on) 1.5.dp else 1.dp, if (on) Color.White else Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp))
-                    .background(if (on) Color.White.copy(alpha = 0.10f) else Color.Transparent)
+                Modifier.weight(1f).clip(RoundedCornerShape(9.dp))
+                    .background(if (on) com.example.ui.theme.SoftFillStrong else Color.Transparent)
                     .clickable { onChange(isBasic) }
                     .padding(vertical = 5.dp)
                     .testTag(if (isBasic) "view_basic" else "view_advanced"),
@@ -368,43 +364,61 @@ data class DayPeriod(val name: String, val from: Int, val to: Int, val color: Co
 fun dayPeriods(lastDay: Int, plannedHarvest: Int): List<DayPeriod> = buildList {
     val end = lastDay.coerceAtLeast(1)
     val harvest = plannedHarvest.coerceIn(1, end)
-    add(DayPeriod("Brooding", 0, minOf(10, harvest), Color(0xFFF0A23A)))
-    if (harvest > 10) add(DayPeriod("Growing", 11, minOf(27, harvest), Color(0xFF46B98C)))
-    if (harvest > 27) add(DayPeriod("Finishing", 28, harvest, Color(0xFF7FB2F0)))
-    if (end > harvest) add(DayPeriod("Past harvest", harvest + 1, end, Color(0xFFE5534B)))
+    add(DayPeriod("Brooding", 0, minOf(10, harvest), Color(0xFFFFA057)))
+    if (harvest > 10) add(DayPeriod("Growing", 11, minOf(27, harvest), Color(0xFF3DD68C)))
+    if (harvest > 27) add(DayPeriod("Finishing", 28, harvest, Color(0xFF70B8FF)))
+    if (end > harvest) add(DayPeriod("Past harvest", harvest + 1, end, Color(0xFFFF9592)))
 }
 
-/** A thin colour band under the day slider — the periods to scale, a white mark at today — and their names with their days. */
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+private val TRACK_PAD = 6.dp
+
+/**
+ * The day slider and the flock's periods in one piece: the track itself is coloured by period (brooding orange,
+ * growing green, finishing blue, days past the planned harvest red) — bright up to the chosen day, dim after
+ * it — with a white bar at the chosen day and a small white dot at today. Drag or tap to choose a day.
+ */
 @Composable
-private fun DayPeriods(lastDay: Int, plannedHarvest: Int, today: Int) {
-    val periods = dayPeriods(lastDay, plannedHarvest)
-    val span = lastDay.coerceAtLeast(1).toFloat()
-    Column(Modifier.fillMaxWidth().testTag("day_periods"), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        // lined up with the slider's track: the arrow buttons, their gaps and the thumb's half width on each side
-        androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().padding(horizontal = 46.dp).height(5.dp)) {
-            val gap = 1.5.dp.toPx()
-            periods.forEach { p ->
-                val x0 = p.from / span * size.width + (if (p.from > 0) gap else 0f)
-                val x1 = (p.to / span * size.width).coerceAtMost(size.width)
-                if (x1 > x0) drawRoundRect(p.color, androidx.compose.ui.geometry.Offset(x0, 0f), androidx.compose.ui.geometry.Size(x1 - x0, size.height),
-                    androidx.compose.ui.geometry.CornerRadius(size.height / 2, size.height / 2))
+private fun DaySlider(day: Int, lastDay: Int, plannedHarvest: Int, today: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val span = lastDay.coerceAtLeast(1)
+    val periods = remember(span, plannedHarvest) { dayPeriods(span, plannedHarvest) }
+    val cut = MaterialTheme.colorScheme.background
+    val select by androidx.compose.runtime.rememberUpdatedState(onSelect)
+    androidx.compose.foundation.Canvas(
+        modifier.height(36.dp).testTag("day_slider")
+            .semantics {
+                contentDescription = "Day $day of $span" + (periods.firstOrNull { day in it.from..it.to }?.let { ", " + it.name } ?: "")
+                progressBarRangeInfo = androidx.compose.ui.semantics.ProgressBarRangeInfo(day.toFloat(), 0f..span.toFloat(), (span - 1).coerceAtLeast(0))
+                setProgress { v -> select(v.roundToInt().coerceIn(0, span)); true }
             }
-            if (today in 0..lastDay) {
-                val x = today / span * size.width
-                drawLine(Color.White, androidx.compose.ui.geometry.Offset(x, -2.dp.toPx()), androidx.compose.ui.geometry.Offset(x, size.height + 2.dp.toPx()), 2.dp.toPx())
-            }
-        }
-        androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
-            periods.forEach { p ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(7.dp).clip(CircleShape).background(p.color))
-                    Spacer(Modifier.width(4.dp))
-                    Text(p.name + " ", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp), color = Color.White.copy(alpha = 0.75f), maxLines = 1, softWrap = false)
-                    Text(if (p.from == p.to) "${p.from}" else "${p.from}–${p.to}", style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont, fontSize = 11.sp),
-                        color = p.color, maxLines = 1, softWrap = false)
+            .pointerInput(span) {
+                detectTapGestures { o ->
+                    val pad = TRACK_PAD.toPx()
+                    select(((o.x - pad) / (size.width - 2 * pad) * span).roundToInt().coerceIn(0, span))
                 }
             }
+            .pointerInput(span) {
+                fun dayAt(x: Float): Int { val pad = TRACK_PAD.toPx(); return ((x - pad) / (size.width - 2 * pad) * span).roundToInt().coerceIn(0, span) }
+                detectHorizontalDragGestures(onDragStart = { o -> select(dayAt(o.x)) }) { change, _ -> change.consume(); select(dayAt(change.position.x)) }
+            }
+    ) {
+        val pad = TRACK_PAD.toPx(); val w = size.width - 2 * pad
+        val cy = size.height / 2; val th = 8.dp.toPx(); val gap = 1.dp.toPx()
+        fun x(d: Float) = pad + (d / span).coerceIn(0f, 1f) * w
+        val sel = x(day.toFloat())
+        fun segments(alpha: Float) = periods.forEach { p ->
+            val a = if (p.from <= 0) x(0f) else x(p.from - 0.5f) + gap
+            val b = if (p.to >= span) x(span.toFloat()) else x(p.to + 0.5f) - gap
+            if (b > a) drawRoundRect(p.color.copy(alpha = alpha), androidx.compose.ui.geometry.Offset(a, cy - th / 2), androidx.compose.ui.geometry.Size(b - a, th),
+                androidx.compose.ui.geometry.CornerRadius(th / 2, th / 2))
         }
+        segments(0.26f)                                   // the days ahead: dim
+        clipRect(right = sel) { segments(1f) }            // up to the chosen day: bright
+        // today: a small dot on the track
+        if (today in 0..span && today != day) drawCircle(Color.White, 2.5.dp.toPx(), androidx.compose.ui.geometry.Offset(x(today.toFloat()), cy))
+        // the chosen day: a white bar, the track cut away beside it
+        val tw = 4.dp.toPx()
+        drawRect(cut, androidx.compose.ui.geometry.Offset(sel - tw / 2 - 3.dp.toPx(), cy - th), androidx.compose.ui.geometry.Size(tw + 6.dp.toPx(), th * 2))
+        drawRoundRect(Color.White, androidx.compose.ui.geometry.Offset(sel - tw / 2, cy - 13.dp.toPx()), androidx.compose.ui.geometry.Size(tw, 26.dp.toPx()),
+            androidx.compose.ui.geometry.CornerRadius(tw / 2, tw / 2))
     }
 }

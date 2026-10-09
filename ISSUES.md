@@ -49,11 +49,15 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O43 | The lights are taken from the programme, not from the house | 18 h of light on day 20, dark 23:00–05:00. If the house is lit differently, eating shifts with it and the likelihoods are off. A farm setting for the real lights-on / lights-off times would fix it. |
 | O44 | Thirst assumes water is in the lines | There is no record of tank refills, so a dry tank cannot be seen. |
 | O45 | The flock's own response to heat is unknown | The weather has been too steady since day 9 (outside high 31–32.6 °C every day) to learn it from the records; the published figures are used. |
+| O46 | The slider's colours have no written key on the screen | By request the legend was removed to keep it clean: orange = brooding (days 0–10), green = growing (11–27), blue = finishing (28 to harvest), red = past the planned harvest. The dot beside "Day N" shows the colour of the chosen day. |
+| O47 | Older screens outside the main four tabs follow the new look through the shared colours only | Farm settings, dialogs and the legacy Feed / Water / Graphs screens were not redrawn one by one; they pick up the new screen, panel and line colours. |
 | O21 | Output review checklist (keep / change / drop) is waiting for the farm's choices | https://claude.ai/artifact/VDtyZmDKtLiJBu5Nxq6B3g |
 
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v45 | The colour band and legend under the day slider were not what was asked | The request was for the colour coding and the slider to be one thing | The slider's own track carries the periods; band and legend removed |
+| v45 | Too many outlines and boxes | Every value and card had a white outline on pure black | Expo-styleguide look: see-through panels with a hairline, faint fills, one blue accent |
 | v44 | Feeder shown empty from 14:26 when 13 bags poured at 08:30 would last to about 16:00 | Feed spread evenly over the lit hours, at the full chart ration, with no heat | The day's rhythm (meals after lights-on and before lights-off, midday lull), the flock's appetite and the hot hours; and the claim of a minute replaced by likelihoods of hungry / thirsty / panting |
 | v44 | Day clock took room on the Output page for little use | Shown above the day's numbers | Moved to the Tasks page, under the tasks |
 | v43 | Was a feed bag really 60 kg? (the sheet's value is also the app's default) | Not confirmed until asked | Confirmed by the farm on 9 Oct 2026: 60 kg. The feed figures and the FCR (1.13 at day 18) stand as shown |

@@ -32,6 +32,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithTag
 import com.example.flock.data.DailyDataEntity
 import com.example.flock.data.FarmEntity
@@ -237,6 +239,18 @@ class ScreensRenderTest {
         rule.mainClock.advanceTimeBy(1000)
         rule.onAllNodesWithText("Day clock")[0].assertExists()
         rule.onRoot().captureRoboImage("src/test/screenshots/screen_tasks_clock.png")
+    }
+    /** The day slider is one piece — its track carries the periods — and it still chooses a day by tap, drag or an accessibility action. */
+    @Config(qualifiers = "w360dp-h260dp-xhdpi") @Test fun daySliderChoosesADay() {
+        var picked = -1
+        rule.setContent { MyApplicationTheme { TopFlockBar(farm.farmName, flock, 11, 20, "30 Sep 2026", lock, weather, "synced", {}, {}, { picked = it }, {}, {}, basicView = true) } }
+        assertTrue(rule.onAllNodesWithText("Brooding", substring = true).fetchSemanticsNodes().isEmpty())     // no separate legend
+        rule.onNodeWithTag("day_slider").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.SetProgress) { it(30f) }
+        assertEquals(30, picked)
+        // a tap two thirds along the track lands near day 28 of 42
+        rule.onNodeWithTag("day_slider").performTouchInput { click(Offset(width * 2f / 3f, height / 2f)) }
+        assertTrue("picked $picked", picked in 26..30)
+        rule.onRoot().captureRoboImage("src/test/screenshots/top_bar.png")
     }
     /** The slider's periods: brooding, growing, finishing to the planned harvest, and the days run past it. */
     @Test fun sliderPeriodsFollowThePlannedHarvest() {

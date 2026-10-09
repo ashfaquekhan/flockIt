@@ -767,7 +767,7 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
             if (scheduledDark || awake) {
                 androidx.compose.material3.OutlinedButton(
                     onClick = { awake = !awake },
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 2.dp),
                     modifier = Modifier.align(androidx.compose.ui.Alignment.TopCenter).padding(top = 6.dp).height(32.dp)
                 ) { Text(if (awake) "Sleep" else "Wake", color = Color.White) }
@@ -782,7 +782,7 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
                 val on = m == mode
                 ValueChip(vt("${Fmt.n(w, 1)} ft", if (!fits) ValueKind.MAX else if (on) ValueKind.PRESENT else ValueKind.PREDICTED,
                     listOf("Full", "Half", "Quarter")[m] + " · " + (if (fits) Fmt.i(n) else "too many")),
-                    Modifier.weight(1f).testTag("coopWidth_$m").border(if (on) 2.dp else 0.dp, if (on) Color.White else Color.Transparent, RoundedCornerShape(8.dp))
+                    Modifier.weight(1f).testTag("coopWidth_$m").then(com.example.ui.theme.chosenBox(on))
                         .clickable(enabled = fits) {
                             mode = m
                             y0 = if (m == 0) 0.0 else (L.lineY(midF) - w / 2).coerceIn(0.0, max(0.0, L.widthFt - w))
@@ -849,7 +849,7 @@ private fun CoopStats(inp: CoopInput) {
         cells.chunked(2).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 row.forEach { c ->
-                    Column(Modifier.weight(1f).border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 4.dp)) {
+                    Column(Modifier.weight(1f).then(com.example.ui.theme.softBox(RoundedCornerShape(10.dp))).padding(horizontal = 6.dp, vertical = 4.dp)) {
                         Text(c.label, style = lab, color = Color.White.copy(alpha = 0.55f), maxLines = 1)
                         Row(verticalAlignment = androidx.compose.ui.Alignment.Bottom) {
                             Text(c.value, style = num, color = c.col, maxLines = 1, softWrap = false)

@@ -231,7 +231,7 @@ private fun AccuracyCard(d: OutputData) {
     val mono = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp)
     val grey = Color.White.copy(alpha = 0.6f)
     OutputCard(title = "Projection check", info = "accuracy") {
-        Column(Modifier.fillMaxWidth().border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 6.dp),
+        Column(Modifier.fillMaxWidth().then(com.example.ui.theme.softBox(RoundedCornerShape(10.dp))).padding(horizontal = 8.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Row(Modifier.fillMaxWidth()) {
                 Spacer(Modifier.weight(1.3f))
@@ -378,7 +378,7 @@ fun PlanFlow(steps: List<Triple<String, V, String?>>) {
                 if (r > 0) Text("→ ", style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.5f))
                 row.forEachIndexed { i, (label, value, sub) ->
                     if (i > 0) Text(" → ", style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.5f))
-                    Column(Modifier.weight(1f).border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 5.dp)) {
+                    Column(Modifier.weight(1f).then(com.example.ui.theme.softBox(RoundedCornerShape(10.dp))).padding(horizontal = 8.dp, vertical = 5.dp)) {
                         Text(label, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f), maxLines = 1)
                         Text(value.text, style = (if (value.text.length > 7) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleMedium)
                                 .copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold),
@@ -413,7 +413,7 @@ private fun FeedingPlanCard(d: OutputData, pick: Int, onPick: (Int) -> Unit) {
                 val tag = when { !opt.safe -> "Not safe"; i == d.recommendedOption -> "Best"; else -> "Also OK" }
                 val kind = when { !opt.safe -> MX; i == d.recommendedOption -> P; else -> PR }
                 ValueChip(vi(opt.feedings, kind, tag), Modifier.weight(1f)
-                    .border(if (i == pick) 2.dp else 0.dp, if (i == pick) Color.White else Color.Transparent, RoundedCornerShape(8.dp))
+                    .then(com.example.ui.theme.chosenBox(i == pick))
                     .clickable { onPick(i) })
             }
         }
@@ -561,7 +561,7 @@ private fun WaterCard(d: OutputData, onFarmChange: ((com.example.flock.data.Farm
             listOf(1.0, 2.0, 3.0, 4.0).forEach { m ->
                 val on = abs(factor - m) < 0.01
                 ValueChip(vt(Fmt.n(m, 1) + "×", if (on) P else PR, if (on) "Set" else ""), Modifier.weight(1f)
-                    .border(if (on) 2.dp else 0.dp, if (on) Color.White else Color.Transparent, RoundedCornerShape(8.dp))
+                    .then(com.example.ui.theme.chosenBox(on))
                     .clickable(enabled = onFarmChange != null) { onFarmChange?.invoke(d.farm.copy(waterRefillFactor = m)) })
             }
         }
@@ -602,7 +602,7 @@ private fun FeedTypeBlock(d: OutputData, code: String, unit: Double) {
     val rec = d.recByCode[code] ?: 0.0
     val used = d.usedByCode[code] ?: 0.0
     val stock = d.stockBags(code)
-    Column(Modifier.fillMaxWidth().border(1.dp, GlassLine.copy(alpha = 0.35f), RoundedCornerShape(10.dp)).padding(10.dp),
+    Column(Modifier.fillMaxWidth().then(com.example.ui.theme.softBox(RoundedCornerShape(14.dp))).padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("$code · ${ft?.name ?: "Feed"}", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
@@ -627,7 +627,7 @@ private fun StockRow(rec: Double, used: Double, stock: Double) {
 @Composable
 private fun StockChip(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, x: V, modifier: Modifier = Modifier) {
     val col = kindColor(x.kind)
-    Column(modifier.border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)).padding(horizontal = 7.dp, vertical = 4.dp)) {
+    Column(modifier.then(com.example.ui.theme.softBox(RoundedCornerShape(10.dp))).padding(horizontal = 7.dp, vertical = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             androidx.compose.material3.Icon(icon, contentDescription = label, tint = col.copy(alpha = 0.9f), modifier = Modifier.size(13.dp))
             Spacer(Modifier.width(3.dp))

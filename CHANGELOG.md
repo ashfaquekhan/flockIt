@@ -8,6 +8,23 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v45 — 2026-10-09 · A new look after Expo's design system; the day slider and its periods as one piece · installs over a live flock (no database or sheet change)
+- **The look.** The reference picked by the farm is Expo's own website, built with their open-source design
+  system (`@expo/styleguide`, MIT), which stands on Radix Colors. The app now follows its dark theme:
+  - the screen is near-black (`#0C0D0E`), not pure black; panels are see-through — a few percent of white
+    over the screen — with one hairline and rounder corners, instead of white outlines;
+  - values sit on a faint fill, with no outline round each one; far fewer lines and boxes on a page;
+  - tabs and the Basic / Advanced switch are one soft bar with the chosen part lighter;
+  - one accent, blue (links, the chosen choice, the weather switch, the cursor in a field);
+  - the value colours are the same six kinds in the Radix shades: present green, projected amber, ideal
+    blue, commercial purple, min cyan, max red.
+  The type stays Rubik and JetBrains Mono (the farm's own choice; Expo's site uses Inter).
+- **Day slider**: the separate colour band and its legend are gone. The slider's own track is coloured by
+  period — brooding orange (days 0–10), growing green (11–27), finishing blue (28 to the planned harvest),
+  red for days past it — bright up to the chosen day and dim after it, with a white bar at the chosen day
+  and a small white dot at today. The dot beside "Day N" has the colour of that day's period.
+- Tests: the slider chooses a day by tap and by an accessibility action; every screen re-rendered at 360 dp.
+
 ## v44 — 2026-10-09 · Hungry / thirsty / panting likelihoods instead of the feeder's "empty" time, day clock under the tasks, periods on the day slider · installs over a live flock (no database or sheet change)
 - **Why the feeder looked empty too early.** Day 20, 13 bags poured at 08:30 for 1,141 g birds: the app
   showed the feeder empty from 14:26; the farm expected about 16:00. The farm was right, for three reasons

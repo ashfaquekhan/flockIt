@@ -118,7 +118,7 @@ private fun StandardChart(
         ValueRow(lines.map { l -> val v = l.valueAt(sel); V(Fmt.n(v, decimals), if (v == null) ValueKind.NEUTRAL else kindOf(l.style), tagOf(l.style)) })
         Canvas(
             Modifier.fillMaxWidth().height(180.dp)
-                .border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(12.dp))
+                .then(com.example.ui.theme.softBox(RoundedCornerShape(12.dp)))
                 .pointerInput(maxDay, fromDay) {
                     detectTapGestures { o ->
                         val padL = 48f

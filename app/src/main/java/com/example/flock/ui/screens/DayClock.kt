@@ -116,7 +116,7 @@ private fun Totals(plan: DaySchedule.Plan, kinds: List<Kind>, a: DayAmounts) {
         cells.chunked(2).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 row.forEach { c ->
-                    Row(Modifier.weight(1f).border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 5.dp),
+                    Row(Modifier.weight(1f).then(com.example.ui.theme.softBox(RoundedCornerShape(10.dp))).padding(horizontal = 8.dp, vertical = 5.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Text(c.emoji, style = MaterialTheme.typography.titleMedium, maxLines = 1, softWrap = false)
                         Column(Modifier.padding(start = 6.dp)) {
@@ -143,7 +143,7 @@ private fun NextUp(kinds: List<Kind>, plan: DaySchedule.Plan, nowH: Double) {
     val evs = kinds.flatMap { k -> k.times.map { Ev(it, k.emoji, k.name, k.color) } } +
         Ev(plan.darkStart, SLEEP, "Lights off", SleepColor) + Ev(plan.darkEnd, SUN, "Lights on", LightFill)
     val e = evs.minByOrNull { fwd(nowH, it.h) } ?: return
-    FlowRow(Modifier.fillMaxWidth().border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp).testTag("clockNext"),
+    FlowRow(Modifier.fillMaxWidth().then(com.example.ui.theme.softBox(RoundedCornerShape(10.dp))).padding(horizontal = 12.dp, vertical = 8.dp).testTag("clockNext"),
         horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text("Next", Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), maxLines = 1, softWrap = false)
         Text(e.emoji, Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.titleMedium, maxLines = 1, softWrap = false)
