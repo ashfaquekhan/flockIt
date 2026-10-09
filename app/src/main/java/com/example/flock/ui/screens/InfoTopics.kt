@@ -197,7 +197,7 @@ object InfoTopics {
 fun InfoButton(key: String, modifier: Modifier = Modifier) {
     val topic = InfoTopics.all[key] ?: return
     var open by remember { mutableStateOf(false) }
-    Box(modifier.size(24.dp).then(com.example.ui.theme.softBox(CircleShape)).clickable { open = true }.testTag("info_$key"),
+    Box(modifier.size(24.dp).border(1.dp, Color.White.copy(alpha = 0.55f), CircleShape).clickable { open = true }.testTag("info_$key"),
         contentAlignment = Alignment.Center) {
         Text("i", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = Color.White.copy(alpha = 0.85f))
     }

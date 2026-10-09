@@ -60,8 +60,8 @@ fun WeatherRow(d: OutputData, hour: Int, on: Boolean, onChange: (Boolean) -> Uni
                 InfoButton("weather")
                 Spacer(Modifier.width(6.dp))
                 Switch(checked = on, onCheckedChange = onChange, modifier = Modifier.testTag("weather_switch"),
-                    colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = com.example.ui.theme.AccentBlue,
-                        uncheckedThumbColor = Color.White.copy(alpha = 0.75f), uncheckedTrackColor = com.example.ui.theme.SoftFillStrong, uncheckedBorderColor = Color.Transparent))
+                    colors = SwitchDefaults.colors(checkedThumbColor = Color.Black, checkedTrackColor = Color.White,
+                        uncheckedThumbColor = Color.White.copy(alpha = 0.7f), uncheckedTrackColor = Color.Black, uncheckedBorderColor = Color.White.copy(alpha = 0.5f)))
             }
             val h = d.env?.at(hour)
             if (on && h != null) {
@@ -132,7 +132,7 @@ fun TodayCard(d: OutputData, now: OutputData.NowView?) {
 @Composable
 private fun Cell(x: V, modifier: Modifier = Modifier) {
     val col = kindColor(if (x.text == "—") ValueKind.NEUTRAL else x.kind)
-    Text(x.text, modifier.then(com.example.ui.theme.softBox(RoundedCornerShape(10.dp))).padding(horizontal = 6.dp, vertical = 5.dp),
+    Text(x.text, modifier.border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)).padding(horizontal = 6.dp, vertical = 5.dp),
         style = MaterialTheme.typography.bodyLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold, fontSize = 15.sp, letterSpacing = (-0.3).sp),
         color = col, textAlign = TextAlign.Center, maxLines = 1, softWrap = false)
 }

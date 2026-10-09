@@ -3,7 +3,7 @@ package com.example.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // Primary Domain Palette
-val BrandEmerald = Color(0xFF0C0D0E)   // no colour fills: widgets sit on the screen colour
+val BrandEmerald = Color(0xFF000000)   // no colour fills: widgets are black with a white outline
 val BrandDarkEmerald = Color(0xFF0F5C4A)
 val BrandWashLight = Color(0xFFE4F0EB)
 val BrandWashDark = Color(0xFF16302A)
@@ -42,46 +42,37 @@ val MutedLight = Color(0xFF7C8378)
 val LineLight = Color(0xFFE2DED3)
 
 // Dark Backgrounds & Neutrals — neutral charcoal, calm and clearly legible
-val GroundDark = Color(0xFF0C0D0E)   // the screen: near-black (Expo styleguide "screen")
-val SurfaceDark = Color(0xFF151618)  // panels: a few percent lighter than the screen
-val Surface2Dark = Color(0xFF212225) // elements inside panels (slate 3)
-val SunkDark = Color(0xFF111113)     // slate 1
-val InkDark = Color(0xFFEDEEF0)      // primary text (slate 12)
-val Ink2Dark = Color(0xFFB0B4BA)     // secondary text (slate 11)
-val MutedDark = Color(0xFF777B84)    // captions / hints (slate 10)
-val LineDark = Color(0xFF43484E)     // outlines of fields (slate 7)
+val GroundDark = Color(0xFF000000)   // pure black
+val SurfaceDark = Color(0xFF000000)
+val Surface2Dark = Color(0xFF000000)
+val SunkDark = Color(0xFF000000)
+val InkDark = Color(0xFFF2F2F0)      // primary text — high contrast
+val Ink2Dark = Color(0xFFB9BCBF)     // secondary text — clearly visible
+val MutedDark = Color(0xFF757C83)    // captions / hints
+val LineDark = Color(0x55FFFFFF)     // thin white outline     // hairlines / outlines
 
 // Calm accent for dark mode (not flashy) — a muted teal-emerald
-val AccentDark = Color(0xFF70B8FF)   // the one accent: link blue (blue 11)
+val AccentDark = Color(0xFFD9E8E1)   // light, near-white accent
 // the mark's own colours: the comb and the beak (used sparingly, as markers)
 val BrandComb = Color(0xFFE5534B)
 val BrandBeak = Color(0xFFF0A23A)
-val AccentDarkWash = Color(0xFF0D2847) // blue 3
+val AccentDarkWash = Color(0xFF000000)
 
 // Value provenance — keep the three kinds visually distinct so they're never confused:
-val ValuePresent = Color(0xFF3DD68C)     // measured / actual (you entered it) — green 11
-val ValuePresentWash = Color(0x143DD68C)
-val ValuePredicted = Color(0xFFFFCA16)   // projected estimate (no sample yet) — amber 11
-val ValuePredictedWash = Color(0x14FFCA16)
-val ValueIdeal = Color(0xFF70B8FF)       // breed-standard target — blue 11
-val ValueIdealWash = Color(0x1470B8FF)
-val ValueCommercial = Color(0xFFD19DFF)  // company / commercial standard — purple 11
-val ValueCommercialWash = Color(0x14D19DFF)
-val ValueMin = Color(0xFF4CCCE6)        // lower limit — cyan 11
-val ValueMinWash = Color(0x144CCCE6)
-val ValueMax = Color(0xFFFF9592)        // upper limit — red 11
-val ValueMaxWash = Color(0x14FF9592)
+val ValuePresent = Color(0xFF8FE3BE)     // measured / actual (you entered it) — green
+val ValuePresentWash = Color(0x148FE3BE)
+val ValuePredicted = Color(0xFFF2CF8A)   // projected estimate (no sample yet) — amber
+val ValuePredictedWash = Color(0x14F2CF8A)
+val ValueIdeal = Color(0xFFA9CCF0)       // breed-standard target — blue
+val ValueIdealWash = Color(0x14A9CCF0)
+val ValueCommercial = Color(0xFFCDB6F7)  // company / commercial standard — violet
+val ValueCommercialWash = Color(0x14CDB6F7)
+val ValueMin = Color(0xFF9CEBF2)        // lower limit — ice cyan
+val ValueMinWash = Color(0x149CEBF2)
+val ValueMax = Color(0xFFF7A6BF)        // upper limit — rose
+val ValueMaxWash = Color(0x14F7A6BF)
 
-// Panels: see-through (a few percent of white over the screen), a hairline instead of an outline.
-val GlassFill = Color(0x08FFFFFF)
-val GlassFillTop = Color(0x0FFFFFFF)
-/** the line round buttons and form sections: present, not loud */
-val GlassLine = Color(0x29FFFFFF)
-/** the hairline round a card */
-val Hairline = Color(0x14FFFFFF)
-/** a faint fill behind a value (no outline) and a stronger one for the chosen of several */
-val SoftFill = Color(0x0DFFFFFF)
-val SoftFillStrong = Color(0x21FFFFFF)
-/** links and the chosen thing */
-val LinkBlue = Color(0xFF70B8FF)
-val AccentBlue = Color(0xFF0090FF)
+// Glass panels on matte black: transparent fill, thin white outline, faint top highlight.
+val GlassFill = Color(0x00000000)
+val GlassFillTop = Color(0x00000000)
+val GlassLine = Color(0x66FFFFFF)

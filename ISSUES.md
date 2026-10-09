@@ -50,12 +50,12 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O44 | Thirst assumes water is in the lines | There is no record of tank refills, so a dry tank cannot be seen. |
 | O45 | The flock's own response to heat is unknown | The weather has been too steady since day 9 (outside high 31–32.6 °C every day) to learn it from the records; the published figures are used. |
 | O46 | The slider's colours have no written key on the screen | By request the legend was removed to keep it clean: orange = brooding (days 0–10), green = growing (11–27), blue = finishing (28 to harvest), red = past the planned harvest. The dot beside "Day N" shows the colour of the chosen day. |
-| O47 | Older screens outside the main four tabs follow the new look through the shared colours only | Farm settings, dialogs and the legacy Feed / Water / Graphs screens were not redrawn one by one; they pick up the new screen, panel and line colours. |
 | O21 | Output review checklist (keep / change / drop) is waiting for the farm's choices | https://claude.ai/artifact/VDtyZmDKtLiJBu5Nxq6B3g |
 
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v46 | The v45 look was too colourful and not black | A whole new theme (vivid value colours, a blue accent, a near-black screen) was shipped from one reference picture without showing a sample first | Back to the original look: pure black, white outlines, the calmer colours. A change of look is shown as a sample before it is built in |
 | v45 | The colour band and legend under the day slider were not what was asked | The request was for the colour coding and the slider to be one thing | The slider's own track carries the periods; band and legend removed |
 | v45 | Too many outlines and boxes | Every value and card had a white outline on pure black | Expo-styleguide look: see-through panels with a hairline, faint fills, one blue accent |
 | v44 | Feeder shown empty from 14:26 when 13 bags poured at 08:30 would last to about 16:00 | Feed spread evenly over the lit hours, at the full chart ration, with no heat | The day's rhythm (meals after lights-on and before lights-off, midday lull), the flock's appetite and the hot hours; and the claim of a minute replaced by likelihoods of hungry / thirsty / panting |

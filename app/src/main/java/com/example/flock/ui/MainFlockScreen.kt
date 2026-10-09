@@ -158,7 +158,7 @@ fun MainFlockScreen(
         },
         bottomBar = {
             NavigationBar(
-                containerColor = MaterialTheme.colorScheme.background,
+                containerColor = androidx.compose.ui.graphics.Color.Black,
                 tonalElevation = 0.dp,
                 modifier = Modifier.testTag("bottom_nav_bar").drawBehind { drawLine(com.example.ui.theme.GlassLine, androidx.compose.ui.geometry.Offset(0f, 0f), androidx.compose.ui.geometry.Offset(size.width, 0f), 1.dp.toPx()) }
             ) {

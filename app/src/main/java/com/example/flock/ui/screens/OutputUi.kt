@@ -72,7 +72,7 @@ fun vi(value: Int?, kind: ValueKind, tag: String? = null) = V(Fmt.i(value), if (
 fun ValueChip(x: V, modifier: Modifier = Modifier, big: Boolean = false) {
     val k = if (x.text == "—") ValueKind.NEUTRAL else x.kind
     val col = kindColor(k)
-    Column(modifier.then(com.example.ui.theme.softBox(RoundedCornerShape(10.dp))).padding(horizontal = 7.dp, vertical = 4.dp)) {
+    Column(modifier.border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)).padding(horizontal = 7.dp, vertical = 4.dp)) {
         Text(x.tag ?: kindTag(x.kind).ifEmpty { "—" }, maxLines = 1, softWrap = false,
             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 10.5.sp, letterSpacing = (-0.1).sp), color = col.copy(alpha = 0.9f))
         Text(x.text, maxLines = 1, softWrap = false,
@@ -397,19 +397,19 @@ fun TrendIcon(t: TrendMark, size: androidx.compose.ui.unit.Dp = 12.dp) {
 
 // =================================== tabs and tables ===================================
 
-/** Equal-width tabs in one soft bar; the chosen one is lighter and bold. */
+/** Equal-width tabs with a white outline; the chosen one is outlined brighter and bold. */
 @Composable
 fun OutputTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit) {
-    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).then(com.example.ui.theme.softBox(RoundedCornerShape(14.dp))).padding(3.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         labels.forEachIndexed { i, l ->
             val on = i == selected
             Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(10.dp))
-                .background(if (on) com.example.ui.theme.SoftFillStrong else Color.Transparent)
+                .border(if (on) 2.dp else 1.dp, if (on) Color.White else Color.White.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                .background(if (on) Color.White.copy(alpha = 0.10f) else Color.Transparent)
                 .clickable { onSelect(i) }
-                .padding(vertical = 9.dp, horizontal = 2.dp)
+                .padding(vertical = 10.dp, horizontal = 4.dp)
                 .testTagCompat("tab_out_$i"), contentAlignment = Alignment.Center) {
-                Text(l, style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, letterSpacing = (-0.2).sp),
+                Text(l, style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (on) FontWeight.Bold else FontWeight.Medium),
                     color = Color.White.copy(alpha = if (on) 1f else 0.7f), maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
         }
@@ -427,7 +427,7 @@ fun MacroMicroTable(rows: List<MMRow>, heads: List<String> = listOf("House", "Li
     val mono = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp)
     val grey = Color.White.copy(alpha = 0.6f)
     val wts = listOf(1.25f, 1.1f, 0.8f)
-    Column(Modifier.fillMaxWidth().then(com.example.ui.theme.softBox(RoundedCornerShape(10.dp))).padding(horizontal = 8.dp, vertical = 6.dp),
+    Column(Modifier.fillMaxWidth().border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Row(Modifier.fillMaxWidth()) {
             Spacer(Modifier.weight(1.05f))
@@ -451,7 +451,7 @@ private fun KpiRow(k: Kpi) {
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(k.label + if (k.unit.isNotEmpty()) "  " + k.unit else "", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
-            Text(stTxt, modifier = Modifier.then(com.example.ui.theme.softBox(RoundedCornerShape(10.dp))).padding(horizontal = 8.dp, vertical = 3.dp),
+            Text(stTxt, modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 3.dp),
                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = stCol), maxLines = 1)
         }
         val micro = listOf(v(k.actual, k.decimals, k.actualKind), v(k.company, k.decimals, ValueKind.COMMERCIAL), v(k.ideal, k.decimals, ValueKind.IDEAL, k.idealLabel))
@@ -552,8 +552,8 @@ fun Knob(label: String, unit: String, value: Double, lo: Double, hi: Double, ste
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            androidx.compose.material3.OutlinedIconButton(onClick = { onChange(snap(value - step)) }, modifier = Modifier.size(34.dp), border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine)) { Text("−", fontWeight = FontWeight.Black) }
-            androidx.compose.material3.OutlinedIconButton(onClick = { onChange(snap(value + step)) }, modifier = Modifier.size(34.dp), border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine)) { Text("+", fontWeight = FontWeight.Black) }
+            androidx.compose.material3.OutlinedIconButton(onClick = { onChange(snap(value - step)) }, modifier = Modifier.size(34.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))) { Text("−", fontWeight = FontWeight.Black) }
+            androidx.compose.material3.OutlinedIconButton(onClick = { onChange(snap(value + step)) }, modifier = Modifier.size(34.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))) { Text("+", fontWeight = FontWeight.Black) }
         }
     }
 }
@@ -588,7 +588,7 @@ fun KeyLine(vararg items: Pair<Color, String>) {
 @Composable
 fun More(label: String, key: String, content: @Composable () -> Unit) {
     var open by androidx.compose.runtime.saveable.rememberSaveable(key) { androidx.compose.runtime.mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).then(com.example.ui.theme.softBox(RoundedCornerShape(10.dp)))
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(8.dp))
         .clickable { open = !open }.padding(horizontal = 10.dp, vertical = 7.dp).testTag("more_$key"), verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.8f))
         Canvas(Modifier.size(12.dp)) {

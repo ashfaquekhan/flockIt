@@ -387,15 +387,15 @@ fun alertColor(level: Int): Color = when (level) { 2 -> StatusCrit; 1 -> StatusW
 
 // =================================== card + shared bits ===================================
 
-/** A see-through panel on the near-black screen: a few percent of white, one hairline, round corners. */
+/** Transparent glass panel with a thin white outline on matte black. */
 @Composable
 fun GlassBox(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(16.dp)
     Box(
         modifier
             .clip(shape)
             .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(GlassFillTop, GlassFill)))
-            .border(1.dp, com.example.ui.theme.Hairline, shape)
+            .border(1.dp, GlassLine, shape)
     ) {
         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides MaterialTheme.colorScheme.onSurface) { content() }
     }
@@ -425,7 +425,7 @@ data class GistItem(val label: String, val value: String, val sub: String, val k
 @Composable
 fun GistTile(item: GistItem, modifier: Modifier = Modifier) {
     val valColor = if (item.value == "—") kindColor(ValueKind.NEUTRAL) else kindColor(item.kind)
-    Surface(color = com.example.ui.theme.SoftFill, shape = RoundedCornerShape(10.dp), modifier = modifier) {
+    Surface(color = Color.Black, shape = RoundedCornerShape(10.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine), modifier = modifier) {
         Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp)) {
             Text(item.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             Text(item.value, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black, fontFamily = com.example.ui.theme.NumberFont, fontSize = 16.sp),
@@ -510,7 +510,7 @@ fun PopulationDistributionCard(entry: DailyDataEntity) {
 
 @Composable
 private fun BandChip(label: String, count: Int, color: Color, modifier: Modifier = Modifier) {
-    Surface(color = com.example.ui.theme.SoftFill, shape = RoundedCornerShape(10.dp), modifier = modifier) {
+    Surface(color = Color.Black, shape = RoundedCornerShape(8.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine), modifier = modifier) {
         Column(modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("$count spots", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Black, color = color, fontFamily = com.example.ui.theme.NumberFont))
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)

@@ -8,6 +8,14 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v46 — 2026-10-09 · The original look is back: complete black · installs over a live flock (no database or sheet change)
+- **The v45 look is taken back** — it was too colourful. The app is as it was in v44: a pure black screen,
+  thin white outlines, the calmer value colours (soft green, amber, blue, violet, cyan, rose), no blue
+  accent, outlined tabs and Basic / Advanced switch.
+- **Kept from v45**: the day slider with its periods in the track itself (no separate band, no legend),
+  in the calmer colours — orange brooding, green growing, blue finishing, red past the planned harvest —
+  with the white bar at the chosen day, the white dot at today, and the dot beside "Day N".
+
 ## v45 — 2026-10-09 · A new look after Expo's design system; the day slider and its periods as one piece · installs over a live flock (no database or sheet change)
 - **The look.** The reference picked by the farm is Expo's own website, built with their open-source design
   system (`@expo/styleguide`, MIT), which stands on Radix Colors. The app now follows its dark theme:
