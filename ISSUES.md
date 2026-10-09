@@ -37,13 +37,28 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O30 | Stock page does not plan orders | By request: received, used and in store only. Needed / to order / days left can come back later. |
 | O31 | Which chart day is which flock day is an assumption | Taken as: the chart's day 1 is the placement day (the app's day 0). If the company counts the day AFTER placement as day 1, feed and commercial mortality should move back one row — say so and it is a one-line change (`CompanyStandard.duringDay`). |
 | O32 | Curves past day 49 (breed) and day 55 (company) are modelled, not from a table | Gompertz weight, maintenance + growth feed. Replace with the published rows if the farm keeps flocks that long. |
-| O33 | Feeding suggestion and growth forecast need data | 3 days of feed entries / at least one weighing; before that they say so. Their noise settings (3 % a weighing, 0.6 % drift a day) are sensible defaults, not fitted to this farm yet. |
-| O34 | Sheet schema 6 upgrade is tested on data, not against a live Google account | As O22: the layout logic is unit-tested; the Drive / Sheets calls need a real run. A snapshot of the old sheet is made first. |
+| O33 | Growth forecast (target day) still uses the v41 share-of-curve filter | Replaying the farm's flock, it lags when the flock changes pace (7.8 % one-step miss against 4.2 % for the weighing carried along the curve). The daily projection already uses the better one; the target-day forecast should follow. |
+| O34 | Sheet schema 7 upgrade is tested on data, not against a live Google account | The schema 6 upgrade did run on the farm's live sheet (4 Oct 2026, ActivityLog); schema 7 uses the same path and adds three report tabs and one column. A snapshot of the old sheet is made first. |
+| O35 | The weather → house → bird model is not calibrated to this house | The house is worked out from the weather (no sensors) and the bird responses are from published trials. It shows direction and the hours to watch; it is not a measurement. Add sensors (the model takes them as a source) or compare with a thermometer on hot days. |
+| O36 | Past days' plans carry no weather effect | The weather switch acts on the selected day's plan and on "now"; the appetite learned from past entries already contains whatever the weather did. |
+| O37 | Is a feed bag really 60 kg? | The farm sheet says 60 (also the app's default). With 60 kg the flock's FCR at day 18 is 1.13 — between Ross (1.08) and the company chart (1.25). If the bags are 50 kg every feed figure is 17 % too high and the FCR would be 0.94, which is not believable — so 60 looks right, but confirm. |
+| O38 | Day 0 weights of the running flock look wrong | 12.5–33 g a chick (average 22.5 g; a placed chick weighs about 40 g): probably fewer than 10 chicks in each weighing. It only moves the first point of the weight curve; use Revert day to correct the counts if wanted. |
+| O39 | CV is an estimate until birds are weighed one by one | From group weighings: spread between groups × √birds per group, pooled over 3 weighings. Rough, and it reads high when one end of the house is lighter (day 16: locations 11 and 12 were 8 % lighter). |
+| O40 | Which Ross line is placed | The ideal curve is Ross 308 AP 2022 (confirmed row by row). The plain Ross 308 2022 table is about 1–2 % lighter (day 14: 533 g against 540 g). Say so if the hatchery supplies the other line. |
+| O41 | Farm settings worth a look | In the farm sheet: nipples per line 0 (birds per nipple cannot be checked), manual drinkers 0, feeder line gap 0 (taken as width ÷ lines = 9.75 ft), bags that fill a line 3.0 (3.3 was mentioned). |
 | O21 | Output review checklist (keep / change / drop) is waiting for the farm's choices | https://claude.ai/artifact/VDtyZmDKtLiJBu5Nxq6B3g |
 
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v43 | Birds in the farm window walked far too much and too fast | Activity was picked from fixed weights and the walking speed was about 0.5 m/s at every age | Time budget and speeds by body weight from published work (`domain/BirdBehaviour`) |
+| v43 | Feed forecast chased each day's entry | The filter treated the bags entered as the feed eaten; they are bags poured (feed stays in the lines), so a big entry is followed by a small one | A filter that follows appetite and feed in the lines together; first days left out; chosen by replaying the farm's flock |
+| v43 | Projected and entered values shared one place and one line in the charts | A value's colour was the only difference | Two columns in Today, the projection on its own line under a comparison, its own line in every chart |
+| v43 | No CV for the flock; the farm window used an assumed 8 % | CV was only worked out from birds weighed one by one | Estimated from the group weighings and marked as an estimate |
+| v43 | "Vent temp" and "Body" looked like two things | One number under two names | "Body temp" everywhere, with the ideal range and the value worked out for the air now |
+| v43 | Feed type box broke long names mid-word ("Finis-her") | Code and name in a narrow box | The box shows the code; names are in the list |
+| v43 | A new day's feed row always started with the first variety | Default was the first feed type | The variety entered last |
+| v43 | Farms header read as two F's | Mark beside "FlockIt" | The mark is the F of the name |
 | v42 | App used the phone's default type, which differs between phones | No bundled font | Rubik and JetBrains Mono bundled (option A) |
 | v41 | Feed and commercial mortality one day behind the company chart | The chart starts at day 1 (placement day), the app at day 0; "during the day" figures used the same row number as the morning weight | During flock day N = chart row N + 1 (`CompanyStandard.duringDay`); ration read one chart day after the flock's weight |
 | v41 | Feed used by variety hard to find in the sheet | The per-variety columns were added at the far right; no running totals anywhere | Columns beside the total; FeedLedger and DailySummary tabs |

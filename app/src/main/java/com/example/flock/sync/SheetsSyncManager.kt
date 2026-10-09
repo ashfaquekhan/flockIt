@@ -340,8 +340,7 @@ class SheetsSyncManager(
             val raw = readRaw(authHeader, spreadsheetId) ?: return@withContext false
             val farm = db.farmDao().getFarm(spreadsheetId) ?: FarmEntity(spreadsheetId = spreadsheetId)
             val c = SheetSchema.parse(spreadsheetId, raw, farm, db.configDao().getConfig(spreadsheetId))
-            writeBlocks(authHeader, spreadsheetId, linkedMapOf(
-                SheetReports.FEED_LEDGER to SheetReports.feedLedger(c), SheetReports.DAILY_SUMMARY to SheetReports.dailySummary(c)), addActivityLog = false)
+            writeBlocks(authHeader, spreadsheetId, SheetReports.all(c), addActivityLog = false)
         } catch (e: Exception) { Log.w(TAG, "pushReports: ${e.message}"); false }
     }
 
@@ -923,6 +922,9 @@ class SheetsSyncManager(
                     Sheet(SheetProperties(title = "Tasks", gridProperties = GridProperties(rowCount = 200, columnCount = 20))),
                     Sheet(SheetProperties(title = SheetReports.FEED_LEDGER, gridProperties = GridProperties(rowCount = 200, columnCount = 40))),
                     Sheet(SheetProperties(title = SheetReports.DAILY_SUMMARY, gridProperties = GridProperties(rowCount = 200, columnCount = 40))),
+                    Sheet(SheetProperties(title = SheetReports.COMPUTED, gridProperties = GridProperties(rowCount = 200, columnCount = 60))),
+                    Sheet(SheetProperties(title = SheetReports.PROJECTIONS, gridProperties = GridProperties(rowCount = 200, columnCount = 40))),
+                    Sheet(SheetProperties(title = SheetReports.FORMULAS, gridProperties = GridProperties(rowCount = 60, columnCount = 6))),
                     Sheet(SheetProperties(title = "ActivityLog", gridProperties = GridProperties(rowCount = 200, columnCount = 5)))
                 )
             )
@@ -977,8 +979,7 @@ class SheetsSyncManager(
             val okDailyHdr = putBlock(authHeader, spreadsheetId, "DailyData",
                 listOf(SheetSchema.dailyHeader(feedTypes.sortedBy { it.sortOrder }.map { it.code }, 5)))
             val empty = SheetSchema.Content(farm, config, feedTypes, emptyList(), emptyList(), emptyList())
-            putBlock(authHeader, spreadsheetId, SheetReports.FEED_LEDGER, SheetReports.feedLedger(empty))
-            putBlock(authHeader, spreadsheetId, SheetReports.DAILY_SUMMARY, SheetReports.dailySummary(empty))
+            SheetReports.all(empty).forEach { (tab, block) -> putBlock(authHeader, spreadsheetId, tab, block) }
             putBlock(authHeader, spreadsheetId, "Tasks", listOf(TASK_HEADERS))
             putBlock(authHeader, spreadsheetId, "ActivityLog", activityBlock)
 

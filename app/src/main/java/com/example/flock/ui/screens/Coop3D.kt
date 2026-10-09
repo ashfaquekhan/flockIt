@@ -87,7 +87,21 @@ data class CoopInput(
     /** breaths a minute at the house's ideal (resting birds) and where panting starts */
     val breaths: Pair<Double, Double> = 20.0 to 40.0, val pantAbove: Double = 60.0,
     /** false when the day has no weighing yet: the weight is the app's projection */
-    val weightMeasured: Boolean = true
+    val weightMeasured: Boolean = true,
+    /** felt temperature − comfort temperature (0 = the ideal house): drives how the birds behave */
+    val heatLoadC: Double = 0.0,
+    /** true when the air values above are worked out from the weather (shown as projected), false = the ideal house */
+    val airModelled: Boolean = false,
+    /** body temperature and breathing worked out for that air (null: the ideal house, nothing to project) */
+    val bodyNowC: Double? = null, val breathsNow: Double? = null,
+    /** the house's state in a word ("comfortable", "warm" …) and where the air comes from ("from the weather") */
+    val stateWord: String? = null, val airFrom: String? = null,
+    /** live weight on the floor in use, kg per ft² */
+    val densityKgFt2: Double = 0.0,
+    /** true when [cvPct] is estimated from group weighings (or assumed), false when birds were weighed one by one */
+    val cvEstimated: Boolean = true,
+    /** the short view: the window only, without the size chips, the map and the tables */
+    val compact: Boolean = false
 )
 
 /**
@@ -135,6 +149,12 @@ internal class Bird(val name: String, val trait: Trait, val z: Double, seed: Int
     // targets
     var tSit = 0.0; var tPeck = 0.0; var tHeadYaw = 0.0
     var weightG = 42.0
+    /** this bird's own walking pace against the flock's, and how soon it shows heat or cold (0 first … 1 last) */
+    val pace = rnd.nextDouble(0.85, 1.15) * (if (trait == Trait.CURIOUS) 1.15 else if (trait == Trait.LAZY) 0.85 else 1.0)
+    val tol = rnd.nextDouble()
+    var pant = 0.0; var wings = 0.0
+    /** lie down on arriving (a chick joining a huddle) */
+    var thenRest = false
 }
 
 private fun smooth(a: Double, b: Double, x: Double): Double { val t = ((x - a) / (b - a)).coerceIn(0.0, 1.0); return t * t * (3 - 2 * t) }
@@ -294,6 +314,7 @@ internal class CoopSim {
     fun dropGrains(x: Double, z: Double) {
         repeat(6) { grains += Grain((x + fxRnd.nextDouble(-0.05, 0.05)).coerceIn(0.05, sx - 0.05), (z + fxRnd.nextDouble(-0.05, 0.05)).coerceIn(0.05, sz - 0.05), 12.0) }
         repeat(8) { particles += Particle(x, 0.25, z, fxRnd.nextDouble(-0.25, 0.25), 0.0, fxRnd.nextDouble(-0.25, 0.25), 0.6, 0) }
+        hurryUntil = max(hurryUntil, clock + 12.0)
         birds.forEach { b ->
             val reach = when (b.trait) { Trait.CURIOUS -> 2.0; Trait.GLUTTON -> 1.2; Trait.LAZY -> 0.45; else -> 0.6 }
             if (b.state != "sleep" && b.state != "eat" && hypot(b.x - x, b.zz - z) <= reach) { b.state = "goGrain"; b.t = 0.0; b.dur = 12.0; b.tx = x; b.tz = z }
@@ -303,6 +324,7 @@ internal class CoopSim {
     fun tapPan(i: Int) {
         val p = pans.getOrNull(i) ?: return
         p.shake = 1.0
+        hurryUntil = max(hurryUntil, clock + 12.0)
         repeat(10) { particles += Particle(p.x, 0.08, p.z, fxRnd.nextDouble(-0.3, 0.3), fxRnd.nextDouble(0.4, 0.9), fxRnd.nextDouble(-0.3, 0.3), 0.8, 0) }
         if (!p.open || p.sensor) return
         birds.forEach { b -> if (b.state != "sleep" && b.fullness < 0.9 && hypot(b.x - p.x, b.zz - p.z) < 1.2) { b.state = "goEat"; b.panI = i; b.t = 0.0; b.dur = 20.0 } }
@@ -318,9 +340,19 @@ internal class CoopSim {
     private var lastFedSeen: Long? = null
     private var fedSeenInit = false
 
-    fun update(dt: Double, inp: CoopInput, lightLevel: Double) {
+    /** how the birds spend their time right now (size, age, heat or cold, the two meals of the day) */
+    var budget = com.example.flock.domain.BirdBehaviour.budget(42.0, 0)
+        private set
+    private var hurryUntil = 0.0
+
+    fun update(dt: Double, inp: CoopInput, lightLevel: Double, hour: Double = 12.0) {
         val hunger = inp.feeder.hunger
         val feedIn = inp.feeder.levelKg > 0
+        val dark = inp.light.darkHours
+        budget = com.example.flock.domain.BirdBehaviour.budget(inp.meanG, inp.age, inp.heatLoadC,
+            if (dark > 0.01) ((hour - inp.light.darkEndHour) % 24 + 24) % 24 else null,
+            if (dark > 0.01) ((inp.light.darkStartHour - hour) % 24 + 24) % 24 else null)
+        val bud = budget
         // a new feeding logged: feed runs down the line from the hopper (near pans first) and awake birds head for it
         if (!fedSeenInit) { lastFedSeen = inp.feeder.lastFedAt; fedSeenInit = true }
         else if (inp.feeder.lastFedAt != lastFedSeen) {
@@ -328,6 +360,7 @@ internal class CoopSim {
             val lineFt = max(1.0, (layout.pansPerLine + layout.sensorPans) * layout.panSpacingFt)
             pans.forEach { p -> p.arrive = clock + 0.3 + 3.0 * ((p.idx + 0.5) * layout.panSpacingFt / lineFt); p.fill = 0.0 }
             birds.forEach { b -> b.panI = -1 }
+            hurryUntil = clock + 25.0
             birds.sortedWith(compareBy<Bird>({ it.lite }, { it.fullness })).forEach { b -> if (b.state != "sleep") { b.fullness = min(b.fullness, 0.5); val i = pickPan(b); if (i >= 0) { b.state = "goEat"; b.panI = i; b.t = 0.0; b.dur = 20.0 } } }
         }
         stepEffects(dt, inp)
@@ -339,9 +372,14 @@ internal class CoopSim {
             b.chirp = max(0.0, b.chirp - dt)
             val s = cbrt(b.weightG / 42.0) * 0.1
             b.tSit = 0.0; b.tPeck = 0.0; b.tHeadYaw = 0.0; b.swing = 0.0; b.lift = 0.0
-            // fullness only rises by eating; it drops as they digest, and an empty feeder caps it
-            b.fullness -= dt * when { b.trait == Trait.GLUTTON -> 0.011; b.lite -> 0.004; else -> 0.008 }
-            if (b.state == "eat" && feedIn) b.fullness += dt * 0.09
+            // fullness only rises by eating; it drops as they digest (in step with the share of time spent eating), and an empty feeder caps it
+            b.fullness -= dt * 0.02 * bud.eat / (1 - bud.eat) * (if (b.trait == Trait.GLUTTON) 1.3 else 1.0)
+            // a hungry bird eats faster, fills up sooner and leaves its place at the pan to the next one
+            if (b.state == "eat" && feedIn) b.fullness += dt * 0.02 * (1 + 2 * (1 - b.fullness))
+            // heat shows bird by bird: panting first, then the wings held off the body
+            val still = b.state == "rest" || b.state == "idle" || b.state == "slump" || b.state == "preen"
+            b.pant = damp(b.pant, if (lightLevel >= 0.5 && bud.pant > b.tol * 0.9 && (still || bud.pant > 0.7)) 1.0 else 0.0, 1.5, dt)
+            b.wings = damp(b.wings, if (bud.wingsOut > b.tol) 1.0 else 0.0, 1.2, dt)
             if (!feedIn) b.fullness = min(b.fullness, 1 - hunger * 0.9)
             b.fullness = b.fullness.coerceIn(0.0, 1.0)
 
@@ -354,7 +392,8 @@ internal class CoopSim {
                 val want = atan2(dx, dz)
                 val dy = ((want - b.yaw + PI * 3) % (2 * PI)) - PI
                 b.yaw += dy.coerceIn(-4 * dt, 4 * dt)
-                val speed = (0.25 + 0.2 * sqrt(s * 10)) * speedMul * (1 - heavy * 0.45)
+                // the pace a bird of this size really walks at; faster only when feed has just arrived
+                val speed = (if (speedMul > 1.01 && clock < hurryUntil) bud.hurryMs else bud.walkMs * speedMul.coerceAtMost(1.2)) * b.pace
                 if (abs(dy) < 1.1) { val st = min(d, speed * dt); b.x += sin(b.yaw) * st; b.zz += cos(b.yaw) * st; b.step += dt * speed * 9 / (s * 10) }
                 b.swing = sin(b.step * 2 * PI) * 0.6
                 return false
@@ -362,24 +401,26 @@ internal class CoopSim {
             val rim = panR + sh.rz * s * 0.9
             when (b.state) {
                 "idle" -> { b.tHeadYaw = sin(b.t * 1.3 + b.z * 3) * 0.7 }
-                "walk" -> if (walkTo(b.tx, b.tz, 0.03)) b.t = b.dur
+                "walk" -> if (walkTo(b.tx, b.tz, 0.03)) {
+                    if (b.thenRest) { b.thenRest = false; b.state = "rest"; b.t = 0.0; b.dur = b.rnd.nextDouble(0.6, 1.5) * bud.restSec } else b.t = b.dur
+                }
                 "peck" -> { val ph = (b.t * 2.6) % 1; b.tPeck = if (ph < 0.35) sin(ph / 0.35 * PI) else 0.15; b.tSit = 0.25 }
                 "scratch" -> { val ph = (b.t * 2.4) % 1; b.lift = sin(ph * PI); b.swing = -sin(ph * 2 * PI) * 0.8; if (b.t > 1.6) { b.tPeck = 0.7 } }
                 "preen" -> { b.tHeadYaw = 2.0; b.tPeck = 0.3 }
-                "rest" -> { b.tSit = 1.0; b.tPeck = 0.1 }
+                "rest" -> { b.tSit = 1.0; b.tPeck = 0.1 - 0.25 * b.pant }
                 "flap" -> { b.flap = 1.0; b.jump = sin((b.t / 0.8).coerceIn(0.0, 1.0) * PI) * 0.03 * (1 - heavy) }
                 "chirp" -> { if (b.chirp <= 0) b.chirp = 0.8; b.tHeadYaw = 0.2 }
                 "goEat" -> {
                     if (b.panI < 0) b.panI = pickPan(b)
                     val p = pans.getOrNull(b.panI)
                     if (p == null) b.t = b.dur
-                    else if (walkTo(p.x + sin(b.slotA) * rim, p.z + cos(b.slotA) * rim, 0.02, 1.4)) { b.state = "eat"; b.t = 0.0; b.dur = if (feedIn) b.rnd.nextDouble(6.0, 12.0) else b.rnd.nextDouble(3.0, 6.0) }
+                    else if (walkTo(p.x + sin(b.slotA) * rim, p.z + cos(b.slotA) * rim, 0.02, 1.4)) { b.state = "eat"; b.t = 0.0; b.dur = if (feedIn) b.rnd.nextDouble(0.6, 1.4) * bud.mealSec else b.rnd.nextDouble(3.0, 6.0) }
                 }
                 "eat" -> {
                     pans.getOrNull(b.panI)?.let { p -> b.yaw = atan2(p.x - b.x, p.z - b.zz) }
                     val ph = (b.t * 3.0) % 1; b.tPeck = if (feedIn) (if (ph < 0.4) 0.6 + 0.4 * sin(ph / 0.4 * PI) else 0.55) else 0.45 + 0.3 * sin(b.t * 1.5)
                     if (!feedIn && b.t > 2 && b.chirp <= 0 && hunger > 0.4 && !b.lite) b.chirp = 0.9
-                    if (feedIn && b.fullness >= (if (b.trait == Trait.GLUTTON) 0.99 else 0.95)) b.t = b.dur
+                    if (feedIn && b.fullness >= 0.97) b.t = b.dur
                 }
                 "goGrain" -> if (walkTo(b.tx, b.tz, 0.06, 1.3)) { b.state = "peckGrain"; b.t = 0.0; b.dur = b.rnd.nextDouble(2.0, 3.5) }
                 "peckGrain" -> {
@@ -391,7 +432,7 @@ internal class CoopSim {
                     if (b.nipI < 0) b.nipI = pickNipple(b)
                     val n = nipples.getOrNull(b.nipI)
                     if (n == null) b.t = b.dur
-                    else if (walkTo(n.x, n.z + (if (b.slotA > PI) 0.05 else -0.05), 0.02)) { b.state = "drink"; b.t = 0.0; b.dur = b.rnd.nextDouble(2.5, 4.0) }
+                    else if (walkTo(n.x, n.z + (if (b.slotA > PI) 0.05 else -0.05), 0.02)) { b.state = "drink"; b.t = 0.0; b.dur = b.rnd.nextDouble(0.6, 1.4) * bud.drinkSec }
                 }
                 "drink" -> {
                     nipples.getOrNull(b.nipI)?.let { n -> b.yaw = atan2(n.x - b.x, n.z - b.zz); if (b.rnd.nextDouble() < dt * 1.5) n.ripple = max(n.ripple, 0.6) }
@@ -414,7 +455,8 @@ internal class CoopSim {
                 if (d < panR * 0.85 && d > 1e-6) { b.x = p.x + dx / d * panR * 0.85; b.zz = p.z + dz / d * panR * 0.85 }
             }
         }
-        separate(dt)
+        // hot birds lie apart, cold chicks close together
+        separate(dt, 1.0 + 0.55 * bud.spread - 0.2 * bud.huddle)
     }
 
     /** Birds that fit round one pan's rim, shoulder to shoulder, at today's size. */
@@ -440,7 +482,7 @@ internal class CoopSim {
     }
 
     /** Birds don't walk through each other (sweep along x so hundreds stay cheap). */
-    private fun separate(dt: Double) {
+    private fun separate(dt: Double, gap: Double = 1.0) {
         if (birds.size < 2) return
         val idx = birds.indices.sortedBy { birds[it].x }
         val k = min(1.0, dt * 12)
@@ -452,7 +494,7 @@ internal class CoopSim {
                 val c = birds[idx[jj]]
                 val dx = c.x - a.x
                 if (dx > 0.3) break
-                val minD = (ra + cbrt(c.weightG / 42.0) * 0.034) * 0.9
+                val minD = (ra + cbrt(c.weightG / 42.0) * 0.034) * 0.9 * gap
                 val dz = c.zz - a.zz
                 if (abs(dz) < minD) {
                     val d = hypot(dx, dz)
@@ -491,33 +533,58 @@ internal class CoopSim {
         if (particles.size > 220) particles.subList(0, particles.size - 220).clear()
     }
 
+    /**
+     * What a bird does next. Each activity's chance is its share of the day ÷ how long one bout of it lasts, so
+     * over time the birds spend their time as the budget says — mostly lying, and more so the heavier they are.
+     */
     private fun choose(b: Bird, inp: CoopInput, hunger: Double, feedIn: Boolean, heavy: Double) {
         b.t = 0.0
+        val bud = budget
         val r = b.rnd.nextDouble()
-        // hunger comes first: go to a pan, and once very hungry, slump with the head low
-        if (feedIn && b.fullness < when (b.trait) { Trait.GLUTTON -> 0.95; else -> 0.8 }) { b.panI = pickPan(b); if (b.panI >= 0) { b.state = "goEat"; b.dur = 20.0; return } }
+        // an empty feeder comes first: look for feed, and once very hungry, slump with the head low
         if (!feedIn && hunger > 0.75 && r < 0.6) { b.state = "slump"; b.dur = b.rnd.nextDouble(5.0, 10.0); return }
-        if (!feedIn && hunger > 0.3 && r < 0.55 + hunger * 0.3) { b.panI = pickPan(b); if (b.panI >= 0) { b.state = "goEat"; b.dur = 20.0; return } }
-        val w = mutableListOf(
-            "idle" to 2.0, "walk" to (1.5 + (if (b.trait == Trait.CURIOUS) 3.0 else 0.0)) * (1 - heavy * 0.6),
-            "peck" to 2.0, "scratch" to 1.5 * (1 - heavy * 0.5), "preen" to 1.0 + heavy,
-            "rest" to (0.4 + heavy * 3.0) * (if (b.trait == Trait.LAZY) 3.0 else 1.0) * (1 + hunger),
-            "flap" to 0.6 * (1 - heavy), "chirp" to (0.6 + (if (b.trait == Trait.CHATTY) 2.5 else 0.0)) * (1 + hunger * 2) * (if (b.lite) 0.3 else 1.0),
-            "goDrink" to 0.6
+        if (!feedIn && hunger > 0.3 && r < 0.25 + hunger * 0.3) { b.panI = pickPan(b); if (b.panI >= 0) { b.state = "goEat"; b.dur = 60.0; return } }
+        // a hungry bird eats before anything else; when every place at the pans is taken it waits a moment and tries again
+        if (feedIn && b.fullness < 0.45) {
+            b.panI = pickPan(b)
+            if (b.panI >= 0) { b.state = "goEat"; b.dur = 60.0 } else { b.state = "idle"; b.dur = b.rnd.nextDouble(2.0, 4.0) }
+            return
+        }
+        val walkSec = bud.walkBoutM / max(0.02, bud.walkMs)
+        val w = listOf(
+            "rest" to bud.rest / bud.restSec * (if (b.trait == Trait.LAZY) 1.5 else 1.0),
+            "walk" to bud.walk / walkSec * (if (b.trait == Trait.CURIOUS) 2.0 else 1.0),
+            "goEat" to (if (feedIn) bud.eat / bud.mealSec * (if (b.trait == Trait.GLUTTON) 1.5 else 1.0) else 0.0),
+            "goDrink" to bud.drink / bud.drinkSec,
+            "peck" to bud.forage * 0.6 / 4.0, "scratch" to bud.forage * 0.4 / 4.0 * (1 - heavy * 0.5),
+            "preen" to bud.preen / 5.0, "idle" to bud.stand / 3.5,
+            "flap" to 0.0006 * (1 - heavy), "chirp" to (0.0008 + (if (b.trait == Trait.CHATTY) 0.004 else 0.0)) * (1 + hunger * 2 + bud.huddle * 3) * (if (b.lite) 0.3 else 1.0)
         )
         val sum = w.sumOf { it.second }; var pick = b.rnd.nextDouble() * sum
-        for ((s, wt) in w) { pick -= wt; if (pick <= 0) { b.state = s; break } }
+        b.state = "rest"
+        for ((st, wt) in w) { pick -= wt; if (pick <= 0) { b.state = st; break } }
         when (b.state) {
             "walk" -> {
-                // a short wander, within the allowed travel radius and inside the window
-                val rad = min(inp.travelM, min(sx, sz) * 0.5) * (if (b.trait == Trait.CURIOUS) 1.0 else 0.5)
-                val a = b.rnd.nextDouble(0.0, 2 * PI); val d = b.rnd.nextDouble(0.1, 1.0) * rad
-                b.tx = (b.x + sin(a) * d).coerceIn(0.1, max(0.1, birdMaxX - 0.1)); b.tz = (b.zz + cos(a) * d).coerceIn(0.1, sz - 0.1); b.dur = 15.0
+                // a short walk, as far as a bird of this size goes in one go, inside the window
+                val a = b.rnd.nextDouble(0.0, 2 * PI)
+                val d = b.rnd.nextDouble(0.3, 1.0) * bud.walkBoutM * (if (b.trait == Trait.CURIOUS) 1.5 else 1.0)
+                b.tx = (b.x + sin(a) * d).coerceIn(0.1, max(0.1, birdMaxX - 0.1)); b.tz = (b.zz + cos(a) * d).coerceIn(0.1, sz - 0.1); b.dur = 90.0
             }
-            "rest" -> b.dur = b.rnd.nextDouble(4.0, 8.0) + heavy * 8
-            "goDrink" -> { b.nipI = pickNipple(b); if (b.nipI < 0) { b.state = "idle"; b.dur = 2.0 } else b.dur = 20.0 }
+            "rest" -> {
+                b.dur = b.rnd.nextDouble(0.6, 1.5) * bud.restSec
+                // cold chicks walk to the nearest group before lying down
+                if (bud.huddle > b.tol) {
+                    val cell = 1.1
+                    b.tx = ((Math.floor(b.x / cell) + 0.5) * cell + b.rnd.nextDouble(-0.12, 0.12)).coerceIn(0.1, max(0.1, birdMaxX - 0.1))
+                    b.tz = ((Math.floor(b.zz / cell) + 0.5) * cell + b.rnd.nextDouble(-0.12, 0.12)).coerceIn(0.1, sz - 0.1)
+                    b.state = "walk"; b.thenRest = true; b.dur = 90.0
+                }
+            }
+            "goEat" -> { b.panI = pickPan(b); if (b.panI < 0) { b.state = "idle"; b.dur = 3.0 } else b.dur = 90.0 }
+            "goDrink" -> { b.nipI = pickNipple(b); if (b.nipI < 0) { b.state = "idle"; b.dur = 2.0 } else b.dur = 90.0 }
             "flap" -> b.dur = 1.0
-            else -> b.dur = b.rnd.nextDouble(1.5, 3.5)
+            "preen" -> b.dur = b.rnd.nextDouble(3.0, 8.0)
+            else -> b.dur = b.rnd.nextDouble(2.0, 5.0)
         }
     }
 }
@@ -625,7 +692,8 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
             withFrameNanos { now ->
                 val dt = if (last == 0L) 0.016 else ((now - last) / 1e9).coerceAtMost(0.05)
                 last = now
-                sim.update(dt, cur.value, lightNow())
+                val z = java.time.ZonedDateTime.now(cur.value.zoneId)
+                sim.update(dt, cur.value, lightNow(), z.hour + z.minute / 60.0)
                 cam.step(dt)
                 tick = now
             }
@@ -702,7 +770,7 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
             }
         }
         // window size, and the whole house with the window on it
-        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (!inp.compact) Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             (0..2).forEach { m ->
                 val w = widthOf(m)
                 val n = sim.birdsFor(L, lenFt, w, x0)
@@ -718,6 +786,7 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
             }
         }
         FarmMiniMap(L, x0, y0, lenFt, widFt, Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) { nx, ny -> x0 = nx; if (!full) y0 = ny }
+        if (inp.compact) return@Column
         // the birds' and the house's numbers for today, under the window's size and map
         CoopStats(inp)
         // the four followed birds, in one table
@@ -730,8 +799,8 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
                 Row(Modifier.fillMaxWidth()) {
                     Text(b.name, Modifier.width(52.dp), style = lab, color = Color.White)
                     Text(b.trait.label, Modifier.weight(1.2f), style = lab, color = Color.White.copy(alpha = 0.55f), maxLines = 1)
-                    Text(Fmt.n(b.weightG, 1) + " g", Modifier.weight(1f), style = num, color = if (inp.weightMeasured) ValuePresent else ValuePredicted, maxLines = 1)
-                    Text(Fmt.n(b.fullness * 100, 1) + "%", Modifier.weight(0.8f), style = num, color = ValuePredicted, maxLines = 1)
+                    Text(Fmt.n(b.weightG, 1) + " g", Modifier.weight(1.05f), style = num, color = if (inp.weightMeasured) ValuePresent else ValuePredicted, maxLines = 1, softWrap = false)
+                    Text(Fmt.n(b.fullness * 100, 0) + "%", Modifier.weight(0.6f).padding(start = 6.dp), style = num, color = ValuePredicted, maxLines = 1, softWrap = false)
                     Text(stateWord(b.state), Modifier.weight(1.1f), style = lab, color = Color.White.copy(alpha = 0.7f), maxLines = 1)
                 }
             }
@@ -747,23 +816,30 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
 private fun CoopStats(inp: CoopInput) {
     data class Cell(val label: String, val value: String, val unit: String, val col: Color)
     val v = inp.ventC
-    val cells = listOf(
-        Cell(if (inp.weightMeasured) "Weight" else "Weight, projected", Fmt.n(inp.meanG, 1), "g", if (inp.weightMeasured) ValuePresent else ValuePredicted),
-        Cell("Ideal temp", Fmt.n(inp.idealC, 1), "°C", ValueIdeal),
-        Cell("Min vent / bird", Fmt.n(inp.minVentCfmBird, 3), "cfm", ValuePredicted),
-        Cell("Min vent, house", Fmt.n(inp.minVentCfm, 1), "cfm", ValuePredicted),
-        Cell("NH₃ under", Fmt.n(inp.nh3Max, 1), "ppm", ValueMax),
-        Cell("CO₂ under", Fmt.n(inp.co2Max, 1), "ppm", ValueMax),
-        Cell("Vent temp", if (v == null) "NA" else "${Fmt.n(v.first, 1)}–${Fmt.n(v.third, 1)}", "°C", ValueIdeal),
-        Cell("Feet", inp.feetC?.let { Fmt.n(it, 1) } ?: "NA", "°C", ValueIdeal),
-        Cell("Breaths", "${Fmt.n(inp.breaths.first, 1)}–${Fmt.n(inp.breaths.second, 1)}", "/min", ValueIdeal),
-        Cell("Panting over", Fmt.n(inp.pantAbove, 1), "/min", ValueMax)
-    )
+    val airCol = if (inp.airModelled) ValuePredicted else ValueIdeal
+    val cells = buildList {
+        add(Cell(if (inp.weightMeasured) "Weight" else "Weight, projected", Fmt.n(inp.meanG, 1), "g", if (inp.weightMeasured) ValuePresent else ValuePredicted))
+        add(Cell(if (inp.cvEstimated) "CV, estimated" else "CV", inp.cvPct?.let { Fmt.n(it, 1) } ?: "NA", "%", if (inp.cvEstimated) ValuePredicted else ValuePresent))
+        add(Cell("Birds on the floor", Fmt.n(inp.layout.birdsPerFt2, 2), "/ft²", ValuePresent))
+        add(Cell("Weight on the floor", Fmt.n(inp.densityKgFt2, 2), "kg/ft²", if (inp.weightMeasured) ValuePresent else ValuePredicted))
+        add(Cell("Ideal temp", Fmt.n(inp.idealC, 1), "°C", ValueIdeal))
+        add(Cell(if (inp.airModelled) "House now" else "House", Fmt.n(inp.airC, 1), "°C", airCol))
+        add(Cell("Min vent / bird", Fmt.n(inp.minVentCfmBird, 3), "cfm", ValuePredicted))
+        add(Cell("Min vent, house", Fmt.n(inp.minVentCfm, 1), "cfm", ValuePredicted))
+        add(Cell("NH₃ under", Fmt.n(inp.nh3Max, 1), "ppm", ValueMax))
+        add(Cell("CO₂ under", Fmt.n(inp.co2Max, 1), "ppm", ValueMax))
+        add(Cell("Body temp, ideal", if (v == null) "NA" else "${Fmt.n(v.first, 1)}–${Fmt.n(v.third, 1)}", "°C", ValueIdeal))
+        add(Cell("Body temp now", inp.bodyNowC?.let { Fmt.n(it, 1) } ?: "NA", "°C", ValuePredicted))
+        add(Cell("Breaths, ideal", "${Fmt.n(inp.breaths.first, 1)}–${Fmt.n(inp.breaths.second, 1)}", "/min", ValueIdeal))
+        add(Cell("Breaths now", inp.breathsNow?.let { Fmt.n(it, 1) } ?: "NA", "/min", if ((inp.breathsNow ?: 0.0) > inp.pantAbove) ValueMax else ValuePredicted))
+        add(Cell("Panting over", Fmt.n(inp.pantAbove, 1), "/min", ValueMax))
+        add(Cell("Feet", inp.feetC?.let { Fmt.n(it, 1) } ?: "NA", "°C", ValueIdeal))
+    }
     val lab = MaterialTheme.typography.labelSmall
     val num = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold)
     Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp).testTag("coopStats"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Text("Day ${inp.age} · targets" + if (inp.weightMeasured) " (weight is measured)" else " (weight is projected)", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.weight(1f))
+            Text("Day ${inp.age} · " + (inp.stateWord?.let { "birds are $it" } ?: "the ideal house"), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.weight(1f))
             InfoButton("window")
         }
         cells.chunked(2).forEach { row ->
@@ -958,13 +1034,19 @@ private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: 
     val rx = size.width - pad
     seg(listOf("View " to grey, "${Fmt.n(sim.widFt, 1)} × ${Fmt.n(sim.lenFt, 1)}" to Color.White, " ft" to grey), pad, pad + lh, false)
     seg(listOf(Fmt.i(sim.birds.size) to ValuePresent, " birds" to grey), pad, pad + lh * 2, false)
-    seg(listOf(Fmt.n(inp.layout.birdsPerFt2, 2) to ValuePresent, " /ft²" to grey), pad, pad + lh * 3, false)
-    seg(listOf("Air " to grey, Fmt.n(inp.airC, 1) to ideal, "°  " to grey, Fmt.n(inp.rhPct, 1) to ideal, "%" to grey), rx, pad + lh, true)
-    seg(listOf("Feels " to grey, Fmt.n(inp.feelsC, 1) to ideal, "°" to grey), rx, pad + lh * 2, true)
-    seg(listOf("Static " to grey, Fmt.n(inp.pressurePa, 1) to ideal, " Pa" to grey), rx, pad + lh * 3, true)
+    // birds on a square foot of floor, and their weight on it (the second grows every day)
+    seg(listOf(Fmt.n(inp.layout.birdsPerFt2, 2) to ValuePresent, " birds/ft²" to grey), pad, pad + lh * 3, false)
+    seg(listOf(Fmt.n(inp.densityKgFt2, 2) to (if (inp.weightMeasured) ValuePresent else ValuePredicted), " kg/ft²" to grey), pad, pad + lh * 4, false)
+    // the house as worked out from the weather is a projection (yellow); the ideal house is blue
+    val airCol = if (inp.airModelled) ValuePredicted else ideal
+    seg(listOf("Air " to grey, Fmt.n(inp.airC, 1) to airCol, "°  " to grey, Fmt.n(inp.rhPct, 1) to airCol, "%" to grey), rx, pad + lh, true)
+    seg(listOf("Feels " to grey, Fmt.n(inp.feelsC, 1) to airCol, "°" to grey), rx, pad + lh * 2, true)
+    if (inp.stateWord != null) seg(listOf(inp.stateWord to (if (inp.heatLoadC > 6 || inp.heatLoadC < -6) ValueMax else airCol)), rx, pad + lh * 3, true)
+    else seg(listOf("Static " to grey, Fmt.n(inp.pressurePa, 1) to ideal, " Pa" to grey), rx, pad + lh * 3, true)
     val by = size.height - pad
     seg(listOf("Litter " to grey, Fmt.n(inp.litterC, 1) to ideal, "°  " to grey, Fmt.n(inp.litterMoist, 1) to ideal, "%" to grey), pad, by - lh * 2, false)
-    seg(listOf("Body " to grey, Fmt.n(inp.bodyC, 1) to ideal, "°" to grey), pad, by - lh, false)
+    // body temperature (measured at the vent): worked out for the air now, else the ideal
+    seg(listOf("Body temp " to grey, Fmt.n(inp.bodyNowC ?: inp.bodyC, 1) to (if (inp.bodyNowC != null) ValuePredicted else ideal), "°" to grey), pad, by - lh, false)
     seg(listOf(if (awake) "Lights on (woken)" to grey else ("Dark " to grey), if (awake) "" to grey else "${hhmm(inp.light.darkStartHour)}–${hhmm(inp.light.darkEndHour)}" to ideal), pad, by, false)
     val f = inp.feeder
     val feederCol = if (f.levelKg <= 0 && f.hunger > 0.6) ValueMax else ValuePredicted
@@ -1018,8 +1100,9 @@ private fun DrawScope.drawBird(b: Bird, sh: Shape, light: Float, P: (Double, Dou
     val front = P(b.x + fx * sh.rz * s, bodyY, b.zz + fz * sh.rz * s)
     val ax = front.x - c.x; val ay = front.y - c.y
     val alen = hypot(ax.toDouble(), ay.toDouble()).toFloat()
-    // resting and sleeping birds breathe
-    val breathe = if (b.state == "sleep" || b.state == "rest") 1.0 + 0.04 * sin(b.t * 2.2) else 1.0
+    // resting and sleeping birds breathe; panting birds fast and deep
+    val breathe = if (b.pant > 0.3) 1.0 + 0.07 * b.pant * sin(b.t * 14.0)
+        else if (b.state == "sleep" || b.state == "rest") 1.0 + 0.04 * sin(b.t * 2.2) else 1.0
     val minor = (sh.ry * s * k * breathe).toFloat()
     val major = max(alen, (sh.rx * s * k).toFloat())
     val ang = if (alen > (sh.rx * s * k * 0.6).toFloat()) Math.toDegrees(atan2(ay.toDouble(), ax.toDouble())).toFloat() else 0f
@@ -1030,8 +1113,8 @@ private fun DrawScope.drawBird(b: Bird, sh: Shape, light: Float, P: (Double, Dou
     }
     // wing on the near side
     if (!lite) {
-        val wingLift = if (b.flap > 0.3) (abs(sin(System.nanoTime() / 1e9 * 30)) * 0.5 * b.flap) else 0.0
-        val wc = P(b.x + rxv * near * sh.rx * 0.85 * s - fx * sh.rz * 0.1 * s, bodyY + (0.05 + wingLift) * sh.ry * s, b.zz + rzv * near * sh.rx * 0.85 * s - fz * sh.rz * 0.1 * s)
+        val wingLift = if (b.flap > 0.3) (abs(sin(System.nanoTime() / 1e9 * 30)) * 0.5 * b.flap) else 0.25 * b.wings
+        val wc = P(b.x + rxv * near * sh.rx * (0.85 + 0.35 * b.wings) * s - fx * sh.rz * 0.1 * s, bodyY + (0.05 + wingLift) * sh.ry * s, b.zz + rzv * near * sh.rx * 0.85 * s - fz * sh.rz * 0.1 * s)
         rotate(ang, wc) {
             val wl = major * 0.62f; val wh = minor * 0.55f
             drawOval(bodyCol.copy(red = bodyCol.red * 0.9f, green = bodyCol.green * 0.9f, blue = bodyCol.blue * 0.88f), Offset(wc.x - wl, wc.y - wh), Size(wl * 2, wh * 2))
@@ -1055,6 +1138,12 @@ private fun DrawScope.drawBird(b: Bird, sh: Shape, light: Float, P: (Double, Dou
     val nx = -byy / bl * bw; val ny = bx / bl * bw
     val base = Offset(hc.x + bx * 0.55f, hc.y + byy * 0.55f)
     drawPath(Path().apply { moveTo(base.x + nx, base.y + ny); lineTo(beakTip.x, beakTip.y); lineTo(base.x - nx, base.y - ny); close() }, Color(0xFFF3B23C).copy(alpha = dim))
+    // panting: the beak hangs open
+    if (b.pant > 0.3) drawPath(Path().apply {
+        moveTo(base.x + nx * 0.6f, base.y + ny * 0.6f + hr * 0.25f)
+        lineTo(beakTip.x - bx * 0.25f, beakTip.y - byy * 0.25f + hr * 0.6f * b.pant.toFloat())
+        lineTo(base.x - nx * 0.6f, base.y - ny * 0.6f + hr * 0.25f); close()
+    }, Color(0xFFD9892B).copy(alpha = dim))
     if (lite) return Offset(hc.x, hc.y - hr * 2.2f - 4f)
     if (sh.wattle > 0.05) drawCircle(Color(0xFFD8443A).copy(alpha = dim), hr * 0.25f * sh.wattle.toFloat() + 0.5f, Offset(base.x, base.y + hr * 0.55f))
     // eye on the near side: closed when asleep, slumped or blinking

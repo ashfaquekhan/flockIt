@@ -1,5 +1,8 @@
 package com.example.flock.ui.components
 
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -134,9 +137,11 @@ fun FlockOpening(modifier: Modifier = Modifier, size: Dp = 132.dp) {
 /** The mark and the name, side by side — for the sign-in screen and the Farms header. */
 @Composable
 fun FlockWordmark(modifier: Modifier = Modifier, markSize: Dp = 44.dp, textStyle: androidx.compose.ui.text.TextStyle = androidx.compose.material3.MaterialTheme.typography.headlineMedium) {
-    androidx.compose.foundation.layout.Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        FlockMark(progress = 1f, size = markSize)
-        androidx.compose.material3.Text("FlockIt", style = textStyle.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Black, letterSpacing = androidx.compose.ui.unit.TextUnit.Unspecified),
-            color = Color(0xFFF2F2F0), maxLines = 1, softWrap = false)
+    // the mark is the F of the name (no second F after it): its bar stands on the text's baseline, about as tall as the capitals
+    androidx.compose.foundation.layout.Row(modifier.semantics(mergeDescendants = true) { contentDescription = "FlockIt" },
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(-(markSize * 0.19f))) {
+        FlockMark(progress = 1f, modifier = Modifier.alignBy { (it.measuredHeight * 0.80f).toInt() }, size = markSize)
+        androidx.compose.material3.Text("lockIt", style = textStyle.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Black, letterSpacing = androidx.compose.ui.unit.TextUnit.Unspecified),
+            color = Color(0xFFF2F2F0), maxLines = 1, softWrap = false, modifier = Modifier.alignByBaseline().clearAndSetSemantics { })
     }
 }

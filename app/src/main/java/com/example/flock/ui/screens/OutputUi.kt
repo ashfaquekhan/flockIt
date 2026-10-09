@@ -27,6 +27,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -150,7 +152,9 @@ fun SubHeader(text: String) {
 @Composable
 fun RangeParam(
     label: String, unit: String, min: Double?, ideal: Double?, max: Double?, present: Double?,
-    dec: Int = 1, presentKind: ValueKind = ValueKind.PRESENT, idealBand: Pair<Double, Double>? = null, note: String? = null
+    dec: Int = 1, presentKind: ValueKind = ValueKind.PRESENT, idealBand: Pair<Double, Double>? = null, note: String? = null,
+    /** a worked-out value for now (not a reading): shown under the line as projected, never in the reading's place */
+    projected: Double? = null
 ) {
     val idealTxt = when {
         idealBand != null && (idealBand.first != min || idealBand.second != max) -> "${Fmt.n(idealBand.first, dec)}–${Fmt.n(idealBand.second, dec)}"
@@ -170,8 +174,18 @@ fun RangeParam(
         idealBand != null -> vt("${Fmt.n(idealBand.first, dec)}–${Fmt.n(idealBand.second, dec)}", ValueKind.IDEAL)
         else -> vt("—", ValueKind.NEUTRAL)
     }
-    CompactLine(label, unit, null, main, rangeTrend(present, min, max), refs)
-    RangeBar(min, ideal, max, present, presentKind, idealBand, slim = true)
+    // a reading marked as projected by its kind goes under the line too
+    val proj = projected ?: present.takeIf { presentKind == ValueKind.PREDICTED }
+    val reading = present.takeIf { presentKind != ValueKind.PREDICTED }
+    val head: V = when {
+        reading != null -> main
+        idealTxt != null -> vt(idealTxt, ValueKind.IDEAL)
+        idealBand != null -> vt("${Fmt.n(idealBand.first, dec)}–${Fmt.n(idealBand.second, dec)}", ValueKind.IDEAL)
+        else -> vt("—", ValueKind.NEUTRAL)
+    }
+    // the marker beside the headline judges a reading only; a projection shows where it stands on the bar below
+    CompactLine(label, unit, null, head, rangeTrend(reading, min, max), refs, projected = proj?.let { v(it, dec, ValueKind.PREDICTED) })
+    RangeBar(min, ideal, max, reading ?: proj, if (reading != null) presentKind else ValueKind.PREDICTED, idealBand, slim = true)
 }
 
 @Composable
@@ -252,8 +266,11 @@ fun KpiCard(title: String, kpis: List<Kpi>, info: String? = null) {
  * and ideal in small type, with the comparison bar under it.
  */
 @Composable
-fun KpiLine(k: Kpi) {
-    val t = if (k.settling) null else trendOf(k.actual, k.company ?: k.ideal, k.better)
+fun KpiLine(k: Kpi, plan: Boolean = false) {
+    // a value that is only projected never sits in the entered value's place: that place shows "—" and the
+    // projection goes on the line under it, marked as such ([plan]: the value is a plan by nature, shown as it is)
+    val projected = !plan && k.actualKind == ValueKind.PREDICTED && k.actual != null
+    val t = if (k.settling || projected) null else trendOf(k.actual, k.company ?: k.ideal, k.better)
     fun f(x: Double, dec: Int) = if (dec == 0) Fmt.i(x.roundToInt()) else Fmt.n(x, dec)
     val refs = buildList {
         add("com " + (k.company?.let { f(it, k.decimals) } ?: "NA") to kindColor(ValueKind.COMMERCIAL))
@@ -261,7 +278,8 @@ fun KpiLine(k: Kpi) {
     }
     val total = k.totalFactor?.let { fac -> k.actual?.let { "flock " + f(it * fac, k.totalDec) + " " + k.totalUnit } }
     val value = if (k.decimals == 0) vi(k.actual?.roundToInt(), k.actualKind) else v(k.actual, k.decimals, k.actualKind)
-    CompactLine(k.label, k.unit, total, value, t, refs)
+    if (projected) CompactLine(k.label, k.unit, null, vt("—", ValueKind.NEUTRAL), null, refs, projected = value)
+    else CompactLine(k.label, k.unit, total, value, t, refs)
     SlimCompareBar(k)
 }
 
@@ -272,7 +290,7 @@ fun KpiLine(k: Kpi) {
  */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-fun CompactLine(label: String, unit: String, sub: String?, value: V, trend: TrendMark?, refs: List<Pair<String, Color>>) {
+fun CompactLine(label: String, unit: String, sub: String?, value: V, trend: TrendMark?, refs: List<Pair<String, Color>>, projected: V? = null) {
     Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(label, Modifier.weight(1f).padding(end = 8.dp), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), maxLines = 2)
@@ -281,8 +299,11 @@ fun CompactLine(label: String, unit: String, sub: String?, value: V, trend: Tren
                 color = kindColor(if (value.text == "—") ValueKind.NEUTRAL else value.kind), maxLines = 1, softWrap = false)
             if (unit.isNotEmpty()) Text(" $unit", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), maxLines = 1, softWrap = false)
         }
-        if (sub != null || refs.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
-            if (sub != null) Text(sub, Modifier.padding(end = 8.dp), style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont),
+        if (sub != null || refs.isNotEmpty() || projected != null) Row(verticalAlignment = Alignment.CenterVertically) {
+            if (projected != null) Text("projected " + projected.text, Modifier.padding(end = 8.dp),
+                style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold),
+                color = kindColor(ValueKind.PREDICTED), maxLines = 1, softWrap = false)
+            else if (sub != null) Text(sub, Modifier.padding(end = 8.dp), style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont),
                 color = Color.White.copy(alpha = 0.6f), maxLines = 1, softWrap = false)
             androidx.compose.foundation.layout.FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                 refs.forEach { (t, c) -> Text(t, style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont), color = c, maxLines = 1, softWrap = false) }
@@ -561,4 +582,23 @@ fun KeyLine(vararg items: Pair<Color, String>) {
             }
         }
     }
+}
+
+/** A fold inside a card: the details stay out of sight until asked for ([key] keeps each fold's state apart). */
+@Composable
+fun More(label: String, key: String, content: @Composable () -> Unit) {
+    var open by androidx.compose.runtime.saveable.rememberSaveable(key) { androidx.compose.runtime.mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(8.dp))
+        .clickable { open = !open }.padding(horizontal = 10.dp, vertical = 7.dp).testTag("more_$key"), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.8f))
+        Canvas(Modifier.size(12.dp)) {
+            val w = size.width; val h = size.height
+            val path = androidx.compose.ui.graphics.Path().apply {
+                if (open) { moveTo(w * 0.1f, h * 0.7f); lineTo(w / 2, h * 0.25f); lineTo(w * 0.9f, h * 0.7f) }
+                else { moveTo(w * 0.1f, h * 0.3f); lineTo(w / 2, h * 0.75f); lineTo(w * 0.9f, h * 0.3f) }
+            }
+            drawPath(path, Color.White.copy(alpha = 0.8f), style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+        }
+    }
+    if (open) content()
 }

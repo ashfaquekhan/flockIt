@@ -288,7 +288,9 @@ data class DailyDataEntity(
     // Sample locations beyond the fifth, "weight:count;weight:count" (a blank location is ":") (v41)
     val moreSamples: String = "",
     // How many sample locations the day's entry shows (0 = not set: as the last weighing, else 5)
-    val locCount: Int = 0
+    val locCount: Int = 0,
+    // When the day's weights were saved (epoch ms; 0 = not known): the starting point of the time-based projections (v43)
+    val weighedAt: Long = 0
 )
 
 @Entity(

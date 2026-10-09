@@ -8,6 +8,63 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v43 — 2026-10-09 · Basic and advanced view, weather acting on the house and birds, entered and projected kept apart, projection lines, three more sheet tabs · **DB v17 (non-destructive)** · sheet schema 7
+Checked against the farm's own flock (KGF, September 2026, entries to day 19) — the flock is now a test
+fixture, and the projection methods were chosen by replaying it.
+- **Basic / Advanced switch** above the day slider (remembered on the phone). Basic: the farm window, the
+  weather, the day clock, today's entered and projected figures, alerts, and three short cards — birds, feed
+  and water, house. Advanced: everything, as before. In Entry, Basic shows what is entered every day
+  (weights, deaths, feed, deliveries, notes); the sampling map, birds weighed one by one, lifting and diesel
+  show in Advanced or once they hold a value.
+- **Entered and projected never share a box.** "Today" has two columns: Entered (as typed, it does not
+  move) and Projected. For today the projected column moves with the clock — weight grown since the last
+  weighing, feed and water gone so far, deaths so far, live birds, FCR; for an earlier day it is what the
+  app had projected for that day before its entry. Comparison lines show "—" and the projection on the
+  line under it until the value is entered. **DB v17**: the time the weights are saved is recorded
+  (`weighedAt`), so the weight projection starts from the real weighing time.
+- **Weather at the farm** (switch under the farm window, on by default; off = the ideal house as before).
+  The weather service's hourly temperature and humidity at the farm's location (kept on the phone for the
+  flock's days, also offline) → the house the fans, pads and heaters would give → what the birds feel →
+  feed (−1.5 % per °C above comfort, steeper in strong heat), water (+6 % per °C), growth (falls more than
+  feed), body temperature, breathing and the risk of losing birds. Sources: Baziz 1996 and Teyssier 2022
+  (feed), NRC 1994 (water), Tao & Xin 2003 (body temperature and danger steps). The air comes through one
+  interface (sensor → set by hand → weather → ideal), so house sensors can be added without changing the model.
+- **Birds in the farm window behave for their size**: mostly lying — about 12 % of the time on the move
+  under 0.5 kg, 5 % by 0.9 kg, 4 % above 2 kg; walking at 0.13 m/s as chicks and 0.10 m/s from 0.8 kg
+  (Tickle and others 2018; before, they walked about five times too fast and far too often); busiest at the
+  feeders after the lights come on and before they go off. In heat they move and eat less, drink more, lie
+  apart, hold the wings out and pant; cold chicks crowd together.
+- **Farm window labels**: "Body temp" is the body temperature (it is measured at the vent — the two names
+  were one number); with the weather on it is worked out for the house's air now. Density shows birds per
+  ft² (it only changes with deaths and the barricade) and kg per ft² (grows every day). The birds' sizes use
+  the CV — and there is now a CV: estimated from the group weighings when no birds are weighed one by one.
+- **Feeding plan, shorter**: bags to pour → times a day → each time → pans; then "how the bags were worked
+  out" in four boxes (chart ration → what the flock eats of it → likely eaten, with its range → feed in the
+  lines) and one line of proof (plan against entries over the last 3 and 7 days). The rest is under "Each
+  feeding in detail". **New method**: the bags entered are bags poured, not exactly eaten (in the farm's
+  records one day swings ±19 % around the forecast, three days together ±5 %), so the filter now follows the
+  flock's appetite and the feed sitting in the lines together instead of chasing each entry.
+- **Ventilation, shorter**: house air (hold, and the house now), fans for the air outside, minimum
+  ventilation, the grid, the controller; limits, measurements, litter and the air figures are folded away.
+  The two dials stand at the weather at the farm; a dial turned by hand holds for 30 seconds, then goes back.
+- **Projected line in every chart** (weight, FCR, cFCR, mortality, feed per day, feed till date): for each
+  day what the app projected for it from the days before; after the last entry, the forecast. The Present
+  line now holds entries only.
+- **Sheet (schema 7)** — upgrades itself as before (snapshot kept, backups upgraded, nothing dropped):
+  `Computed` (every value the app works out for a day beside the entries it comes from), `Projections`
+  (projected, entered and the miss in %, for weight, feed, FCR, deaths, mortality and live birds — and the
+  forecast for the days ahead), `Formulas` (how each value is worked out and from which columns), and a
+  `WeighedAt` column in DailyData. The phone and the sheet use the same calculation code.
+- **Ideal curve confirmed**: all 50 rows match Aviagen's Ross 308 AP 2022 as-hatched table; days 50–56,
+  which the booklet also gives, are now the published rows instead of the model (day 56: 4,446 g).
+- Entry: a new day's feed row starts with the variety entered last; the feed-type box shows the code only
+  (a long name used to break mid-word).
+- Stock: a symbol on received, used and in store. Farms header: the mark is the F of the name ("lockIt"
+  follows it) instead of an F beside "FlockIt".
+- Tests: `RealFlockTest` (the farm's flock: calculation, projections scored against the entries, the three
+  new tabs), `EnvModelTest` (heat, cold, behaviour by size, clock projections, CV from groups), the feed
+  forecast, schema 6 → 7, migration v12 → v17, the dials' 30 seconds, the basic view at 360 dp and at 130 % text.
+
 ## v42 — 2026-10-04 · The app's own type and theme · installs over a live flock
 - **Font** (option A from the sheet): **Rubik** for all text — soft square corners, like the bars of the
   mark — and **JetBrains Mono** for every number, also on the charts, the clock and the farm window, so

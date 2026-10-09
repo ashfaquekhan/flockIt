@@ -1,107 +1,149 @@
 package com.example.flock.domain
 
 import kotlin.math.abs
-import kotlin.math.ceil
 import kotlin.math.exp
-import kotlin.math.floor
 import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.sqrt
 
 /**
- * How much the flock will eat today, learned from what it has eaten so far — a Kalman filter (the standard
- * real-time method for tracking a slowly changing quantity through noisy readings).
+ * How much feed the flock needs today, learned from what was entered so far.
  *
- * What is tracked is the flock's APPETITE RATIO: feed actually eaten ÷ feed the plan expected, day by day.
- * It is modelled as a level that drifts a little each day (local-level state-space model):
- *     level today = level yesterday + drift          (drift variance q)
- *     reading     = level + noise                    (noise variance r: bags are counted in halves, feed is
- *                                                      left in pans, birds eat more or less on a given day)
- * After every day's entry the filter moves its estimate towards the reading by the Kalman gain
- * K = P / (P + r), where P is how unsure it still is. Today's forecast is plan × level, and its spread is
- * √(P + q + r) — so the result is a range with probabilities, not one number.
+ * WHAT THE RECORDS LOOK LIKE. The bags entered for a day are the bags POURED that day, not exactly what was
+ * eaten: feed stays in the hoppers, the lines and the pans. A big entry is followed by a small one (in the
+ * farm's own records the day-to-day entries swing by about ±25 % around the plan, while any three days
+ * together stay within about ±9 % of it). A method that follows each day's entry chases that swing.
  *
- * The noise r is taken from the flock's own day-to-day scatter once there are enough days (and kept within
- * sensible bounds); q is a quarter of it. Pure Kotlin, no Android.
+ * THE MODEL (a Kalman filter on a small state-space model — the standard real-time method for this):
+ *   appetite  a(t) = a(t−1) + small drift          the flock's eating against the plan, slow to change
+ *   in lines  s(t)                                 feed sitting in the lines above (+) or below (−) the usual
+ *   entered   y(t) = plan(t) × a(t) + s(t) − s(t−1)
+ * so a day with more poured than eaten leaves s high, and the filter expects less to be poured the next day.
+ * From it, for today:
+ *   likely eaten = plan × a          (what the birds will take; with a range)
+ *   to pour      = likely eaten − ½ s  (less when feed is still in the lines, more when they ran low; s is the
+ *                                        least sure part, so half of it is acted on)
+ *
+ * The plan itself already follows the flock: it is the company's feed for birds of the flock's own weight
+ * (so a heavy flock is fed as an older one), for the birds alive today. The first days of a flock (trays,
+ * paper, the first fill of the lines) are left out of the learning. Pure Kotlin, no Android.
  */
 object IntakeForecast {
-    /** One past day: the plan's feed for it and what was actually eaten (any unit, the same for both). */
+    /** One past day: the plan's feed for it and what was entered as used (any unit, the same for both). */
     data class Day(val day: Int, val planned: Double, val eaten: Double)
+
+    /** Planned against entered over a run of days. */
+    data class Window(val days: Int, val planned: Double, val entered: Double) {
+        val pct: Double get() = if (planned > 0) entered / planned * 100 else 100.0
+    }
 
     data class Result(
         /** the flock's appetite against the plan (1.0 = eats exactly the plan) and how sure that is (± 1 sd) */
         val ratio: Double, val ratioSd: Double,
-        /** today's intake in the plan's unit: the middle of the forecast and its one-sd spread */
+        /** what the birds are likely to eat today, in the plan's unit, and its one-sd spread */
         val mean: Double, val sd: Double,
-        /** days the forecast is built on */
+        /** feed sitting in the lines above (+) or below (−) the usual level, as far as the pour is corrected for it */
+        val inLines: Double,
+        /** what to pour today = likely eaten − in lines, and its spread */
+        val load: Double, val loadSd: Double,
+        /** days the forecast has learned from (0–2: still learning, the plan is used as it is) */
         val days: Int,
-        /** how far off the one-day-ahead forecasts were so far, % (mean absolute) — null with under 3 days */
-        val pastErrorPct: Double?
+        /** planned against entered over the last 3 and the last 7 learned days */
+        val last3: Window?, val last7: Window?,
+        /** how far a single day's entry has been from the plan × appetite, % (mean absolute) */
+        val dayScatterPct: Double?
     ) {
-        /** The value the day's intake stays under with probability [p] (0–1). */
-        fun quantile(p: Double): Double = mean + sd * zOf(p)
-        /** Chance that the flock needs no more than [amount]. */
-        fun chanceEnough(amount: Double): Double = if (sd <= 0) (if (amount >= mean) 1.0 else 0.0) else phi((amount - mean) / sd)
+        val learning: Boolean get() = days < MIN_DAYS
+        fun low(p: Double = 0.10): Double = max(0.0, mean + sd * zOf(p))
+        fun high(p: Double = 0.90): Double = mean + sd * zOf(p)
     }
 
-    private const val PRIOR_SD = 0.15          // before any data: within ±15 % of the plan, most likely
-    private const val R_MIN = 0.02 * 0.02
-    private const val R_MAX = 0.15 * 0.15
-    private const val R_DEFAULT = 0.06 * 0.06
+    const val MIN_DAYS = 3
+    /** entries before this flock day are not learned from (trays, paper, first fill of the lines) */
+    const val LEARN_FROM_DAY = 6
+    private const val PRIOR_SD = 0.12
+    private const val DRIFT_SD = 0.02          // appetite drifts about 2 % of the plan a day
+    private const val DAY_SD = 0.04            // the birds' own day-to-day variation
+    private const val LINES_TRUST = 0.5        // share of the estimated feed in the lines that the pour is corrected by
 
-    fun forecast(history: List<Day>, plannedToday: Double): Result {
-        val obs = history.filter { it.planned > 0 && it.eaten > 0 }.sortedBy { it.day }.map { it.day to it.eaten / it.planned }
-        // reading noise from the flock's own day-to-day scatter: Var(Δ reading) = 2r + q, with q = r / 4
-        val diffs = obs.zipWithNext { a, b -> b.second - a.second }
-        val r = if (diffs.size >= 4) (diffs.sumOf { it * it } / diffs.size / 2.25).coerceIn(R_MIN, R_MAX) else R_DEFAULT
-        val q = r / 4
-        var x = 1.0; var p = PRIOR_SD * PRIOR_SD
-        var lastDay: Int? = null
-        val errs = mutableListOf<Double>()
-        for ((d, y) in obs) {
-            p += q * max(1, d - (lastDay ?: (d - 1)))            // drift since the last reading
-            if (lastDay != null) errs += abs(y - x) / y * 100    // how good the forecast for this day was
-            val k = p / (p + r)
-            x += k * (y - x); p *= (1 - k)
-            lastDay = d
+    /**
+     * @param history      past days, any order
+     * @param plannedToday the plan for today
+     * @param carrySd      how much the feed in the lines varies from day to day (plan's unit) — about 40 % of
+     *                     what the feeder lines hold
+     */
+    fun forecast(history: List<Day>, plannedToday: Double, carrySd: Double, learnFromDay: Int = LEARN_FROM_DAY): Result {
+        val obs = history.filter { it.planned > 0 && it.eaten > 0 && it.day >= learnFromDay }.sortedBy { it.day }
+        val vs = max(1e-6, carrySd * carrySd)
+        val q = DRIFT_SD * DRIFT_SD
+        val r = vs * 0.01
+        // state [a, s(t), s(t−1)] and its covariance (symmetric, kept as six numbers)
+        var a = 1.0; var s = 0.0; var sp = 0.0
+        var paa = PRIOR_SD * PRIOR_SD; var pas = 0.0; var pap = 0.0; var pss = vs; var psp = 0.0; var ppp = vs
+        fun predict() {
+            // a stays (with drift); the new s is unknown around 0; the old s moves to s(t−1)
+            sp = s; s = 0.0
+            ppp = pss; pap = pas; psp = 0.0
+            pss = vs; pas = 0.0; paa += q
         }
-        val pPred = p + q
+        var last: Int? = null
+        val scatter = mutableListOf<Double>()
+        for (o in obs) {
+            repeat(max(1, o.day - (last ?: (o.day - 1)))) { predict() }      // a day without an entry: one more step
+            val p = o.planned
+            val yHat = p * a + s - sp
+            if (last != null) scatter += abs(o.eaten - p * a) / (p * a) * 100
+            // H = [p, 1, −1]
+            val phA = p * paa + pas - pap
+            val phS = p * pas + pss - psp
+            val phP = p * pap + psp - ppp
+            val sInn = p * phA + phS - phP + r
+            val kA = phA / sInn; val kS = phS / sInn; val kP = phP / sInn
+            val e = o.eaten - yHat
+            a += kA * e; s += kS * e; sp += kP * e
+            // P = P − K (H P)
+            paa -= kA * phA; pas -= kA * phS; pap -= kA * phP
+            pss -= kS * phS; psp -= kS * phP; ppp -= kP * phP
+            last = o.day
+        }
+        predict()
+        val p = plannedToday
+        val meanEat = p * a
+        val sdEat = p * sqrt(max(0.0, paa) + DAY_SD * DAY_SD)
+        // what sits in the lines is the least sure part of the estimate (after a big pour and a small one it cannot
+        // tell which of the two days was the odd one), so only half of it is acted on
+        val lines = LINES_TRUST * sp
+        val loadVar = p * p * (max(0.0, paa) + DAY_SD * DAY_SD) + LINES_TRUST * LINES_TRUST * max(0.0, ppp) - 2 * LINES_TRUST * p * pap
+        fun window(n: Int): Window? = obs.takeLast(n).takeIf { it.size >= n }?.let { w -> Window(n, w.sumOf { it.planned }, w.sumOf { it.eaten }) }
         return Result(
-            ratio = x, ratioSd = sqrt(pPred), mean = plannedToday * x, sd = plannedToday * sqrt(pPred + r),
-            days = obs.size, pastErrorPct = if (errs.size >= 2) errs.average() else null
+            ratio = a, ratioSd = sqrt(max(0.0, paa)), mean = meanEat, sd = sdEat,
+            inLines = if (obs.size >= MIN_DAYS) lines else 0.0,
+            load = max(0.0, if (obs.size >= MIN_DAYS) meanEat - lines else p), loadSd = sqrt(max(0.0, loadVar)),
+            days = obs.size, last3 = window(3), last7 = window(7),
+            dayScatterPct = if (scatter.size >= 3) scatter.average() else null
         )
     }
 
-    /** What to load: the whole-bag amounts around the forecast with the chance each one is enough. */
-    data class BagChoice(val bags: Double, val chanceEnough: Double, val expectedLeftBags: Double)
+    /** The forecast in whole bags. */
     data class Advice(
-        val forecastBags: Double, val lowBags: Double, val highBags: Double,
-        /** safe range to load, in whole bags: enough at least 80 % of the time … not over the 95 % point */
-        val safeFrom: Double, val safeTo: Double,
-        val choices: List<BagChoice>,
-        /** −1 give fewer than the plan, 0 the plan is right, +1 give more */
-        val direction: Int, val suggestedBags: Double
+        val planBags: Double,
+        /** what the birds are likely to eat, with the range it falls in 8 days out of 10 */
+        val likelyBags: Double, val lowBags: Double, val highBags: Double,
+        /** bags sitting in the lines above (+) or below (−) the usual */
+        val inLinesBags: Double,
+        /** whole bags to pour today */
+        val loadBags: Double,
+        /** −1 pour fewer than the plan, 0 the plan is right, +1 pour more */
+        val direction: Int
     )
 
-    /**
-     * Turns a forecast (in kg for the whole house) into bags: the middle and the 10–90 % range, the chance each
-     * whole-bag amount near it is enough, the safe range, and whether the plan should go up or down.
-     */
+    /** Turns a forecast (kg for the whole house) into bags; [planBags] is the plan in whole bags. */
     fun advise(f: Result, bagKg: Double, planBags: Double): Advice {
-        val mean = f.mean / bagKg; val sd = f.sd / bagKg
-        fun chance(b: Double) = f.chanceEnough(b * bagKg)
-        // expected bags left over when loading b: E[max(0, b − X)] for a normal X
-        fun left(b: Double): Double { if (sd <= 0) return max(0.0, b - mean); val z = (b - mean) / sd; return sd * (z * phi(z) + pdf(z)) }
-        val lo = floor(mean - 1.2816 * sd); val hi = ceil(mean + 1.2816 * sd)
-        val from = max(1.0, min(planBags, lo) - 1); val to = max(planBags, hi) + 1
-        val choices = generateSequence(from) { it + 1 }.takeWhile { it <= to }.map { BagChoice(it, chance(it), left(it)) }.toList()
-        val safeFrom = choices.firstOrNull { it.chanceEnough >= 0.80 }?.bags ?: ceil(mean)
-        val safeTo = max(safeFrom, choices.lastOrNull { it.chanceEnough <= 0.95 }?.bags?.let { it + 1 } ?: safeFrom)
-        val dir = when { planBags < safeFrom -> 1; planBags > safeTo -> -1; else -> 0 }
-        return Advice(mean, max(0.0, mean - 1.2816 * sd), mean + 1.2816 * sd, safeFrom, safeTo, choices, dir, if (dir == 0) planBags else if (dir > 0) safeFrom else safeTo)
+        if (f.learning || bagKg <= 0) return Advice(planBags, f.mean / max(1e-9, bagKg), f.low() / max(1e-9, bagKg), f.high() / max(1e-9, bagKg), 0.0, planBags, 0)
+        val load = max(1.0, Math.round(f.load / bagKg).toDouble())
+        return Advice(planBags, f.mean / bagKg, f.low() / bagKg, f.high() / bagKg, f.inLines / bagKg, load,
+            when { load >= planBags + 1 -> 1; load <= planBags - 1 -> -1; else -> 0 })
     }
 
-    private fun pdf(z: Double) = exp(-z * z / 2) / sqrt(2 * Math.PI)
     /** Standard normal distribution function (Abramowitz & Stegun 7.1.26). */
     fun phi(z: Double): Double {
         val t = 1 / (1 + 0.3275911 * abs(z) / sqrt(2.0))

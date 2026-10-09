@@ -66,6 +66,10 @@ fun MainFlockScreen(
     modifier: Modifier = Modifier
 ) {
     var currentTab by remember { mutableStateOf(FlockNavTab.ENTRY) }
+    // how the app is shown on this phone: the short or the full view, and whether the weather acts on the house and birds
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var basicView by remember { mutableStateOf(com.example.flock.network.ViewPrefs.basic(ctx)) }
+    var weatherOn by remember { mutableStateOf(com.example.flock.network.ViewPrefs.weatherOn(ctx)) }
     val isRefreshing by viewModel.isRefreshing.collectAsState()
 
     val activeFlock by viewModel.activeFlock.collectAsState()
@@ -147,7 +151,9 @@ fun MainFlockScreen(
                 onFarmClick = onNavFarms,
                 onFlockClick = onNavFlocks,
                 onWeatherClick = { viewModel.openWeatherForecast() },
-                lastDay = lastDay
+                lastDay = lastDay,
+                basicView = basicView,
+                onBasicView = { basicView = it; com.example.flock.network.ViewPrefs.setBasic(ctx, it) }
             )
         },
         bottomBar = {
@@ -217,7 +223,10 @@ fun MainFlockScreen(
                     onToggleLockTimer = { viewModel.toggleCutoffLock() },
                     onRevertDay = { viewModel.revertDay() },
                     onClearDay = { viewModel.clearDay() },
-                    farm = farm
+                    farm = farm,
+                    basic = basicView,
+                    lastFeedType = dailyRows.filter { it.dayNumber < selectedDay && it.feedBagsUsed > 0 }.maxByOrNull { it.dayNumber }
+                        ?.let { r -> com.example.flock.data.FlockCalc.usedSplit(r).maxByOrNull { it.value }?.key }
                 )
                 FlockNavTab.OUTPUT -> OutputScreen(
                     flock = activeFlock,
@@ -231,7 +240,10 @@ fun MainFlockScreen(
                     isToday = selectedDay == currentFlockDay,
                     onCloseBatch = activeFlock?.let { f -> { viewModel.closeFlock(f.flockId) } },
                     onFarmChange = { viewModel.updateFarm(it) },
-                    onFlockPlan = { w, h -> viewModel.updateFlockPlan(w, h) }
+                    onFlockPlan = { w, h -> viewModel.updateFlockPlan(w, h) },
+                    basic = basicView,
+                    weatherOn = weatherOn,
+                    onWeatherOn = { weatherOn = it; com.example.flock.network.ViewPrefs.setWeatherOn(ctx, it) }
                 )
                 FlockNavTab.STOCK -> StockScreen(
                     flock = activeFlock,

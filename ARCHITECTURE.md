@@ -88,11 +88,15 @@ com.example.flock
 │                 DaySchedule (dark, feed, refill, walk times) · FeedCorrection (capped feed advice)
 │                 IntakeForecast (Kalman filter on appetite → bags, range, chances) · GrowthForecast (target day,
 │                 harvest weight) · FlockKpis (ADG, 7-day FCR, mortality windows, projection checks)
+│                 BirdEnvironment (air → heat load → feed, water, growth, body temperature, risk; sensor-ready sources)
+│                 BirdBehaviour (time budget and walking speed by size, heat and cold) · Projection (what was
+│                 projected for each day before its entry; the clock's share of the day) · Uniformity (CV from groups)
 ├─ engine/        pure Kotlin biology and climate maths (PhysiologicalEngine, IbController, CompanyStandard)
-├─ data/          Room entities, DAOs, migrations, FlockRepository (recalculates a batch, single source of truth)
-├─ sync/          Google Sheets: SheetSchema (layout rules, read by header, upgrades) · SheetReports (report tabs
-│                 rebuilt from the input rows, never read back) · SheetsSyncManager · auth
-├─ network/       weather client
+├─ data/          Room entities, DAOs, migrations, FlockRepository · FlockCalc (the day-by-day calculation as one pure
+│                 function, used by the phone's database and the sheet's report tabs alike)
+├─ sync/          Google Sheets: SheetSchema (layout rules, read by header, upgrades) · SheetReports (report tabs —
+│                 FeedLedger, DailySummary, Computed, Projections, Formulas — rebuilt from the input rows, never read back) · SheetsSyncManager · auth
+├─ network/       weather client · WeatherStore (hourly weather of the flock's days kept on the phone) · ViewPrefs
 └─ notify/        task alarms
 ```
 
@@ -111,6 +115,16 @@ Patterns in use, and where:
   `ui/theme`; screens use the kit in `OutputUi`, never raw colours, so a style change is one edit.
 - **Explanations in one place**: every ⓘ reads `InfoTopics`; when a formula changes, its text changes in
   the same commit.
+
+Rules added in v43:
+- **Entered and projected never share a slot.** An entered value is shown as entered; a projection sits beside or
+  under it, marked as projected (the kit does this: `KpiLine`, `RangeParam(projected = …)`, `TodayCard`, the
+  charts' Projected line). Projections for today move with the clock (`OutputData.nowView`).
+- **Basic and advanced.** A card that is only for the full view goes behind `if (!basic)`; detail inside a card
+  goes behind `More(…)`. New numbers go to Advanced first.
+- **Air comes from a source** (`BirdEnvironment.Source`: sensor → set by hand → weather → ideal). Anything that
+  needs the house's air takes it from there; a sensor feed is one more source, nothing else changes.
+- **Every worked-out value written to the sheet has a row in `SheetReports.formulas()`.**
 
 Rules when adding a feature:
 1. Rule or formula → `domain/` (or `engine/`) + unit test. 2. Stored value → entity + Room migration +

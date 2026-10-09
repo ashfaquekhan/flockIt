@@ -89,7 +89,7 @@ class DataBackendTest {
 
     @Test fun schemaFiveSheetUpgradesWithoutLosingAnything() {
         // the layout of the version before: fixed columns in the old order, then the per-variety columns
-        val old = SheetSchema.DAILY_HEADERS.dropLast(1) + listOf("Used B1", "Used B2")
+        val old = SheetSchema.DAILY_HEADERS.dropLast(2) + listOf("Used B1", "Used B2")
         val d = day(9, mort = 7, used = "B1=10.0;B2=6.0", w1 = 5000.0, n1 = 14)
         val vals = SheetSchema.dayValues(d)
         val raw = SheetSchema.RawFile(titles = SheetSchema.TABS.toSet(),
@@ -104,6 +104,32 @@ class DataBackendTest {
         val b = SheetSchema.blocks(c, SheetSchema.primaryMeta("farm_1", 5))
         assertTrue(SheetSchema.verify(c, rawOf(b)).isEmpty())
         assertTrue(b.containsKey(SheetReports.FEED_LEDGER) && b.containsKey(SheetReports.DAILY_SUMMARY))
+    }
+
+    @Test fun schemaSixSheetUpgradesToSevenAndKeepsEverything() {
+        // the layout of the version before: as now, without the WeighedAt column and without the three new report tabs
+        val d = day(9, mort = 7, used = "B1=10.0;B2=6.0", w1 = 5000.0, n1 = 14)
+        val now = SheetSchema.dailyHeader(listOf("B1", "B2"), 5)
+        val six = now - "WeighedAt"
+        val cells = SheetSchema.dayCells(d, now)
+        val raw = SheetSchema.RawFile(titles = (SheetSchema.TABS + listOf(SheetReports.FEED_LEDGER, SheetReports.DAILY_SUMMARY)).toSet(),
+            meta = listOf(listOf("Key", "Value"), listOf("schemaVersion", 6)),
+            flocks = listOf(SheetSchema.FLOCK_HEADERS, SheetSchema.flockRow(flock)),
+            days = listOf(six, six.map { cells[now.indexOf(it)] }))
+        val reasons = SheetSchema.upgradeReasons(raw)
+        assertTrue(reasons.toString(), reasons.any { it.startsWith("schema 6") })
+        assertTrue(reasons.any { it.contains("Computed") && it.contains("Projections") && it.contains("Formulas") })
+        assertTrue(reasons.any { it.contains("DailyData columns differ") })
+        val c = SheetSchema.parse(sid, raw, farm, null)
+        assertEquals(7, c.days.single().mortality); assertEquals(0L, c.days.single().weighedAt)
+        assertEquals(mapOf("B1" to 10.0, "B2" to 6.0), SheetSchema.usedSplit(c.days.single()))
+        val b = SheetSchema.blocks(c, SheetSchema.primaryMeta("farm_1", 6))
+        assertTrue(SheetSchema.verify(c, rawOf(b)).isEmpty())
+        assertTrue(SheetReports.TABS.all { b.containsKey(it) })
+        assertEquals("WeighedAt", b["DailyData"]!![0].last())
+        // a weighing time written is read back
+        val timed = SheetSchema.parse(sid, rawOf(SheetSchema.blocks(c.copy(days = listOf(d.copy(weighedAt = 1791203469469L))), SheetSchema.primaryMeta("farm_1", 7))), farm, null)
+        assertEquals(1791203469469L, timed.days.single().weighedAt)
     }
 
     @Test fun feedLedgerKeepsEachVarietyApartWithRunningTotals() {

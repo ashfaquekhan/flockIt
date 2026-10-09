@@ -1,6 +1,7 @@
 package com.example.flock.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -75,7 +76,10 @@ fun TopFlockBar(
     onFlockClick: () -> Unit,
     onWeatherClick: () -> Unit = {},
     /** the last day the day bar reaches: the planned harvest age, or further once the flock has run past it */
-    lastDay: Int? = null
+    lastDay: Int? = null,
+    /** the short view (the day in brief) or the full one; null hides the switch */
+    basicView: Boolean? = null,
+    onBasicView: (Boolean) -> Unit = {}
 ) {
     val harvestAge = lastDay ?: flock?.harvestAge ?: 42
     Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
@@ -214,6 +218,9 @@ fun TopFlockBar(
                 }
             }
 
+            // the view switch, above the day slider: the day in brief, or everything
+            if (basicView != null) ViewSwitch(basicView, onBasicView)
+
             // Row 2: Day Stepper (cannot exceed current real flock day) + Date + Cutoff / Lock Chip
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -323,6 +330,29 @@ fun TopFlockBar(
                 IconButton(onClick = onNextDay, enabled = selectedDay < harvestAge, modifier = Modifier.size(36.dp).testTag("next_day")) {
                     Icon(Icons.Default.ChevronRight, contentDescription = "Next day")
                 }
+            }
+        }
+    }
+}
+
+/** Two halves, one chosen: Basic (the day in brief) or Advanced (every number). */
+@Composable
+private fun ViewSwitch(basic: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().testTag("view_switch"), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf(true to "Basic", false to "Advanced").forEach { (isBasic, label) ->
+            val on = basic == isBasic
+            Box(
+                Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
+                    .border(if (on) 1.5.dp else 1.dp, if (on) Color.White else Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp))
+                    .background(if (on) Color.White.copy(alpha = 0.10f) else Color.Transparent)
+                    .clickable { onChange(isBasic) }
+                    .padding(vertical = 5.dp)
+                    .testTag(if (isBasic) "view_basic" else "view_advanced"),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(label, maxLines = 1, softWrap = false,
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (on) FontWeight.Bold else FontWeight.Medium),
+                    color = Color.White.copy(alpha = if (on) 1f else 0.6f))
             }
         }
     }

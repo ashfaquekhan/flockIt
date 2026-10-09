@@ -33,7 +33,7 @@ object PhysiologicalEngine {
     /** The oldest a broiler flock is kept (heavy roasters); the curves run this far. */
     const val MAX_FLOCK_DAY = 70
 
-    // Ross 308 AP 2022 (as-hatched) & Cobb 500 Day 0 - 49 (the published table)
+    // Ross 308 AP 2022 (as-hatched; checked row by row against Aviagen's 2022 booklet, v43) & Cobb 500, day 0 - 49
     private val TABLE = listOf(
         StandardPoint(0, 44.0, 42.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
         StandardPoint(1, 62.0, 64.0, 12.0, 12.4, 12.0, 12.0, 0.194, 0.188),
@@ -88,7 +88,8 @@ object PhysiologicalEngine {
     )
 
     /**
-     * The table carried on to day [MAX_FLOCK_DAY] with a growth model, so an older flock still has a curve:
+     * The table carried on to day [MAX_FLOCK_DAY], so an older flock still has a curve. Ross: days 50–56 are the
+     * published rows; past that (and for Cobb past day 49) a growth model:
      *  - weight follows a Gompertz curve fitted to the table from day 21 (growth slows as the bird nears
      *    its mature weight), joined to the table's last weight;
      *  - daily feed = maintenance (∝ weight^0.75) + growth (∝ daily gain), the two factors taken from the
@@ -130,7 +131,18 @@ object PhysiologicalEngine {
             }
             return out
         }
-        val r = extend({ it.bwRoss }, { it.dFeedRoss }, { it.cumFeedRoss })
+        // Ross 308 AP 2022 publishes days 50–56 as well (weight g, daily intake g): those days are the published
+        // rows, and the model carries on from day 56 in the same proportion
+        val published = listOf(3888.0 to 232.0, 3984.0 to 233.0, 4079.0 to 235.0, 4173.0 to 236.0, 4265.0 to 237.0, 4356.0 to 238.0, 4446.0 to 239.0)
+        val model = extend({ it.bwRoss }, { it.dFeedRoss }, { it.cumFeedRoss })
+        val wK = published.last().first / model[published.size - 1].first
+        val fK = published.last().second / model[published.size - 1].second
+        var cumRoss = last.cumFeedRoss
+        val r = model.mapIndexed { i, m ->
+            val (w, f) = if (i < published.size) published[i] else (m.first * wK) to (m.second * fK)
+            cumRoss += f
+            Triple(w, f, cumRoss)
+        }
         val c = extend({ it.bwCobb }, { it.dFeedCobb }, { it.cumFeedCobb })
         TABLE + r.indices.map { i ->
             StandardPoint(last.day + 1 + i, r[i].first, c[i].first, r[i].second, c[i].second, r[i].third, c[i].third,

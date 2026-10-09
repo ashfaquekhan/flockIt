@@ -29,6 +29,7 @@ class ForecastTest {
             assertEquals(s[i - 1].cumFeedRoss + s[i].dFeedRoss, s[i].cumFeedRoss, 1e-6)
         }
         println("Ross d56 ${s[56].bwRoss.toInt()} g feed ${s[56].dFeedRoss.toInt()} · d63 ${s[63].bwRoss.toInt()} g · d70 ${s[70].bwRoss.toInt()} g feed ${s[70].dFeedRoss.toInt()} FCR ${"%.3f".format(s[70].fcrRoss)}")
+        assertEquals(4446.0, s[56].bwRoss, 1e-9); assertEquals(239.0, s[56].dFeedRoss, 1e-9)   // days 50–56 are the published rows
         assertTrue(s[70].bwRoss in 5000.0..6200.0)                     // a heavy roaster, not a turkey
         assertTrue(s[70].dFeedRoss in 225.0..290.0)
         assertTrue(abs(s[50].bwRoss - s[49].bwRoss - (s[49].bwRoss - s[48].bwRoss)) < 6)   // no jump where the model takes over
@@ -59,52 +60,72 @@ class ForecastTest {
     }
 
     // ------------------------------------------------------------------ feed forecast
+    private val carry = 200.0     // feed in the lines varies by about this much (same unit as the plan)
+
     @Test fun intakeFilterLearnsTheFlocksAppetite() {
-        // a flock that eats 8 % less than the plan, with a little day-to-day scatter
+        // a flock that eats 8 % less than the plan, with a little day-to-day scatter (days 6 on are learned from)
         val noise = listOf(0.01, -0.02, 0.015, -0.01, 0.02, -0.015, 0.0, 0.01, -0.01, 0.005)
-        val hist = noise.mapIndexed { i, n -> IntakeForecast.Day(i, 1000.0 + i * 50, (1000.0 + i * 50) * (0.92 + n)) }
-        val f = IntakeForecast.forecast(hist, 1500.0)
+        val hist = noise.mapIndexed { i, n -> IntakeForecast.Day(6 + i, 1000.0 + i * 50, (1000.0 + i * 50) * (0.92 + n)) }
+        val f = IntakeForecast.forecast(hist, 1500.0, carry)
         assertEquals(10, f.days)
-        assertEquals(0.92, f.ratio, 0.02)
-        assertEquals(1500 * 0.92, f.mean, 30.0)
-        assertTrue(f.sd > 0 && f.sd < 1500 * 0.08)
-        assertNotNull(f.pastErrorPct); assertTrue(f.pastErrorPct!! < 5)
-        // with no history it falls back on the plan, and says it is unsure
-        val none = IntakeForecast.forecast(emptyList(), 1500.0)
-        assertEquals(1500.0, none.mean, 1e-9); assertNull(none.pastErrorPct); assertTrue(none.sd > f.sd)
-        // probabilities behave
-        assertEquals(0.5, f.chanceEnough(f.mean), 1e-6)
-        assertTrue(f.chanceEnough(f.mean + 2 * f.sd) > 0.97 && f.chanceEnough(f.mean - 2 * f.sd) < 0.03)
-        assertEquals(f.mean + 1.2816 * f.sd, f.quantile(0.9), 0.02 * f.sd)
+        assertEquals(0.92, f.ratio, 0.03)
+        assertEquals(1500 * 0.92, f.mean, 45.0)
+        assertTrue(f.sd > 0 && f.sd < 1500 * 0.12)
+        assertTrue(f.low() < f.mean && f.mean < f.high())
+        assertEquals(92.0, f.last7!!.pct, 1.0); assertEquals(92.0, f.last3!!.pct, 1.5)
+        // the first days of a flock (trays, paper, the first fill) are not learned from
+        val early = IntakeForecast.forecast((0 until 6).map { IntakeForecast.Day(it, 100.0, 300.0) }, 1500.0, carry)
+        assertEquals(0, early.days); assertTrue(early.learning)
+        // with nothing to learn from it falls back on the plan, and says so
+        val none = IntakeForecast.forecast(emptyList(), 1500.0, carry)
+        assertEquals(1500.0, none.mean, 1e-9); assertEquals(1500.0, none.load, 1e-9); assertTrue(none.learning); assertNull(none.last3)
+        assertTrue(none.sd > f.sd)
     }
 
     @Test fun intakeFilterFollowsAChangeOfAppetite() {
-        // the flock eats the plan for a week, then 12 % more (cooler weather): the estimate moves most of the way in a few days
-        val hist = (0 until 7).map { IntakeForecast.Day(it, 1000.0, 1000.0) } + (7 until 12).map { IntakeForecast.Day(it, 1000.0, 1120.0) }
-        val f = IntakeForecast.forecast(hist, 1000.0)
-        assertTrue("ratio ${f.ratio}", f.ratio in 1.07..1.125)
+        // the flock eats the plan for a week, then 12 % more (cooler weather): the estimate moves most of the way in some days
+        val hist = (6 until 13).map { IntakeForecast.Day(it, 1000.0, 1000.0) } + (13 until 23).map { IntakeForecast.Day(it, 1000.0, 1120.0) }
+        val f = IntakeForecast.forecast(hist, 1000.0, carry)
+        assertTrue("ratio ${f.ratio}", f.ratio in 1.06..1.125)
     }
 
-    @Test fun adviceGivesASafeRangeAndADirection() {
-        val f = IntakeForecast.forecast((0 until 10).map { IntakeForecast.Day(it, 1000.0, 920.0) }, 1140.0)     // 19 bags of 60 kg planned
+    @Test fun aBigPourIsNotTakenForABigAppetite() {
+        // the flock eats 1,000 a day; one day 1,400 is poured (400 stays in the lines) and 600 the day after
+        val steady = (6 until 14).map { IntakeForecast.Day(it, 1000.0, 1000.0) }
+        val after = IntakeForecast.forecast(steady + IntakeForecast.Day(14, 1000.0, 1400.0), 1000.0, carry)
+        // the appetite hardly moves, the surplus is seen in the lines, and less is to be poured today
+        assertTrue("appetite ${after.ratio}", after.ratio in 0.98..1.10)
+        println("after the big pour: appetite ${after.ratio}, in the lines ${after.inLines}, pour ${after.load}")
+        assertTrue("in the lines ${after.inLines}", after.inLines > 80)
+        assertTrue("pour ${after.load}", after.load < 950)
+        assertTrue(after.mean in 950.0..1100.0)              // what the birds will eat is still about the plan
+        // … and once the small pour follows, everything is back to normal
+        val back = IntakeForecast.forecast(steady + IntakeForecast.Day(14, 1000.0, 1400.0) + IntakeForecast.Day(15, 1000.0, 600.0), 1000.0, carry)
+        println("after the small pour: appetite ${back.ratio}, in the lines ${back.inLines}, pour ${back.load}")
+        assertEquals(1.0, back.ratio, 0.04); assertTrue("pour ${back.load}", back.load in 900.0..1120.0)
+        // a method that followed each day's entry would have swung with it
+        val swing = listOf(1000.0, 1400.0, 600.0, 1300.0, 700.0, 1000.0, 1400.0, 600.0, 1000.0, 1000.0)
+        val lumpy = IntakeForecast.forecast(swing.mapIndexed { i, y -> IntakeForecast.Day(6 + i, 1000.0, y) }, 1000.0, carry)
+        assertEquals(1.0, lumpy.ratio, 0.05)
+        assertTrue(lumpy.dayScatterPct!! > 15)
+    }
+
+    @Test fun adviceIsInWholeBagsAndSaysWhichWay() {
+        val f = IntakeForecast.forecast((6 until 16).map { IntakeForecast.Day(it, 1000.0, 920.0) }, 1140.0, carry)     // 19 bags of 60 kg planned
         val a = IntakeForecast.advise(f, 60.0, 19.0)
-        println("forecast ${"%.2f".format(a.forecastBags)} bags (${"%.2f".format(a.lowBags)}–${"%.2f".format(a.highBags)}), safe ${a.safeFrom}–${a.safeTo}, " +
-            a.choices.joinToString { "${it.bags.toInt()}: ${"%.0f".format(it.chanceEnough * 100)}%" })
-        assertEquals(1140 * 0.92 / 60, a.forecastBags, 0.3)
-        assertTrue(a.lowBags < a.forecastBags && a.forecastBags < a.highBags)
-        assertTrue(a.safeFrom <= a.safeTo)
-        // 19 bags is the top of the safe range (enough practically always): the plan stands
-        assertEquals(0, a.direction); assertEquals(19.0, a.safeTo, 1e-9); assertEquals(18.0, a.safeFrom, 1e-9)
-        // a plan above the safe range is brought down to its top, one below it is brought up to its bottom
-        val high = IntakeForecast.advise(f, 60.0, 21.0)
-        assertEquals(-1, high.direction); assertEquals(19.0, high.suggestedBags, 1e-9)
-        val low = IntakeForecast.advise(f, 60.0, 16.0)
-        assertEquals(1, low.direction); assertEquals(18.0, low.suggestedBags, 1e-9)
-        // the chance a whole-bag amount is enough rises with the bags
-        a.choices.zipWithNext { x, y -> assertTrue(y.chanceEnough >= x.chanceEnough); assertTrue(y.expectedLeftBags >= x.expectedLeftBags) }
+        println("likely ${"%.2f".format(a.likelyBags)} bags (${"%.2f".format(a.lowBags)}–${"%.2f".format(a.highBags)}), in the lines ${"%.2f".format(a.inLinesBags)}, pour ${a.loadBags}")
+        assertEquals(1140 * 0.92 / 60, a.likelyBags, 0.4)
+        assertTrue(a.lowBags < a.likelyBags && a.likelyBags < a.highBags)
+        assertEquals(a.loadBags, Math.rint(a.loadBags), 0.0)     // whole bags
+        assertTrue("pour ${a.loadBags}", a.loadBags in 17.0..18.0)
+        assertEquals(-1, a.direction)                            // fewer than the 19 planned
+        assertEquals(1, IntakeForecast.advise(f, 60.0, 15.0).direction)
         // a flock eating the plan keeps the plan
-        val even = IntakeForecast.advise(IntakeForecast.forecast((0 until 10).map { IntakeForecast.Day(it, 1000.0, 1000.0) }, 1110.0), 60.0, 19.0)
+        val even = IntakeForecast.advise(IntakeForecast.forecast((6 until 16).map { IntakeForecast.Day(it, 1000.0, 1000.0) }, 1110.0, carry), 60.0, 19.0)
         assertEquals(0, even.direction)
+        // still learning: the plan as it is
+        val learning = IntakeForecast.advise(IntakeForecast.forecast(emptyList(), 1110.0, carry), 60.0, 19.0)
+        assertEquals(19.0, learning.loadBags, 0.0); assertEquals(0, learning.direction)
     }
 
     // ------------------------------------------------------------------ growth forecast

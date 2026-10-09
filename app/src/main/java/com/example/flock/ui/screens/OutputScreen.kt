@@ -123,7 +123,12 @@ fun OutputScreen(
     onFarmChange: ((FarmEntity) -> Unit)? = null,
     modifier: Modifier = Modifier,
     /** sets the flock's target weight (g) and planned harvest day */
-    onFlockPlan: ((Double, Int) -> Unit)? = null
+    onFlockPlan: ((Double, Int) -> Unit)? = null,
+    /** the short view: the day in brief */
+    basic: Boolean = false,
+    /** the weather at the farm acts on the house and the birds */
+    weatherOn: Boolean = false,
+    onWeatherOn: (Boolean) -> Unit = {}
 ) {
     // one scroll position for every day; the section being read stays put when the day changes
     val scroll = rememberScrollState()
@@ -147,8 +152,8 @@ fun OutputScreen(
         }
         return
     }
-    val d = remember(flock, farm, entry, dailyRows, feedTypes, weather, hourly, isToday) {
-        OutputData(flock, farm, entry, dailyRows, feedTypes, weather, hourly, isToday)
+    val d = remember(flock, farm, entry, dailyRows, feedTypes, weather, hourly, isToday, weatherOn) {
+        OutputData(flock, farm, entry, dailyRows, feedTypes, weather, hourly, isToday, weatherOn)
     }
     // feedings logged here drive the coop's feeder; the feeder is re-worked every 30 s
     val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -161,9 +166,14 @@ fun OutputScreen(
     val feeder = remember(events, now, d) {
         feederState(events, now, zone, d.giveKg, d.kgPerBag(d.phase), (d.bagsFillOpen * d.kgPerBag(d.phase)).takeIf { it > 0 } ?: d.giveKg, light)
     }
+    // the clock: the projections that move with it are worked out afresh every half minute
+    val nowZ = remember(now, zone) { java.time.Instant.ofEpochMilli(now).atZone(zone) }
+    val nowView = remember(d, now) { if (isToday) d.nowView(nowZ) else null }
+    // the house this hour, worked out from the weather (null with the switch off: the ideal house)
+    val air = d.envAt(nowZ.hour)
     val coop = CoopInput(
-        age = d.day, meanG = d.bw, cvPct = entry.cv, live = d.live, entry = d.entryBirds, stage = d.stage, light = light, feeder = feeder,
-        zoneId = zone, airC = entry.tempIdeal, rhPct = entry.rhIdeal, feelsC = d.plan.comfort,
+        age = d.day, meanG = d.bw, cvPct = d.cvEst?.coerceIn(3.0, 20.0), live = d.live, entry = d.entryBirds, stage = d.stage, light = light, feeder = feeder,
+        zoneId = zone, airC = air?.air?.tempC ?: entry.tempIdeal, rhPct = air?.air?.rhPct ?: entry.rhIdeal, feelsC = air?.r?.feltC ?: d.plan.comfort,
         chillC = com.example.flock.engine.IbController.levelChill(d.minLevel, d.day, d.plan.comfort, d.fanCfm, d.plan.crossFt2),
         pressurePa = 22.5, litterC = d.litterTemp.second, litterMoist = 25.0, bodyC = d.bodyTemp.second,
         waterC = 18.0 to 21.0, waterPh = 6.0 to 6.8, travelM = ALLOWED_TRAVEL_M,
@@ -172,7 +182,10 @@ fun OutputScreen(
             d.barricadeFtNow, d.live.toDouble() / d.areaInUseFt2),
         minVentCfmBird = d.minVentCfmBird, minVentCfm = d.minVentCfmBird * d.live, idealC = entry.tempIdeal,
         nh3Max = entry.nh3Max, co2Max = entry.co2Max, ventC = d.bodyTemp, feetC = d.footTemp.second,
-        breaths = d.breathsIdeal, pantAbove = PANT_ABOVE_PER_MIN, weightMeasured = d.vk == ValueKind.PRESENT
+        breaths = d.breathsIdeal, pantAbove = PANT_ABOVE_PER_MIN, weightMeasured = d.vk == ValueKind.PRESENT,
+        heatLoadC = air?.r?.heatLoadC ?: 0.0, airModelled = air != null, bodyNowC = air?.r?.bodyTempC, breathsNow = air?.r?.breathsPerMin,
+        stateWord = air?.r?.state?.label, airFrom = air?.air?.source?.label,
+        densityKgFt2 = d.live * d.bw / 1000.0 / d.areaInUseFt2, cvEstimated = !d.cvMeasured, compact = basic
     )
     var confirmClose by remember { mutableStateOf(false) }
 
@@ -182,9 +195,11 @@ fun OutputScreen(
         modifier = Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal = 14.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        TagLegend()
+        if (!basic) TagLegend()
         // the animation, then the day's clock, the key numbers and alerts; details in the tabs below
         Anchored("coop") { GlassBox(Modifier.fillMaxWidth()) { Coop3D(coop) } }
+        // the weather at the farm: on, it drives the birds in the window and the day's plan; off, the ideal house
+        Anchored("weather") { WeatherRow(d, nowZ.hour, weatherOn, onWeatherOn) }
         // a feeding given to the birds in the window: how many bags and at what time
         Anchored("feedlog") {
             FeedEntryRow(d, feeder, zone,
@@ -198,17 +213,27 @@ fun OutputScreen(
         Anchored("clock") {
             OutputCard(title = "Day clock", info = "clock") {
                 FarmDayClock(d.daySchedule(feedings), farmZone(d.farm),
-                    amounts = DayAmounts(feedOpt?.bagsPerFeeding, feedOpt?.bagsPerLine, entry.totalWaterL / d.waterRefills))
+                    amounts = DayAmounts(feedOpt?.bagsPerFeeding, feedOpt?.bagsPerLine, d.waterL / d.waterRefills))
             }
         }
-        Anchored("kpis") { KeyKpis(d, feeder) }
+        // entered and projected, side by side and never in one box
+        Anchored("today") { TodayCard(d, nowView) }
         Anchored("alerts") { AlertList(d.allAlerts) }
-        var tab by rememberSaveable { androidx.compose.runtime.mutableIntStateOf(0) }
-        Anchored("tabs") { OutputTabs(listOf("Birds", "Ventilation", "Feed & water"), tab.coerceIn(0, 2)) { tab = it } }
-        when (tab) {
-            0 -> BirdsTab(d, onFlockPlan)
-            1 -> VentTab(d)
-            else -> FeedTab(d, feedPick, { feedPick = it }, onFarmChange)
+        if (basic) {
+            // the day in brief: birds, feed and water, the house
+            Anchored("b_birds") { BasicBirds(d, nowView) }
+            Anchored("b_feed") { BasicFeed(d, feedPick) }
+            Anchored("b_house") { BasicHouse(d, nowZ.hour) }
+        } else {
+            Anchored("kpis") { KeyKpis(d, feeder, nowView) }
+            Anchored("wx") { WeatherEffects(d) }
+            var tab by rememberSaveable { androidx.compose.runtime.mutableIntStateOf(0) }
+            Anchored("tabs") { OutputTabs(listOf("Birds", "Ventilation", "Feed & water"), tab.coerceIn(0, 2)) { tab = it } }
+            when (tab) {
+                0 -> BirdsTab(d, onFlockPlan, nowView)
+                1 -> VentTab(d, nowZ.hour)
+                else -> FeedTab(d, feedPick, { feedPick = it }, onFarmChange)
+            }
         }
         if (onCloseBatch != null && flock?.status != "closed") {
             OutlinedButton(onClick = { confirmClose = true }, modifier = Modifier.fillMaxWidth(),

@@ -99,6 +99,7 @@ fun FarmDayClock(plan: DaySchedule.Plan, zone: java.time.ZoneId, modifier: Modif
 }
 
 /** The day's totals in clear numbers: how often and how much. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Totals(plan: DaySchedule.Plan, kinds: List<Kind>, a: DayAmounts) {
     data class Cell(val emoji: String, val name: String, val value: String, val sub: String, val col: Color)
@@ -118,12 +119,14 @@ private fun Totals(plan: DaySchedule.Plan, kinds: List<Kind>, a: DayAmounts) {
                     Row(Modifier.weight(1f).border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 5.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Text(c.emoji, style = MaterialTheme.typography.titleMedium, maxLines = 1, softWrap = false)
-                        Column(Modifier.padding(start = 8.dp)) {
-                            Row(verticalAlignment = Alignment.Bottom) {
+                        Column(Modifier.padding(start = 6.dp)) {
+                            // at large text the value drops under the name instead of being cut
+                            androidx.compose.foundation.layout.FlowRow {
                                 Text(c.name + " ", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.65f), maxLines = 1, softWrap = false)
                                 Text(c.value, style = MaterialTheme.typography.titleSmall.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold), color = c.col, maxLines = 1, softWrap = false)
                             }
-                            if (c.sub.isNotEmpty()) Text(c.sub, style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont), color = c.col.copy(alpha = 0.8f), maxLines = 1, softWrap = false)
+                            if (c.sub.isNotEmpty()) Text(c.sub, style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont,
+                                letterSpacing = androidx.compose.ui.unit.TextUnit(-0.7f, androidx.compose.ui.unit.TextUnitType.Sp)), color = c.col.copy(alpha = 0.8f), maxLines = 1, softWrap = false)
                         }
                     }
                 }
@@ -179,8 +182,8 @@ private fun Agenda(plan: DaySchedule.Plan, kinds: List<Kind>, a: DayAmounts, now
                 Text(hhmmOf(it.h), style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold),
                     color = it.col.copy(alpha = alpha), modifier = Modifier.width(52.dp * fs), maxLines = 1, softWrap = false)
                 Text(it.emoji, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(26.dp * fs), maxLines = 1, softWrap = false)
-                Text(it.what, style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = alpha), modifier = Modifier.weight(1f), maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                // at large text the job wraps between its words onto a second line; it is never cut
+                Text(it.what, style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = alpha), modifier = Modifier.weight(1f).padding(end = 4.dp), maxLines = 3)
                 if (it.amount.isNotEmpty()) Text(it.amount, style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold),
                     color = it.col.copy(alpha = alpha), maxLines = 1, softWrap = false)
             }

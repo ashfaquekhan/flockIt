@@ -123,8 +123,13 @@ fun EntriesScreen(
     onClearDay: () -> Unit = {},
     modifier: Modifier = Modifier,
     /** the house, for the sampling map (null: no map) */
-    farm: com.example.flock.data.FarmEntity? = null
+    farm: com.example.flock.data.FarmEntity? = null,
+    /** the short view: only what is entered every day (the rest shows once it holds a value) */
+    basic: Boolean = false,
+    /** the feed variety entered last on an earlier day: a new day's feed row starts with it */
+    lastFeedType: String? = null
 ) {
+    val startType = lastFeedType?.takeIf { code -> feedTypes.isEmpty() || feedTypes.any { it.code == code } } ?: (feedTypes.firstOrNull()?.code ?: "B1")
     // sample locations: as many as the last weighing had (5 to start with); + and − change the number
     val locs = remember { mutableStateListOf<LocRow>() }
     // birds weighed one by one (grams) — gives the true CV and uniformity
@@ -195,7 +200,7 @@ fun EntriesScreen(
             breakdown.isNotEmpty() -> breakdown.forEach { (c, b) -> feedUse.add(FeedUseRow(c, b.fmt())) }
             (entry?.feedBagsUsed ?: 0.0) > 0 || "F" in saved ->
                 feedUse.add(FeedUseRow(entry?.feedUsedType ?: (feedTypes.firstOrNull()?.code ?: "B1"), (entry?.feedBagsUsed ?: 0.0).fmt()))
-            else -> feedUse.add(FeedUseRow(feedTypes.firstOrNull()?.code ?: "B1", ""))
+            else -> feedUse.add(FeedUseRow(startType, ""))
         }
 
         birdsLifted = entry?.birdsLifted?.let { if (it > 0) it.toString() else "" } ?: ""
@@ -309,9 +314,9 @@ fun EntriesScreen(
                     Icon(Icons.Default.Add, contentDescription = "One more location", modifier = Modifier.size(18.dp))
                 }
             }
-            if (farm != null) SampleMap(locs.size, farm, entry?.occupiedFt2 ?: 0.0)
+            if (farm != null && !basic) SampleMap(locs.size, farm, entry?.occupiedFt2 ?: 0.0)
 
-            OutlinedTextField(
+            if (!basic || singles.isNotBlank()) OutlinedTextField(
                 colors = entryFieldColors(),
                 value = singles, onValueChange = { singles = it },
                 label = { Text("Birds weighed one by one (g)") },
@@ -391,7 +396,7 @@ fun EntriesScreen(
                             colors = entryFieldColors(),
                             value = row.bags,
                             onValueChange = { row.bags = it },
-                            label = { Text("Bags · $yesterdayDate") },
+                            label = { Text("Bags", maxLines = 1, softWrap = false) },
                             placeholder = { Text("used on $yesterdayDate") },
                             singleLine = true,
                             enabled = feedEnabled,
@@ -416,7 +421,7 @@ fun EntriesScreen(
                 }
                 if (feedEnabled) {
                     OutlinedButton(
-                        onClick = { feedUse.add(FeedUseRow(feedTypes.firstOrNull()?.code ?: "B1", "")) },
+                        onClick = { feedUse.add(FeedUseRow(feedUse.lastOrNull()?.type ?: startType, "")) },
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -435,7 +440,7 @@ fun EntriesScreen(
         }
 
         // SECTION 4: Lifting & culls
-        Section(title = "4. Harvest lifting & culls") {
+        if (!basic || listOf(birdsLifted, weightLifted, lameSeparated).any { (it.replace(",", ".").toDoubleOrNull() ?: 0.0) > 0 }) Section(title = "4. Harvest lifting & culls") {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     colors = entryFieldColors(),
@@ -462,8 +467,8 @@ fun EntriesScreen(
         }
 
         // SECTION 5: Notes & diesel (only miscellaneous section kept)
-        Section(title = "5. Notes & diesel") {
-            OutlinedTextField(
+        Section(title = if (basic) "Notes" else "5. Notes & diesel") {
+            if (!basic || (dieselCansUsed.replace(",", ".").toDoubleOrNull() ?: 0.0) > 0) OutlinedTextField(
                 colors = entryFieldColors(),
                 value = dieselCansUsed, onValueChange = { dieselCansUsed = it },
                 label = { Text("Diesel cans used") },
@@ -869,13 +874,14 @@ fun FeedTypeDropdown(
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val displayLabel = options.firstOrNull { it.code == selectedCode }?.let { "${it.code} (${it.name})" } ?: selectedCode.ifEmpty { "Feed Type" }
+    // the box shows the code only (the names are in the list): "B1 (Pre-starter)" would break mid-word in a narrow box
+    val displayLabel = selectedCode.ifEmpty { "Type" }
 
     Box(modifier = modifier) {
         OutlinedTextField(
             colors = entryFieldColors(),
-            value = displayLabel, onValueChange = {}, readOnly = true, enabled = enabled,
-            label = { Text("Feed Type") },
+            value = displayLabel, onValueChange = {}, readOnly = true, enabled = enabled, singleLine = true,
+            label = { Text("Type", maxLines = 1, softWrap = false) },
             trailingIcon = {
                 Icon(
                     imageVector = Icons.Default.ArrowDropDown, contentDescription = "Select feed type",

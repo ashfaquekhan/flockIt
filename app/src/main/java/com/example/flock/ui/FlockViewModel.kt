@@ -438,7 +438,19 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
             val w = repository.fetchWeather(farm)
             _weather.value = w
             if (!(farm.weatherLat == 0.0 && farm.weatherLon == 0.0)) {
-                _hourly.value = WeatherClient.fetchHourly(farm.weatherLat, farm.weatherLon)
+                // the stored hours first (works offline), then the service: the flock's past days once, a few days after that
+                val ctx = getApplication<Application>()
+                val stored = com.example.flock.network.WeatherStore.load(ctx, farm.weatherLat, farm.weatherLon)
+                if (stored.isNotEmpty() && _hourly.value.isEmpty()) _hourly.value = stored
+                val start = _activeFlock.value?.startDate.orEmpty()
+                val need = try {
+                    val today = java.time.LocalDate.now(java.time.ZoneId.of(farm.timeZone))
+                    val have = stored.firstOrNull()?.date
+                    if (start.isNotEmpty() && (have == null || have > start))
+                        java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.parse(start), today).toInt() + 1 else 3
+                } catch (e: Exception) { 3 }
+                val fresh = WeatherClient.fetchHourly(farm.weatherLat, farm.weatherLon, need.coerceIn(3, 92))
+                _hourly.value = com.example.flock.network.WeatherStore.merge(ctx, farm.weatherLat, farm.weatherLon, fresh)
             }
         }
     }

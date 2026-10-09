@@ -35,6 +35,8 @@ class CoopFeedTest {
         repeat(3000) { sim.update(0.016, b, 1.0); val n = sim.birds.count { it.state == "eat" }; if (n > 0) ate = true; most = maxOf(most, n) }   // ~48 s
         assertTrue("many birds at the pans at once ($most)", most >= 20)
         assertTrue("birds reach the feeder and eat", ate)
-        assertTrue("birds are fuller than before the feeding", sim.birds.map { it.fullness }.average() > before.average())
+        val states = sim.birds.groupingBy { it.state }.eachCount()
+        assertTrue("birds are fuller than before the feeding (${before.average()} → ${sim.birds.map { it.fullness }.average()}, most at the pans $most, now $states)",
+            sim.birds.map { it.fullness }.average() > before.average())
     }
 }

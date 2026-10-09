@@ -95,7 +95,8 @@ interface OpenMeteoApi {
         @Query("latitude") latitude: Double,
         @Query("longitude") longitude: Double,
         @Query("hourly") hourly: String = "temperature_2m,relative_humidity_2m",
-        @Query("forecast_days") forecastDays: Int = 2,
+        @Query("forecast_days") forecastDays: Int = 3,
+        @Query("past_days") pastDays: Int = 0,
         @Query("timezone") timezone: String = "auto"
     ): OpenMeteoResponse
 }
@@ -173,9 +174,9 @@ object WeatherClient {
         }
     }
 
-    /** Next ~48 hours, hourly, in the farm's local time. Empty when offline. */
-    suspend fun fetchHourly(lat: Double, lon: Double): List<HourPoint> = try {
-        val h = api.getHourly(latitude = lat, longitude = lon).hourly
+    /** The last [pastDays] days and the next three, hourly, in the farm's local time. Empty when offline. */
+    suspend fun fetchHourly(lat: Double, lon: Double, pastDays: Int = 0): List<HourPoint> = try {
+        val h = api.getHourly(latitude = lat, longitude = lon, pastDays = pastDays.coerceIn(0, 92)).hourly
         val t = h?.time.orEmpty()
         t.indices.mapNotNull { i ->
             val tc = h?.temp?.getOrNull(i) ?: return@mapNotNull null

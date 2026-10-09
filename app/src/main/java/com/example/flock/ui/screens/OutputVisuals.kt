@@ -64,8 +64,9 @@ private val OkColor = Color(0xFF46B98C)
 fun StandardsLegend() {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         LegendSwatch(ValuePresent, "Present", dashed = false, thick = true)
-        LegendSwatch(ValueIdeal, "Ideal · Ross", dashed = false, thick = false)
-        LegendSwatch(CompanyColor, "Commercial", dashed = true, thick = false)
+        LegendSwatch(ValuePredicted, "Projected", dashed = true, thick = false)
+        LegendSwatch(ValueIdeal, "Ideal", dashed = false, thick = false)
+        LegendSwatch(CompanyColor, "Com", dashed = true, thick = false)
     }
 }
 
@@ -84,7 +85,7 @@ private fun LegendSwatch(color: Color, label: String, dashed: Boolean, thick: Bo
 
 // =================================== charts ===================================
 
-private enum class Style { ACTUAL, IDEAL, COMPANY }
+private enum class Style { ACTUAL, PROJECTED, IDEAL, COMPANY }
 
 private class Line(val label: String, val style: Style, val valueAt: (Int) -> Double?)
 
@@ -104,21 +105,17 @@ private fun StandardChart(
     val labelArgb = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
     val bg = MaterialTheme.colorScheme.surfaceVariant
     val selC = MaterialTheme.colorScheme.onSurface
-    fun colorOf(s: Style) = when (s) { Style.ACTUAL -> ValuePresent; Style.IDEAL -> ValueIdeal; Style.COMPANY -> CompanyColor }
-    fun kindOf(s: Style) = when (s) { Style.ACTUAL -> presentKind; Style.IDEAL -> ValueKind.IDEAL; Style.COMPANY -> ValueKind.COMMERCIAL }
-    fun tagOf(s: Style) = when (s) { Style.ACTUAL -> kindTag(presentKind); Style.IDEAL -> idealTag; Style.COMPANY -> "Commercial" }
+    fun colorOf(s: Style) = when (s) { Style.ACTUAL -> ValuePresent; Style.PROJECTED -> ValuePredicted; Style.IDEAL -> ValueIdeal; Style.COMPANY -> CompanyColor }
+    fun kindOf(s: Style) = when (s) { Style.ACTUAL -> ValueKind.PRESENT; Style.PROJECTED -> ValueKind.PREDICTED; Style.IDEAL -> ValueKind.IDEAL; Style.COMPANY -> ValueKind.COMMERCIAL }
+    fun tagOf(s: Style) = when (s) { Style.ACTUAL -> "Present"; Style.PROJECTED -> "Projected"; Style.IDEAL -> idealTag; Style.COMPANY -> "Commercial" }
 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(title + if (unit.isNotEmpty()) " ($unit)" else "", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
             Text("Day $sel", style = MaterialTheme.typography.bodyMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurface)
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            lines.forEach { l ->
-                val v = l.valueAt(sel)
-                ValueChip(V(Fmt.n(v, decimals), if (v == null) ValueKind.NEUTRAL else kindOf(l.style), tagOf(l.style)), Modifier.weight(1f))
-            }
-        }
+        // one box each: present, projected, ideal, commercial
+        ValueRow(lines.map { l -> val v = l.valueAt(sel); V(Fmt.n(v, decimals), if (v == null) ValueKind.NEUTRAL else kindOf(l.style), tagOf(l.style)) })
         Canvas(
             Modifier.fillMaxWidth().height(180.dp)
                 .border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(12.dp))
@@ -161,7 +158,7 @@ private fun StandardChart(
                 }
             }
             // reference lines first, present on top
-            lines.sortedBy { if (it.style == Style.ACTUAL) 1 else 0 }.forEach { l ->
+            lines.sortedBy { when (it.style) { Style.ACTUAL -> 2; Style.PROJECTED -> 1; else -> 0 } }.forEach { l ->
                 val pts = (fromDay..maxDay).mapNotNull { d -> l.valueAt(d)?.let { Offset(px(d), py(it)) } }
                 if (pts.size < 2) { pts.forEach { drawCircle(colorOf(l.style), 5f, it) }; return@forEach }
                 val path = Path().apply { moveTo(pts[0].x, pts[0].y); pts.drop(1).forEach { lineTo(it.x, it.y) } }
@@ -171,6 +168,7 @@ private fun StandardChart(
                         drawPath(fill, Brush.verticalGradient(listOf(ValuePresent.copy(alpha = 0.25f), ValuePresent.copy(alpha = 0f)), startY = 0f, endY = gh))
                         drawPath(path, ValuePresent, style = Stroke(width = 5f, cap = StrokeCap.Round))
                     }
+                    Style.PROJECTED -> drawPath(path, ValuePredicted, style = Stroke(width = 3.5f, cap = StrokeCap.Round, pathEffect = PathEffect.dashPathEffect(floatArrayOf(3f, 7f))))
                     Style.IDEAL -> drawPath(path, ValueIdeal.copy(alpha = 0.95f), style = Stroke(width = 3.5f, cap = StrokeCap.Round))
                     Style.COMPANY -> drawPath(path, CompanyColor, style = Stroke(width = 3.5f, cap = StrokeCap.Round, pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f))))
                 }
@@ -196,7 +194,8 @@ fun BirdCharts(d: OutputData) {
         StandardChart(
             "Body weight", "g",
             listOf(
-                Line("Present", Style.ACTUAL) { day -> by[day]?.avgWeight ?: by[day]?.takeIf { it.projected && day <= d.day }?.let { PhysiologicalEngine.bwFromDay(it.weightAge, d.breed) } },
+                Line("Present", Style.ACTUAL) { day -> by[day]?.avgWeight?.takeIf { day <= d.day } },
+                Line("Projected", Style.PROJECTED) { day -> d.proj[day]?.weightG },
                 Line("Ideal", Style.IDEAL) { day -> PhysiologicalEngine.bwFromDay(day.toDouble(), d.breed) },
                 Line("Commercial", Style.COMPANY) { day -> CompanyStandard.bw(day) }
             ),
@@ -205,7 +204,8 @@ fun BirdCharts(d: OutputData) {
         StandardChart(
             "FCR", "",
             listOf(
-                Line("Present", Style.ACTUAL) { day -> by[day]?.fcr?.takeIf { day in 5..d.day } },
+                Line("Present", Style.ACTUAL) { day -> by[day]?.takeIf { it.avgWeight != null && day in 5..d.day }?.fcr },
+                Line("Projected", Style.PROJECTED) { day -> d.proj[day]?.fcr?.takeIf { day >= 5 } },
                 Line("Ideal", Style.IDEAL) { day -> PhysiologicalEngine.stdFcrFromDay(day.toDouble(), d.breed) },
                 Line("Commercial", Style.COMPANY) { day -> CompanyStandard.fcr(day) }
             ),
@@ -214,7 +214,9 @@ fun BirdCharts(d: OutputData) {
         StandardChart(
             "cFCR to 2 kg", "",
             listOf(
-                Line("Present", Style.ACTUAL) { day -> by[day]?.cFcr?.takeIf { day in 5..d.day } },
+                Line("Present", Style.ACTUAL) { day -> by[day]?.takeIf { it.avgWeight != null && day in 5..d.day }?.cFcr },
+                Line("Projected", Style.PROJECTED) { day -> val pj = d.proj[day]; val w = pj?.weightG; val f = pj?.fcr
+                    if (w != null && f != null && day >= 5) PhysiologicalEngine.computeCorrectedFcr(w / 1000, f) else null },
                 Line("Ideal", Style.IDEAL) { day -> val bw = PhysiologicalEngine.bwFromDay(day.toDouble(), d.breed); PhysiologicalEngine.computeCorrectedFcr(bw / 1000, PhysiologicalEngine.stdFcrFromDay(day.toDouble(), d.breed)) },
                 Line("Commercial", Style.COMPANY) { day -> CompanyStandard.cfcr(day) }
             ),
@@ -223,7 +225,8 @@ fun BirdCharts(d: OutputData) {
         StandardChart(
             "Cumulative mortality", "%",
             listOf(
-                Line("Present", Style.ACTUAL) { day -> by[day]?.cumMortPct?.takeIf { day <= d.day } },
+                Line("Present", Style.ACTUAL) { day -> by[day]?.cumMortPct?.takeIf { day <= minOf(d.day, d.lastEnteredDay) } },
+                Line("Projected", Style.PROJECTED) { day -> d.proj[day]?.cumMortPct },
                 Line("Ideal", Style.IDEAL) { day -> PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MAXMORT_BY_AGE, day.toDouble()) },
                 Line("Commercial", Style.COMPANY) { day -> CompanyStandard.cumMortPct(day) }
             ),
@@ -257,6 +260,7 @@ fun FeedCharts(d: OutputData) {
             "Feed per bird per day", "g",
             listOf(
                 Line("Present", Style.ACTUAL) { day -> perBird(day) },
+                Line("Projected", Style.PROJECTED) { day -> d.proj[day]?.feedPerBirdG },
                 Line("Ideal", Style.IDEAL) { day -> PhysiologicalEngine.dailyFeedFromDay(max(1, day).toDouble(), d.breed) },
                 Line("Commercial", Style.COMPANY) { day -> CompanyStandard.feedPerDay(day) }
             ),
@@ -266,6 +270,7 @@ fun FeedCharts(d: OutputData) {
             "Cumulative feed per bird", "g",
             listOf(
                 Line("Present", Style.ACTUAL) { day -> cumPerBird(day) },
+                Line("Projected", Style.PROJECTED) { day -> d.proj[day]?.cumFeedPerBirdG },
                 Line("Ideal", Style.IDEAL) { day -> PhysiologicalEngine.cumFeedFromDay(day.toDouble(), d.breed) },
                 Line("Commercial", Style.COMPANY) { day -> CompanyStandard.cumFeed(day) }
             ),

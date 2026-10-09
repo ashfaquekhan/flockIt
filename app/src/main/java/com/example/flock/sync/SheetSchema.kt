@@ -26,8 +26,11 @@ object SheetSchema {
      *    number of sample locations (W6 / N6 … beside W5 / N5) with a Locations count — and two report tabs
      *    the app keeps up to date: FeedLedger (received / used / in store by variety, with running totals)
      *    and DailySummary (birds, deaths, weight, feed and FCR with running totals).
+     * 7: DailyData gains WeighedAt (when the day's weights were saved); three more report tabs — Computed (every
+     *    value the app works out for a day, next to the inputs it comes from), Projections (what the app
+     *    projected for each day before the entry, the entry, and the miss) and Formulas (how each is worked out).
      */
-    const val VERSION = 6
+    const val VERSION = 7
 
     val FLOCK_HEADERS = listOf(
         "flockId", "name", "breed", "startDate", "startTime", "birdsPlaced", "receptionMort",
@@ -41,7 +44,7 @@ object SheetSchema {
         "BroodingLength", "ActualFans", "ActualFanTime", "OutTemp", "OutRH", "Notes",
         "WaterTempC", "WaterPh", "FeedMoisturePct", "MeasuredCo2", "MeasuredNh3", "MeasuredO2",
         "MeasuredPressure", "MeasuredAirspeed", "PadWetMin", "PadDryMin", "LuxPerFt2", "DieselCansUsed",
-        "UpdatedAt", "UpdatedBy", "Committed", "FeedUsedBreakdown", "SavedFields", "IndividualWeights", "Locations"
+        "UpdatedAt", "UpdatedBy", "Committed", "FeedUsedBreakdown", "SavedFields", "IndividualWeights", "Locations", "WeighedAt"
     )
 
     // ---- how DailyData is written (schema 6): related columns side by side, per-variety and extra-location columns in place
@@ -53,7 +56,7 @@ object SheetSchema {
         "BroodingLength", "ActualFans", "ActualFanTime", "OutTemp", "OutRH",
         "WaterTempC", "WaterPh", "FeedMoisturePct", "MeasuredCo2", "MeasuredNh3", "MeasuredO2",
         "MeasuredPressure", "MeasuredAirspeed", "PadWetMin", "PadDryMin", "LuxPerFt2",
-        "UpdatedAt", "UpdatedBy", "Committed", "SavedFields")
+        "UpdatedAt", "UpdatedBy", "Committed", "SavedFields", "WeighedAt")
     /** The DailyData header for these feed varieties and this many sample locations. */
     fun dailyHeader(codes: List<String>, locations: Int): List<String> =
         LAYOUT_A + (6..locations.coerceIn(5, com.example.flock.data.MAX_LOCATIONS)).flatMap { listOf("W$it", "N$it") } +
@@ -216,7 +219,8 @@ object SheetSchema {
             updatedAt = r.l("UpdatedAt") ?: 0L, updatedBy = r.s("UpdatedBy"),
             committed = r.b("Committed"), feedUsedBreakdown = r.s("FeedUsedBreakdown"), savedFields = r.s("SavedFields"),
             indivWeights = r.s("IndividualWeights"),
-            moreSamples = r.moreSamples(), locCount = (r.i("Locations") ?: 0).coerceIn(0, com.example.flock.data.MAX_LOCATIONS)
+            moreSamples = r.moreSamples(), locCount = (r.i("Locations") ?: 0).coerceIn(0, com.example.flock.data.MAX_LOCATIONS),
+            weighedAt = r.l("WeighedAt") ?: 0L
         )
         // The per-variety columns are the bags record when the sheet has them: they set the split and the total.
         val perType = r.usedByCode().filterValues { it > 0 }
@@ -249,7 +253,8 @@ object SheetSchema {
         n(d.waterTempC), n(d.waterPh), n(d.feedMoisturePct), n(d.measuredCo2), n(d.measuredNh3), n(d.measuredO2),
         n(d.measuredPressure), n(d.measuredAirspeed), n(d.padWetMin), n(d.padDryMin), n(d.luxPerFt2), d.dieselCansUsed,
         d.updatedAt, d.updatedBy, d.committed, d.feedUsedBreakdown, d.savedFields, d.indivWeights,
-        if (d.locCount > 0) d.locCount else ""
+        if (d.locCount > 0) d.locCount else "",
+        if (d.weighedAt > 0) d.weighedAt else ""
     )
     /** Sample locations 6 and up as column name → value. */
     fun sampleColumns(d: DailyDataEntity): Map<String, Any> = buildMap {
@@ -555,8 +560,7 @@ object SheetSchema {
         out["DailyData"] = listOf<List<Any>>(header + c.dayExtra.names) + c.days.map { d -> dayCells(d, header) + c.dayExtra.of(dayKey(d)) }
         out["Tasks"] = listOf<List<Any>>(TASK_HEADERS + c.taskExtra.names) + c.tasks.map { taskRow(it) + c.taskExtra.of(it.taskId) }
         // report tabs: worked out from the rows above, never read back
-        out[SheetReports.FEED_LEDGER] = SheetReports.feedLedger(c)
-        out[SheetReports.DAILY_SUMMARY] = SheetReports.dailySummary(c)
+        out.putAll(SheetReports.all(c))
         return out
     }
 

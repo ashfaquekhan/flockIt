@@ -101,11 +101,20 @@ class ScreensRenderTest {
         }
     }
 
+    /** A warm, humid day at the farm, hour by hour, for the day the fixture's last row carries. */
+    private fun hourly(): List<com.example.flock.network.HourPoint> {
+        val date = java.time.LocalDate.now().toString()
+        return (0 until 24).map { h ->
+            val f = (1 - Math.cos((h - 3) / 24.0 * 2 * Math.PI)) / 2          // coolest at 03:00, hottest at 15:00
+            com.example.flock.network.HourPoint(String.format("%sT%02d:00", date, h), 25.0 + 9.0 * f, 92.0 - 30.0 * f)
+        }
+    }
+
     @Composable
-    private fun Dash(tab: Int, content: @Composable () -> Unit) {
+    private fun Dash(tab: Int, basic: Boolean = false, content: @Composable () -> Unit) {
         val r = rows(11)
         Scaffold(
-            topBar = { TopFlockBar(farm.farmName, flock, 11, 11, "30 Sep 2026", lock, weather, "synced", {}, {}, {}, {}, {}) },
+            topBar = { TopFlockBar(farm.farmName, flock, 11, 11, "30 Sep 2026", lock, weather, "synced", {}, {}, {}, {}, {}, basicView = basic) },
             bottomBar = {
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                     listOf("Entry" to Icons.Default.Edit, "Output" to Icons.Default.Insights, "Stock" to Icons.Default.Inventory2, "Tasks" to Icons.Default.Checklist).forEachIndexed { i, (l, ic) ->
@@ -127,9 +136,14 @@ class ScreensRenderTest {
         val r = rows(11)
         EntriesScreen(r.last(), 11, "30 Sep", "29 Sep", feedTypes, lock, true, "k", listOf(50, 50, 50, 50, 50, 50), emptyList(), {}, {}, {}, farm = farm)
     }
-    @Composable private fun output() = Dash(1) {
+    @Composable private fun output(basic: Boolean = false, weatherOn: Boolean = true) = Dash(1, basic) {
         val r = rows(11)
-        OutputScreen(flock, farm, r.last(), r, FeedStockSummary(0.0, 0.0, 0.0, emptyMap()), feedTypes, weather, emptyList(), true, {})
+        OutputScreen(flock, farm, r.last(), r, FeedStockSummary(0.0, 0.0, 0.0, emptyMap()), feedTypes, weather, hourly(), true, {}, basic = basic, weatherOn = weatherOn)
+    }
+    @Composable private fun entryBasic() = Dash(0, true) {
+        val r = rows(11)
+        // a day with no feed entered yet: its feed row starts with the variety entered last (B3 here)
+        EntriesScreen(r.last().copy(feedBagsUsed = 0.0, feedUsedBreakdown = "", savedFields = ""), 11, "30 Sep", "29 Sep", feedTypes, lock, true, "k2", listOf(50, 50, 50, 50, 50, 50), emptyList(), {}, {}, {}, farm = farm, basic = true, lastFeedType = "B3")
     }
     @Composable private fun stock() = Dash(2) {
         val r = rows(11)
@@ -203,6 +217,33 @@ class ScreensRenderTest {
         assertEquals(before.value, rule.onAllNodesWithText("Feeding plan")[0].getUnclippedBoundsInRoot().top.value, 30f)
     }
     @Config(qualifiers = "w360dp-h9000dp-xhdpi") @Test fun outputLong() = shoot("output_long") { output() }
+    /** The short view: the whole day on a few screens. */
+    @Config(qualifiers = "w360dp-h3600dp-xhdpi") @Test fun outputBasic() = shoot("output_basic") { output(basic = true) }
+    @Config(qualifiers = "w360dp-h4400dp-xhdpi") @Test fun outputBasicBigText() = shoot("output_basic_bigtext") {
+        val dens = androidx.compose.ui.platform.LocalDensity.current
+        androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(dens.density, 1.3f)) { output(basic = true) }
+    }
+    /** The weather switch off: the ideal house, as before. */
+    @Config(qualifiers = "w360dp-h2600dp-xhdpi") @Test fun outputWeatherOff() = shoot("output_weather_off") { output(basic = true, weatherOn = false) }
+    @Config(qualifiers = "w360dp-h2600dp-xhdpi") @Test fun entryBasicLong() {
+        shoot("entry_basic") { entryBasic() }
+        // a new day's feed row starts with the variety entered last: B3 shows in the feed row as well as in the third delivery
+        assertTrue(rule.onAllNodesWithText("B3", substring = true).fetchSemanticsNodes().size >= 2)
+    }
+    /** A dial turned by hand holds for 30 seconds, then the dials go back to the weather. */
+    @Config(qualifiers = "w360dp-h5200dp-xhdpi") @Test fun dialsGoBackToTheWeather() {
+        rule.mainClock.autoAdvance = false
+        rule.setContent { MyApplicationTheme { output() } }
+        rule.mainClock.advanceTimeBy(800)
+        rule.onNodeWithTag("tab_out_1").performClick()
+        rule.mainClock.advanceTimeBy(800)
+        rule.onAllNodesWithText("The weather at the farm now · turn a dial to try another")[0].assertExists()
+        rule.onAllNodesWithText("+")[0].performClick()
+        rule.mainClock.advanceTimeBy(1500)
+        assertTrue(rule.onAllNodesWithText("Set by hand", substring = true).fetchSemanticsNodes().isNotEmpty())
+        rule.mainClock.advanceTimeBy(31_000)
+        rule.onAllNodesWithText("The weather at the farm now · turn a dial to try another")[0].assertExists()
+    }
     /** System text at 130 %: nothing may break mid-word. */
     @Config(qualifiers = "w360dp-h11000dp-xhdpi") @Test fun outputLongBigText() = shoot("output_long_bigtext") {
         val dens = androidx.compose.ui.platform.LocalDensity.current
