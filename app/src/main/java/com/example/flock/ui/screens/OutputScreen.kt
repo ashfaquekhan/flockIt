@@ -221,53 +221,45 @@ fun OutputScreen(
     fun minutesOf(ms: Long) = java.time.Instant.ofEpochMilli(ms).atZone(zone).let { it.hour * 60 + it.minute }
     val entryMin = listOf(entry.weighedAt, entry.liftedAt).firstOrNull { it > 0 }?.let { minutesOf(it) }
 
+    // the page's sections, in the order a day is worked: what to do first (feed, water, air), then how the flock is doing
+    val tabs = listOf("coop" to "Farm", "glance" to "Glance", "feed" to "Feed", "water" to "Water", "walk" to "Walk", "air" to "Air",
+        "birds" to "Birds", "floor" to "Floor", "litter" to "Litter", "fcr" to "FCR", "graphs" to "Graphs", "book" to "Book")
+    val dens = androidx.compose.ui.platform.LocalDensity.current
+    var tabsPx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    val tabsDp = with(dens) { tabsPx.toDp() }
+    val reading by remember { androidx.compose.runtime.derivedStateOf { anchors.currentOf(tabs.map { it.first }, scroll.value + tabsPx + with(dens) { 24.dp.toPx() }) } }
+    // how many times to feed today: chosen in the feed card; the pans it opens count in the glance and the walk too
+    var feedPick by rememberSaveable(d.day, d.recommendedOption) { androidx.compose.runtime.mutableIntStateOf(d.recommendedOption) }
+    val pat = d.patternFor(feedPick)
+
     androidx.compose.runtime.CompositionLocalProvider(LocalScrollAnchors provides anchors) {
     Box(modifier.fillMaxSize().onGloballyPositioned { anchors.viewportTop = it.positionInRoot().y }) {
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal = 14.dp, vertical = 12.dp),
+        modifier = Modifier.fillMaxSize().verticalScroll(scroll).padding(start = 14.dp, end = 14.dp, top = tabsDp + 10.dp, bottom = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // the house and the birds in it, at the time on the rail
         Anchored("coop") { GlassBox(Modifier.fillMaxWidth()) { Coop3D(coop) } }
-        // the day at a glance: the radar, the numbers that matter, the air and the birds now
+        // the day at a glance: the four radars and the twelve numbers that matter
         Anchored("glance") {
-            GlanceCard(d, view, entryHHmm, live, { pinned = null }, weatherOn, onWeatherOn, needsNow, hour)
-            JumpBar(listOf("feed" to "Feed", "floor" to "Floor and FCR", "birds" to "Birds", "house" to "House", "graphs" to "Graphs", "book" to "Book")) { key ->
-                anchors.topOf(key)?.let { y -> scope.launch { scroll.animateScrollTo(y) } }
-            }
+            GlanceCard(d, view, entryHHmm, live, { pinned = null }, hour, pat)
+            AlertList(d.allAlerts)
         }
-        Anchored("alerts") { AlertList(d.allAlerts) }
-
-        // how many times to feed today: chosen in the feed card
-        var feedPick by rememberSaveable(d.day, d.recommendedOption) { androidx.compose.runtime.mutableIntStateOf(d.recommendedOption) }
         Anchored("feed") {
-            SectionLabel("Feed")
             FeedTodayCard(d, feedPick, { feedPick = it }) {
                 FeedEntryRow(d, feeder, zone, onFeed = { bags, at -> onLogFeeding(bags, at); now = System.currentTimeMillis() },
                     onUndo = { onUndoFeeding(); now = System.currentTimeMillis() })
             }
-            if (d.day <= 7) FirstWeekCard(d)
-            EatenCard(d)
         }
-        Anchored("floor") {
-            SectionLabel("Floor and FCR")
-            SpaceCard(d)
-            LiftingCard(d)
-        }
-        Anchored("birds") {
-            SectionLabel("Birds")
-            BirdsTab(d, onFlockPlan, hour)
-            SuggestCard(d)
-        }
-        Anchored("house") {
-            SectionLabel("House")
-            LitterCard(d, hour)
-            WaterCard(d, onFarmChange)
-            VentTab(d, hour)
-            WeatherEffects(d)
-        }
-        Anchored("graphs") { SectionLabel("Graphs"); GraphsCard(d) }
-        Anchored("book") { SectionLabel("Flock book"); FlockBookCard(d, onSelectDay) }
+        Anchored("water") { WaterCard(d, onFarmChange) }
+        Anchored("walk") { WalkCard(d, pat) }
+        Anchored("air") { VentTab(d, hour, needsNow, weatherOn, onWeatherOn) }
+        Anchored("birds") { BirdsTab(d, onFlockPlan) }
+        Anchored("floor") { SpaceCard(d) }
+        Anchored("litter") { LitterCard(d, hour) }
+        Anchored("fcr") { LiftingCard(d) }
+        Anchored("graphs") { GraphsCard(d) }
+        Anchored("book") { FlockBookCard(d, onSelectDay) }
         if (onCloseBatch != null && flock?.status != "closed") {
             OutlinedButton(onClick = { confirmClose = true }, modifier = Modifier.fillMaxWidth(),
                 border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine)) {
@@ -276,9 +268,13 @@ fun OutputScreen(
         }
         Spacer(modifier = Modifier.height(32.dp))
     }
+    // the sections, always at the top: the one being read is lit, a tap goes to another
+    SectionTabs(tabs, reading, { key ->
+        anchors.topOf(key)?.let { y -> scope.launch { scroll.animateScrollTo((y - tabsPx - with(dens) { 8.dp.toPx() }.toInt()).coerceAtLeast(0)) } }
+    }, Modifier.align(Alignment.TopStart).onGloballyPositioned { tabsPx = it.size.height })
     // the time of the day: a rail down the right edge, opened by touching it
     TimeRail(minutes, if (isToday) nowZ.hour * 60 + nowZ.minute else null, entryMin, light, { pinned = it }, { pinned = null },
-        Modifier.align(Alignment.CenterEnd))
+        Modifier.align(Alignment.CenterEnd).padding(top = tabsDp))
     }
     }
     if (confirmClose) {
@@ -454,6 +450,20 @@ fun OutputCard(
     }
 }
 
+/** One part of a card that holds several: a thin line, its name (and ⓘ), then its numbers. */
+@Composable
+fun Part(title: String, info: String? = null, content: @Composable () -> Unit) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.16f)))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.4.sp),
+                color = Color.White.copy(alpha = 0.85f), modifier = Modifier.weight(1f))
+            if (info != null) InfoButton(info)
+        }
+        content()
+    }
+}
+
 data class GistItem(val label: String, val value: String, val sub: String, val kind: ValueKind = ValueKind.NEUTRAL)
 
 @Composable
@@ -570,6 +580,8 @@ class ScrollAnchors(private val scroll: androidx.compose.foundation.ScrollState)
     fun report(key: String, rootY: Float) { tops[key] = rootY - viewportTop + scroll.value; seen[key] = gen }
     /** where the block [key] starts on the page (scroll position), when it has been laid out */
     fun topOf(key: String): Int? = tops[key]?.toInt()?.coerceAtLeast(0)
+    /** the last of [keys] that starts above [y] (a scroll position): the section being read */
+    fun currentOf(keys: List<String>, y: Float): String? = keys.lastOrNull { k -> tops[k]?.let { it <= y } == true } ?: keys.firstOrNull()
     fun dayShown(day: Int) { if (day != shown) { shown = day; gen++ } }
     fun settled(day: Int) { settledDay = day }
     fun capture() {

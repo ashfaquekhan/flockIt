@@ -15,7 +15,7 @@ class DesignNumbersTest {
         val m = d.mass!!
         val radar = com.example.flock.domain.Radar.scores(com.example.flock.domain.Radar.In(
             weightG = d.bwNow, weightCom = d.bwCom, fcr = m.fcr, fcrCom = d.fcrCom, mortPct = d.mortTDPct, mortCom = d.comCumPct,
-            cvPct = d.cvEst, eatenVsComPct = d.suggest.w7.feedPct, epef = d.epef, epefCom = d.epefCom))
+            cvPct = d.cvEst, eatenVsComPct = d.suggest.w7.feedPct, epef = d.epef, epefCom = d.epefCom, gainG = d.gain, gainCom = d.gainCom))
         val o = d.floorPlan
         val line = listOf(
             "day" to d.day, "live" to d.live, "weightG" to d.bwNow, "weightCom" to d.bwCom, "gain" to d.gain, "gainCom" to d.gainCom,
@@ -27,6 +27,11 @@ class DesignNumbersTest {
             "steps" to d.space.steps.joinToString(" | "), "radar" to radar.joinToString(",") { "${it.key}=${it.score?.let { s -> "%.1f".format(s) }}" }
         ).joinToString("; ") { (k, v) -> "$k=${if (v is Double) "%.3f".format(v) else v}" }
         println("DESIGN_NUMBERS $line")
+        // the four radars of the glance, at midday
+        val view = d.nowView(java.time.LocalDate.parse(r.last().date).atTime(12, 0).atZone(java.time.ZoneId.of(KgfFlock.farm.timeZone)))
+        val groups = com.example.flock.ui.screens.radarsOf(d, view, 12)
+        groups.forEach { g -> println("RADAR ${g.key} mean=${g.mean?.let { "%.1f".format(it) }} " + g.flock.joinToString(",") { "${it.key}=${it.score?.let { s -> "%.1f".format(s) }}" }) }
+        assertTrue(groups.size == 4 && groups.all { g -> g.flock.all { it.score == null || it.score!! in 0.0..150.0 } })
         assertTrue(radar.size == 6 && radar.all { it.score != null && it.score!! in 0.0..150.0 })
     }
 }

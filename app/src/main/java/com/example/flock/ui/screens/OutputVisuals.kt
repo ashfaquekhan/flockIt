@@ -301,6 +301,7 @@ private fun chartSpecs(d: OutputData): List<ChartSpec> {
     val by = d.byDay
     val lifts = d.rows.filter { it.birdsLifted > 0 }.associate { it.dayNumber to it.birdsLifted }
     val mass = d.massByDay
+    val liftedBy = { day: Int -> lifts.filterKeys { it <= day }.values.sum().toDouble() }
     // feed entered on flock day x is what the birds ate the day before — the standard's day x — so it is plotted at x
     val perBird = { day: Int ->
         val row = by[day]
@@ -325,7 +326,9 @@ private fun chartSpecs(d: OutputData): List<ChartSpec> {
             Line("Present", Style.ACTUAL) { day -> by[day]?.takeIf { day <= minOf(d.day, d.lastEnteredDay) }?.liveBirds?.toDouble() },
             Line("Projected", Style.PROJECTED) { day -> d.proj[day]?.live },
             Line("Lifted", Style.LIFTED) { day -> if (day <= d.day && lifts.isNotEmpty()) d.rows.filter { it.dayNumber <= day }.sumOf { it.birdsLifted }.toDouble() else null },
-            Line("Company", Style.COMPANY) { day -> d.entryBirds * (1 - CompanyStandard.cumMortPct(day) / 100.0) }
+            // the company's and the breed's deaths, with the birds lifted till then taken off both (as in the house)
+            Line("Ideal", Style.IDEAL) { day -> d.entryBirds * (1 - PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MAXMORT_BY_AGE, day.toDouble()) / 100.0) - liftedBy(day) },
+            Line("Company", Style.COMPANY) { day -> d.entryBirds * (1 - CompanyStandard.cumMortPct(day) / 100.0) - liftedBy(day) }
         ), 0, maxDay, 0.0, niceTop(d.placed.toDouble().coerceAtLeast(1000.0), 2000.0), if (d.placed > 12000) 4000.0 else 2000.0, 0, false, lifts),
         ChartSpec("fcr", "FCR", "", listOf(
             Line("Present", Style.ACTUAL) { day -> by[day]?.takeIf { it.avgWeight != null && day in 5..d.day }?.let { mass[day]?.fcr ?: it.fcr } },

@@ -234,14 +234,15 @@ class ScreensRenderTest {
             androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(dens.density, 1.3f)) { output() }
         } }
         rule.mainClock.advanceTimeBy(1200)
-        listOf("glance", "radar", "time_rail", "jump_bar", "feed_conclusion", "feed_log", "space_why", "litter_view", "nipple_view", "flock_book").forEach { rule.onNodeWithTag(it).assertExists() }
+        listOf("glance", "radar_birds", "radar_feed", "radar_air", "radar_floor", "time_rail", "section_tabs", "feed_conclusion", "feed_log", "space_why",
+            "litter_view", "nipple_view", "walk_feed", "walk_water", "flock_book").forEach { rule.onNodeWithTag(it).assertExists() }
         assertTrue(rule.onAllNodesWithText("Choose what shows", substring = true).fetchSemanticsNodes().isEmpty())
         assertTrue(rule.onAllNodesWithText("At a glance").fetchSemanticsNodes().isEmpty())
         assertTrue(rule.onAllNodesWithText("Half", substring = true).fetchSemanticsNodes().isEmpty())
         rule.onRoot().captureRoboImage("src/test/screenshots/screen_output_all_open_bigtext.png")
     }
     /** The parts of the page drawn new: the litter from the side, the nipple line with its gauge, the floor plan and the feed with the barricade. */
-    @Config(qualifiers = "w360dp-h4200dp-xhdpi") @Test fun newCards() {
+    @Config(qualifiers = "w360dp-h5600dp-xhdpi") @Test fun newCards() {
         val r = KgfFlock.computed(44)
         val d = com.example.flock.ui.screens.OutputData(KgfFlock.flock, KgfFlock.farm, r.last(), r, KgfFlock.feedTypes, null, emptyList(), false, false)
         rule.mainClock.autoAdvance = false
@@ -251,10 +252,23 @@ class ScreensRenderTest {
             com.example.flock.ui.screens.SpaceCard(d)
             com.example.flock.ui.screens.LitterCard(d, 14)
             com.example.flock.ui.screens.WaterCard(d)
+            com.example.flock.ui.screens.WalkCard(d, d.feedPattern)
         } } }
         rule.mainClock.advanceTimeBy(1600)
         rule.onNodeWithTag("plan_step_2").assertExists()
         rule.onRoot().captureRoboImage("src/test/screenshots/screen_new_cards.png")
+    }
+    /** The tabs at the top go to a section and light the one being read. */
+    @Config(qualifiers = "w360dp-h780dp-xhdpi") @Test fun tabsGoToASection() {
+        rule.mainClock.autoAdvance = false
+        rule.setContent { MyApplicationTheme { output() } }
+        rule.mainClock.advanceTimeBy(1000)
+        rule.onNodeWithTag("jump_walk").performClick()
+        rule.mainClock.advanceTimeBy(1500)
+        val top = rule.onNodeWithTag("walk_feed").getUnclippedBoundsInRoot().top.value
+        println("walk card drawing at $top dp after the tap")
+        assertTrue("the walk card is on screen", top in 0f..780f)
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_tabs_walk.png")
     }
     /** The time rail (down the right edge) moves the page to another time of the day; touched it opens out; Now brings the clock back. */
     @Config(qualifiers = "w360dp-h2400dp-xhdpi") @Test fun timeSliderPicksATime() {

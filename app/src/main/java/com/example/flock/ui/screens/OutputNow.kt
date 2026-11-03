@@ -91,13 +91,15 @@ fun LitterCard(d: OutputData, hour: Int) {
     val l = remember(d, hour) { litterOf(d, hour) }
     OutputCard(title = "Litter", info = "litter") {
         LitterSideView(l, d.litterTemp.second)
-        Param("Depth", "cm", v(l.depthCm, 1, PR, "Projected"), vt("${Fmt.n(Litter.IDEAL_DEPTH_LO, 1)}–${Fmt.n(Litter.IDEAL_DEPTH_HI, 1)}", I, "Ideal bedding"),
-            v(l.beddingCm, 1, NE, "Bedding, assumed"))
-        Param("Moisture", "%", v(l.moisturePct, 1, PR, "House"), v(l.underDrinkersPct, 1, PR, "Under drinkers"),
-            vt("${Fmt.n(Litter.IDEAL_MOIST_LO, 1)}–${Fmt.n(Litter.IDEAL_MOIST_HI, 1)}", I, "Ideal"), v(Litter.MOIST_MAX, 1, MX, "Most"))
-        Param("Temperature", "°C", v(l.tempC, 1, PR, "Projected"), v(d.litterTemp.second, 1, I, "Ideal"), v(d.litterTemp.third, 1, MX, "Most"))
-        Param("Ammonia", "ppm", v(l.nh3Ppm, 1, PR, "Projected"), v(Litter.NH3_IDEAL, 1, I, "Ideal under"), v(Litter.NH3_MAX, 1, MX, "Most"))
-        Param("Caked floor", "%", v(l.cakedPct, 1, PR, "Projected"), v(0.0, 1, I, "Ideal"))
+        RangeKey()
+        RangeParam("Depth", "cm", null, null, null, null, idealBand = Litter.IDEAL_DEPTH_LO to Litter.IDEAL_DEPTH_HI, projected = l.depthCm)
+        RangeParam("Moisture", "%", null, null, Litter.MOIST_MAX, null, idealBand = Litter.IDEAL_MOIST_LO to Litter.IDEAL_MOIST_HI, projected = l.moisturePct)
+        RangeParam("Moisture under drinkers", "%", null, null, Litter.MOIST_MAX, null, idealBand = Litter.IDEAL_MOIST_LO to Litter.IDEAL_MOIST_HI,
+            projected = l.underDrinkersPct)
+        RangeParam("Temperature", "°C", d.litterTemp.first, d.litterTemp.second, d.litterTemp.third, null, projected = l.tempC)
+        RangeParam("Ammonia", "ppm", null, null, Litter.NH3_MAX, null, idealBand = 0.0 to Litter.NH3_IDEAL, projected = l.nh3Ppm)
+        RangeParam("Caked floor", "%", null, 0.0, 20.0, null, projected = l.cakedPct)
+        Param("Bedding", "cm", v(l.beddingCm, 1, NE, "Assumed"))
     }
 }
 

@@ -172,6 +172,33 @@ class LiftingSpaceTest {
         assertTrue(at(44, 60000.0, rh = 90.0).moisturePct > old.moisturePct)
     }
 
+    /** The walk to feed and water: the limits by age, the furthest bird's walk, trays, and the radar's scoring of it. */
+    @Test fun theWalkToFeedAndWater() {
+        assertEquals(1.0, com.example.flock.domain.Travel.limits(2).safeM, 0.0)
+        assertEquals(3.0, com.example.flock.domain.Travel.limits(44).maxM, 0.0)
+        // feeder lines 10 ft apart, pans 2.5 ft apart, 1 on · 2 off: the open pans are 3 pans apart
+        val walk = com.example.flock.domain.Travel.furthest(10 * 0.3048, 3 * 2.5 * 0.3048)
+        assertEquals(1.905, walk, 0.01)
+        assertEquals(com.example.flock.domain.Travel.Grade.SAFE, com.example.flock.domain.Travel.grade(walk, com.example.flock.domain.Travel.limits(44)))
+        assertEquals(com.example.flock.domain.Travel.Grade.MOST, com.example.flock.domain.Travel.grade(walk, com.example.flock.domain.Travel.limits(5)))
+        assertEquals(com.example.flock.domain.Travel.Grade.TOO_FAR, com.example.flock.domain.Travel.grade(walk, com.example.flock.domain.Travel.limits(2)))
+        // 150 trays on 465 m²: one every 3.1 m², the furthest chick 1.25 m away
+        assertEquals(1.245, com.example.flock.domain.Travel.spread(465.0, 150)!!, 0.01)
+        assertEquals(100.0, com.example.flock.domain.Travel.score(1.9, com.example.flock.domain.Travel.limits(44)), 0.0)
+        assertEquals(50.0, com.example.flock.domain.Travel.score(3.0, com.example.flock.domain.Travel.limits(44)), 0.01)
+        assertEquals(0.0, com.example.flock.domain.Travel.score(4.5, com.example.flock.domain.Travel.limits(44)), 0.01)
+        // the radar's band: 100 inside, 50 at the limit, 0 as far again
+        assertEquals(100.0, com.example.flock.domain.Radar.band(22.0, 20.0, 25.0, 15.0, 30.0)!!, 0.0)
+        assertEquals(50.0, com.example.flock.domain.Radar.band(30.0, 20.0, 25.0, 15.0, 30.0)!!, 0.01)
+        assertEquals(0.0, com.example.flock.domain.Radar.band(35.0, 20.0, 25.0, 15.0, 30.0)!!, 0.01)
+        // the farm's flock on day 44: every bird within the most of a pan and a nipple
+        val r = KgfFlock.computed(44)
+        val d = com.example.flock.ui.screens.OutputData(KgfFlock.flock, KgfFlock.farm, r.last(), r, KgfFlock.feedTypes, null, emptyList(), false, false)
+        val feed = d.feedWalkM(d.feedPattern); val water = d.waterWalkM
+        println("day 44 walk: feed ${"%.2f".format(feed)} m (${d.feedPattern.label}), water ${"%.2f".format(water)} m, limits ${d.walkLimits}")
+        assertTrue(feed <= d.walkLimits.maxM && water <= d.walkLimits.maxM)
+    }
+
     @Test fun feedingsRoundTrip() {
         val l = parseFeedings("8:30=13;14:00=10.5;bad;20:00=0")
         assertEquals(listOf("08:30" to 13.0, "14:00" to 10.5), l)

@@ -52,6 +52,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -335,7 +337,8 @@ private val TRACK_PAD = 6.dp
 /**
  * The day slider and the flock's periods in one piece: the track itself is coloured by period (brooding orange,
  * growing green, finishing blue, days past the planned harvest red) — bright up to the chosen day, dim after
- * it — with a white bar at the chosen day and a small white dot at today. Drag or tap to choose a day.
+ * it — with a white bar at the chosen day and a small white dot at today, and each period's name under its stretch in
+ * its colour. Drag or tap to choose a day.
  */
 @Composable
 private fun DaySlider(day: Int, lastDay: Int, plannedHarvest: Int, today: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
@@ -344,7 +347,7 @@ private fun DaySlider(day: Int, lastDay: Int, plannedHarvest: Int, today: Int, o
     val cut = Color.Black
     val select by androidx.compose.runtime.rememberUpdatedState(onSelect)
     androidx.compose.foundation.Canvas(
-        modifier.height(36.dp).testTag("day_slider")
+        modifier.height(42.dp).testTag("day_slider")
             .semantics {
                 contentDescription = "Day $day of $span" + (periods.firstOrNull { day in it.from..it.to }?.let { ", " + it.name } ?: "")
                 progressBarRangeInfo = androidx.compose.ui.semantics.ProgressBarRangeInfo(day.toFloat(), 0f..span.toFloat(), (span - 1).coerceAtLeast(0))
@@ -362,7 +365,7 @@ private fun DaySlider(day: Int, lastDay: Int, plannedHarvest: Int, today: Int, o
             }
     ) {
         val pad = TRACK_PAD.toPx(); val w = size.width - 2 * pad
-        val cy = size.height / 2; val th = 8.dp.toPx(); val gap = 1.dp.toPx()
+        val cy = 15.dp.toPx(); val th = 8.dp.toPx(); val gap = 1.dp.toPx()
         fun x(d: Float) = pad + (d / span).coerceIn(0f, 1f) * w
         val sel = x(day.toFloat())
         fun segments(alpha: Float) = periods.forEach { p ->
@@ -380,5 +383,17 @@ private fun DaySlider(day: Int, lastDay: Int, plannedHarvest: Int, today: Int, o
         drawRect(cut, androidx.compose.ui.geometry.Offset(sel - tw / 2 - 3.dp.toPx(), cy - th), androidx.compose.ui.geometry.Size(tw + 6.dp.toPx(), th * 2))
         drawRoundRect(Color.White, androidx.compose.ui.geometry.Offset(sel - tw / 2, cy - 13.dp.toPx()), androidx.compose.ui.geometry.Size(tw, 26.dp.toPx()),
             androidx.compose.ui.geometry.CornerRadius(tw / 2, tw / 2))
+        // each period's name under its stretch, in its colour (left out where the stretch is too short for it)
+        val label = android.graphics.Paint().apply { isAntiAlias = true; textSize = 10.dp.toPx(); textAlign = android.graphics.Paint.Align.CENTER
+            typeface = com.example.ui.theme.AppFonts.text }
+        periods.forEach { p ->
+            val a = if (p.from <= 0) x(0f) else x(p.from - 0.5f)
+            val b = if (p.to >= span) x(span.toFloat()) else x(p.to + 0.5f)
+            val name = if (p.name == "Past harvest") "Past" else p.name
+            if (b - a >= label.measureText(name) + 4.dp.toPx()) {
+                label.color = p.color.copy(alpha = 0.85f).toArgb()
+                drawContext.canvas.nativeCanvas.drawText(name, (a + b) / 2, size.height - 2.dp.toPx(), label)
+            }
+        }
     }
 }

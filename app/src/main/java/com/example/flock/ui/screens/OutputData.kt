@@ -22,10 +22,12 @@ import kotlin.math.max
 const val PAN_SPACING_FT = 2.5
 const val NIPPLE_SPACING_FT = 0.82
 const val LINE_START_FT = 5.0
-/** Ross: birds should not have to walk more than 2 m to feed or water. */
 /** breaths a minute above which birds are panting (heat stress) */
 const val PANT_ABOVE_PER_MIN = 60.0
+/** The safe walk to feed or water for grown birds (m); the most is 3 m, see [com.example.flock.domain.Travel]. */
 const val ALLOWED_TRAVEL_M = 2.0
+/** Ross: water drunk ÷ feed eaten at 21 °C (1.6–2.0). */
+const val WATER_PER_FEED = 1.8
 
 /** The five Output topics, in the order the farm reads them. */
 enum class Topic(val emoji: String, val title: String) {
@@ -478,6 +480,8 @@ class OutputData(
         { feedOptions[it].pattern.birdsPerPan }
     )).first()
     val chosen: FeedOption = feedOptions[recommendedOption]
+    /** The pans open for the feedings picked in the feed card ([pick] = the option's place in [feedOptions]). */
+    fun patternFor(pick: Int): PanPattern { val o = feedOptions[pick.coerceIn(0, feedOptions.size - 1)]; return if (o.safe) o.pattern else patterns.first() }
     val patternFits: Boolean = chosen.safe
     /** First week: trays and paper carry the chicks, pans in the brooding area stay all on. */
     val feedings: Int = if (!chosen.safe && day <= 7) feedingsWanted else chosen.feedings
@@ -563,6 +567,31 @@ class OutputData(
         day <= 28 -> 50.0 to 69.0
         else -> 70.0 to 100.0
     }
+
+    // ------------------------------- the walk to feed and water -------------------------------
+    /** How far a bird should walk at this age: safe, and the most (see [com.example.flock.domain.Travel]). */
+    val walkLimits: com.example.flock.domain.Travel.Limits = com.example.flock.domain.Travel.limits(day)
+    private val floorInUseM2 = areaInUseFt2 / 10.7639
+    /** Trays and chick drinkers still on the floor (they count while the chicks have them). */
+    val traysOnFloor: Int = traysKeepYours.toInt()
+    val chickDrinkersOnFloor: Int = ceil(farm.manualDrinkers * drinkerKeepFrac).toInt()
+    /** Drinker line to drinker line (ft) and nipple to nipple (m). */
+    val drinkerGapFt: Double = farm.usableWidthFt / max(1, drinkerLinesN)
+    val nippleGapM: Double = NIPPLE_SPACING_FT * 0.3048
+    /** The furthest walk to an open pan of [p], or to a tray while the chicks have them (m). */
+    fun feedWalkM(p: PanPattern): Double = com.example.flock.domain.Travel.nearest(p.travelM, com.example.flock.domain.Travel.spread(floorInUseM2, traysOnFloor))
+    /** The furthest walk to a nipple, or to a chick drinker while they are down (m). */
+    val waterWalkM: Double = com.example.flock.domain.Travel.nearest(
+        com.example.flock.domain.Travel.furthest(drinkerGapFt * 0.3048, nippleGapM), com.example.flock.domain.Travel.spread(floorInUseM2, chickDrinkersOnFloor))
+
+    // ------------------------------- the standards for the glance -------------------------------
+    /** Ross: birds drink about 1.8 × the feed they eat at 21 °C. */
+    val idealBags: Double get() = idealPerBird * live / 1000.0 / bagKg
+    val waterIdealL: Double get() = idealPerBird * WATER_PER_FEED * live / 1000.0
+    val waterIdealPerBird: Double get() = idealPerBird * WATER_PER_FEED
+    /** Birds in the house had the flock died at the company's rate, and at the breed's (lifted birds taken off both). */
+    val liveCom: Double get() = entryBirds * (1 - comCumPct / 100.0) - (mass?.liftedBirds ?: liftTD)
+    val liveIdeal: Double get() = entryBirds * (1 - ceilingPct / 100.0) - (mass?.liftedBirds ?: liftTD)
 
     // ------------------------------- bird / litter temperatures -------------------------------
     /** Foot (leg skin) temperature: warm to the touch; thermal-camera studies put comfortable birds at ~32–34 °C. */

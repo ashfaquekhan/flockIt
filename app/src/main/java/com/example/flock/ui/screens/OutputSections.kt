@@ -51,10 +51,10 @@ private val NE = ValueKind.NEUTRAL
 @Composable
 fun FeedTodayCard(d: OutputData, pick: Int, onPick: (Int) -> Unit, feedLog: @Composable () -> Unit) {
     val o = d.feedOptions[pick.coerceIn(0, d.feedOptions.size - 1)]
-    val pat = if (o.safe) o.pattern else d.patterns.first()
+    val pat = d.patternFor(pick)
     val plan = d.floorPlan
     val fillBags = d.feederLines * pat.openPerLine / d.pansPerBag
-    OutputCard(title = "Feed today", info = "plan") {
+    OutputCard(title = "Feed", info = "plan") {
         Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.testTag("feed_conclusion")) {
             Text("${o.feedings} × ${Fmt.n(o.bagsPerFeeding, 1)}", style = MaterialTheme.typography.headlineSmall.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold),
                 color = kindColor(PR))
@@ -70,14 +70,19 @@ fun FeedTodayCard(d: OutputData, pick: Int, onPick: (Int) -> Unit, feedLog: @Com
                     .clickable { onPick(i) }.testTag("feedings_${opt.feedings}"))
             }
         }
-        ValueRow(listOf(vt(d.feedTimesFor(o.feedings).joinToString(" "), PR, "Times"), v(d.giveBags, 1, C, "Company bags")), "when")
+        ValueRow(listOf(vt(d.feedTimesFor(o.feedings).joinToString(" "), PR, "Times")), "when")
+        // a bird's share of today's bags, against the company's ration and the breed's
+        KpiLine(Kpi("Feed a bird today", "g", d.dayBags * d.bagKg * 1000 / d.liveSafe, PR, d.comPerBird, d.idealPerBird, Better.CLOSER, 1), plan = true)
         Text("Pans ${pat.label.lowercase()} on every line", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = kindColor(PR))
-        ValueRow(listOf(vi(pat.openPerLine, PR, "Open a line"), v(pat.birdsPerPan, 1, PR, "Birds a pan"),
-            v(fillBags, 1, PR, "Bags to fill"), v(o.fillPct, 0, PR, "Each fills %")), "pans")
+        ValueRow(listOf(vi(pat.openPerLine, PR, "Open a line"), v(fillBags, 1, PR, "Bags to fill"), v(o.fillPct, 0, PR, "Each fills %")), "pans")
+        if (pat.birdsPerPan < 1e6) RangeParam("Birds a pan", "", SpacePlan.FEW_BIRDS_PER_PAN, SpacePlan.AIM_BIRDS_PER_PAN, d.birdsPerPanMax, null,
+            projected = pat.birdsPerPan)
         FarmTopView(d, pat, plan?.penFt ?: d.barricadeFtNow, plan?.pansInPen ?: d.pansInArea)
         KeyLine(kindColor(PR) to "on", Color.White.copy(alpha = 0.6f) to "off", Color.White to "sensor", kindColor(ValueKind.MIN) to "drinker")
         feedLog()
         BagsWorkedOut(d)
+        EatenCard(d)
+        if (d.day <= 7) FirstWeekCard(d)
     }
 }
 
@@ -97,7 +102,8 @@ fun LiftingCard(d: OutputData) {
         }
         Param("The flock's meat", "kg", v(m.liveKg, 0, PR, "In the house"), v(m.liftedKg, 0, P, "Lifted"), v(m.deadKg, 0, PR, "Dead, est."))
         Param("Produced", "", v(m.producedKg, 0, PR, "kg"), v(m.cumBwKg, 3, PR, "kg a bird"))
-        Param("FCR", "", v(m.fcrAll, 3, PR, "With the dead"), v(d.fcrIdeal, 3, I, "Ideal"), v(m.cFcrBreed, 3, d.fcrKind, "cFCR breed"), v(d.cfcrIdeal, 3, I, "cFCR ideal"))
+        KpiLine(Kpi("FCR, dead counted", "", m.fcrAll, PR, null, d.fcrIdeal, Better.LOWER, 3))
+        KpiLine(Kpi("cFCR, breed", "", m.cFcrBreed, d.fcrKind, null, d.cfcrIdeal, Better.LOWER, 3))
         if (m.fcr != null) {
             val adj = (2 - m.cumBwKg) * 0.25
             Text("cFCR company = FCR + (2 − ${Fmt.n(m.cumBwKg, 3)} kg) × 0.25 = ${Fmt.n(m.fcr, 3)} ${if (adj >= 0) "+" else "−"} ${Fmt.n(kotlin.math.abs(adj), 3)} = ${Fmt.n(m.cFcrCompany, 3)}",
@@ -135,11 +141,11 @@ private fun RoomGauge(ratio: Double) {
 @Composable
 fun SpaceCard(d: OutputData) {
     val s = d.space
-    OutputCard(title = "Floor, pans and feedings", info = "space") {
+    OutputCard(title = "Floor", info = "space") {
         Param("Density", "kg/m²", v(s.targetKgM2, 1, I, "Comfortable"), v(d.farm.densityCapDefault, 1, MX, "Most"))
-        Param("Floor a bird", "ft²", v(s.ft2PerBird, 2, d.vk, "Has"), v(s.needFt2, 2, I, "Needs"), v(s.roomRatio, 2, PR, "Has ÷ needs"), v(s.birdsM2, 1, d.vk, "Birds a m²"))
+        RangeParam("Floor a bird", "ft²", s.needFt2, null, null, s.ft2PerBird, 2, d.vk)
+        Param("Room", "", v(s.roomRatio, 2, PR, "Has ÷ needs"), v(s.birdsM2, 1, d.vk, "Birds a m²"), v(d.roam, 2, PR, "Roaming ×"))
         RoomGauge(s.roomRatio)
-        Param("Walk to feed and water", "m", v(s.walkM, 2, PR, "Furthest"), v(SpacePlan.MAX_WALK_M, 1, MX, "Most"), v(d.roam, 2, PR, "Roaming ×"))
         Text(s.why, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.testTag("space_why"))
         listOf("Floor", "Pans", "Feed").zip(s.steps).forEachIndexed { k, (name, step) ->
             Row(Modifier.fillMaxWidth().border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 7.dp)
@@ -167,7 +173,7 @@ fun SpaceCard(d: OutputData) {
 @Composable
 fun SuggestCard(d: OutputData) {
     val s = d.suggest
-    OutputCard(title = "Last 3 and 7 days", info = "lastdays") {
+    Part("Last 3 and 7 days", "lastdays") {
         Row(Modifier.fillMaxWidth()) {
             Spacer(Modifier.weight(1.3f))
             Text("3 days", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1)
@@ -191,7 +197,6 @@ fun SuggestCard(d: OutputData) {
                 color = when (l.level) { 2 -> StatusCrit; 1 -> StatusWarn; else -> Color.White.copy(alpha = 0.9f) })
         }
     }
-    TrendsCard(d)
 }
 
 private fun cvText(w: com.example.flock.domain.Suggest.Window): String =

@@ -48,7 +48,6 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O43 | The lights are taken from the programme, not from the house | 18 h of light on day 20, dark 23:00–05:00. If the house is lit differently, eating shifts with it and the likelihoods are off. A farm setting for the real lights-on / lights-off times would fix it. |
 | O44 | Thirst assumes water is in the lines | There is no record of tank refills, so a dry tank cannot be seen. |
 | O45 | The flock's own response to heat is unknown | The weather has been too steady since day 9 (outside high 31–32.6 °C every day) to learn it from the records; the published figures are used. |
-| O46 | The slider's colours have no written key on the screen | By request the legend was removed to keep it clean: orange = brooding (days 0–10), green = growing (11–27), blue = finishing (28 to harvest), red = past the planned harvest. The dot beside "Day N" shows the colour of the chosen day. |
 | O21 | Output review checklist (keep / change / drop) is waiting for the farm's choices | https://claude.ai/artifact/VDtyZmDKtLiJBu5Nxq6B3g |
 | O47 | Sheet schema 8 upgrade is tested on data, not yet run on the live sheet | It runs once on the first load after installing v47 and keeps a snapshot of the old sheet (same path as 6 → 7, which ran on this sheet on 9 Oct). A copy of the sheet as it stood on 3 Nov is also saved beside the APK. |
 | O48 | Lifting time is not known for the four liftings already entered | They are taken as 20:00 (the trucks loaded in the evening; the entries were saved 20:28–23:04). Pick the time when entering the next lifting. |
@@ -56,12 +55,20 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O52 | Two phones changing the same value at the same time: the later save wins | Different values on the same day are merged; the same value is not. |
 | O53 | The litter is a model, and the bedding depth is assumed | 7.5 cm of bedding at placement unless known; droppings from the feed entered; moisture, warmth and ammonia from age, crowding, the house air and air speed. Not fitted to this house — a squeeze test and the nose decide. A farm setting for the bedding depth (and material) would firm it up. |
 | O54 | The nipple line drawing shows the age curve, not a reading | Pressure and height are the ideal for the age (there is no entry for them). Readings could be added to the entry page. |
-| O55 | The radar's scale is a choice | 100 = the company; evenness against an 8 % CV; appetite loses 2 points per % off the company's feed; drawn up to 150. Say if other weights suit the farm better. |
+| O55 | The radars' scales are a choice | Birds: 100 = the company, evenness against an 8 % CV, drawn up to 150. The other three: 100 inside the ideal band, 50 at the limit, 0 as far again past it; eaten loses 2 points per % off the company's feed. Say if other weights suit the farm better. |
 | O56 | The floor plan's pan figures are rules of thumb | About 45 birds a pan aimed for, under 25 counted as too few (feed goes stale), 2 m the longest walk (Ross). Say if the company uses others. |
+| O57 | The walk limits between the first days and grown birds are rules of thumb | Published: chicks within 1 m of water in the first 24 h (Aviagen), no bird more than 3 m from feed or water (management guides). Days 4–10 (1.5 / 2.5 m) and the 2 m "safe" for grown birds are in between. The walk to water takes nipples 25 cm apart and the drinker lines spread evenly over the width. |
+| O58 | Water has no company standard | The company's chart has no water column, so water shows "co NA"; the ideal is 1.8 × the breed's feed (Ross: 1.6–2.0 at 21 °C). |
 
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v50 | Ideal missing where the company was shown (glance, feed bags, FCR card …) | v48–v49 cut the numbers to tiles and chips with the company only | Company and ideal under every number with the v46 line; "NA" where there is none |
+| v50 | Colours had no key (radar scores, arrows, the day slider's periods, range lines) | Keys were dropped to keep cards short | A one-line key where colours are used; the slider names its periods in its own track |
+| v50 | Still too many cards; feed, water and air far down the page | 26 cards; the glance and the jump buttons above them | 15 cards, feed / water / walk / air first, tabs that stay at the top and light the section being read |
+| v50 | One radar for everything | Only the birds' performance was scored | Four radars of alike things: birds, feed and water, air, floor and litter |
+| v50 | The walk to feed and water was one number | Shown as "Furthest 1.87 m · Most 2.0" in the floor card | Its own card: safe and most for the age, a line and the floor drawn to scale with each pan's and nipple's reach |
+| v50 | The Birds graph's company line kept the lifted birds | Company birds = started × (1 − company mortality) | Lifted birds taken off the company's and the ideal's lines; the ideal line added |
 | v49 | Too much scrolling, no overview | v48 put every card open in one long page and dropped the glance | The day at a glance (radar + 12 numbers) on top, jump buttons to each group, one graph card |
 | v49 | The time slider sat in a card and took room | A horizontal slider in its own card | A rail down the right edge that opens when touched; tap the white dot for now |
 | v49 | Graphs hard to read, lifting marks not visible | Thin dashed lines for lifting, values in boxes above each chart | One chart at a time, a value box on the cursor, lifting days as rose bands with an L badge |

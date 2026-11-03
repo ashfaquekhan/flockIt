@@ -47,7 +47,7 @@ fun WeatherEffects(d: OutputData) {
     if (!d.envOn) return
     fun pct(f: Double) = Fmt.signed((f - 1) * 100, 1) + " %"
     fun kind(f: Double, worseUp: Boolean) = PR
-    OutputCard(title = "What the weather does today", info = "weather") {
+    Part("What the weather does today", "weather") {
         ValueRow(listOf(vt(pct(d.envFeedF), kind(d.envFeedF, false), "Feed"), vt(pct(d.envWaterF), PR, "Water"),
             vt(pct(d.envGainF), kind(d.envGainF, false), "Growth"), vt("× " + Fmt.n(d.envMortF, 2), kind(d.envMortF, true), "Deaths risk")), "effect")
         val ok = if (d.outsideSource == BirdEnvironment.Source.WEATHER) ValueKind.NEUTRAL else PR

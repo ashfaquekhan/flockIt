@@ -8,6 +8,34 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v50 — 2026-11-04 · Four radars, company and ideal on every number, the walk to feed and water, tabs that stay on top, fewer cards · no DB or sheet change
+- **The walk to feed and water** (new card): the furthest bird's walk to an open pan and to a nipple against the safe walk
+  and the most for the age (chicks 1.0 / 1.5 m, days 4–10 1.5 / 2.5 m, then 2.0 / 3.0 m — Aviagen: chicks within 1 m of
+  water; the guides: no bird more than 3 m from feed or water). Each as a line (green safe · orange up to the most · red
+  too far) and as the floor from above, to scale: the reach of every open pan or nipple drawn round it, the floor no bird
+  reaches in time red, the furthest bird marked ✕ with its walk. Trays and chick drinkers count while they are down. It
+  follows the feedings picked in the feed card (1 on · 2 off makes the walk longer).
+- **Four radars in the glance**, alike things together: Birds (livability, FCR, EPEF, growth, evenness, gain — 100 = the
+  company, the breed's ideal drawn thin), Feed and water (eaten, birds a pan, walk to feed, walk to water, birds a
+  nipple), Air (temperature, humidity, what the birds feel, air speed, ammonia), Floor and litter (kg/m², room, litter
+  depth, moisture, caking) — 100 = inside the ideal band. Each with its average by the title.
+- **Company and ideal on every number** (the v46 line is back): the glance's twelve numbers each show `co` and `id` under
+  the value and the line under that (violet tick = company, blue tick = ideal, dot = the flock); "NA" where there is no
+  standard. In the cards: feed a bird today, eaten, water a bird, livability, FCR and cFCR as lines with company and
+  ideal; litter, floor a bird and birds a pan as range lines with ideal, min and max. The Birds graph has the ideal line,
+  and the company's and the ideal's birds have the lifted birds taken off (as in the house).
+- **What the colours mean**, where they are used: number colours (entered · projected · company · ideal), arrows and
+  scores (good · a little off · far off), the radar's shapes, the range lines (min · max), the walk's zones, and the day
+  slider now names its periods (Brooding · Growing · Finishing) under its own track.
+- **Tabs that stay at the top of Output**: Farm · Glance · Feed · Water · Walk · Air · Birds · Floor · Litter · FCR ·
+  Graphs · Book — the one being read is lit; a tap goes there. The page is in the order a day is worked: feed, water,
+  walk and air first.
+- **Fewer cards** (26 → 15): Feed holds the plan, the pans, the feeding log, how the bags were worked out, what was
+  eaten and the first week; Birds holds the start and removals, the trends and the last 3 and 7 days; Growth and evenness
+  holds the target, uniformity and the projection check; Air holds outside, what the birds feel, hungry / thirsty /
+  panting, the weather switch, the house air, the birds' comfort and what the weather does; Fan settings holds the
+  minimum ventilation, the fans by outside air and the controller.
+
 ## v49 — 2026-11-04 · The day at a glance with the radar, a time rail, one graph card, less text, no swipe · no DB or sheet change
 - **The day at a glance** (top of Output, under the farm window): the performance radar — growth, FCR, livability,
   evenness, appetite, EPEF, each 100 = the company, the breed's ideal drawn thin beside it — and the twelve numbers that
