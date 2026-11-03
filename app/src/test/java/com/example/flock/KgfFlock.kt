@@ -78,6 +78,10 @@ object KgfFlock {
     val kgOf = feedTypes.associate { it.code to it.bagKg }
 
     /** Day rows 0 … [lastDay] with the entries filled in, up to [upTo] (later days are empty). */
+    /** The flock worked out to day [upTo] (the rows the app holds), that day last. */
+    fun computed(upTo: Int): List<DailyDataEntity> =
+        com.example.flock.data.FlockCalc.compute(flock, farm, config, rows(lastDay = upTo + 1, upTo = upTo), kgOf).filter { it.dayNumber <= upTo }
+
     fun rows(lastDay: Int = 42, upTo: Int = 19): List<DailyDataEntity> {
         val by = days.filter { it.day <= upTo }.associateBy { it.day }
         val start = java.time.LocalDate.parse(flock.startDate)

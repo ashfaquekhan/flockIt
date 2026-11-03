@@ -35,18 +35,9 @@ object WeatherStore {
     fun firstDate(ctx: Context, lat: Double, lon: Double): String = load(ctx, lat, lon).firstOrNull()?.date ?: ""
 }
 
-/** What the phone remembers about how the app is shown (not farm data): the weather switch and what the Output page shows. */
+/** What the phone remembers about how the app is shown (not farm data): the weather switch. */
 object ViewPrefs {
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("flockit_view", Context.MODE_PRIVATE)
     fun weatherOn(ctx: Context): Boolean = prefs(ctx).getBoolean("weather_on", true)
     fun setWeatherOn(ctx: Context, on: Boolean) = prefs(ctx).edit().putBoolean("weather_on", on).apply()
-    /** The Output sections hidden on this phone (keys); everything else shows. */
-    fun hiddenSections(ctx: Context): Set<String> = prefs(ctx).getString("hidden_sections", null)?.split(",")?.filter { it.isNotBlank() }?.toSet() ?: emptySet()
-    fun setHiddenSections(ctx: Context, keys: Set<String>) = prefs(ctx).edit().putString("hidden_sections", keys.joinToString(",")).apply()
-    /** The numbers in the "At a glance" grid, in order (null: the default set). */
-    fun glance(ctx: Context): List<String>? = prefs(ctx).getString("glance", null)?.split(",")?.filter { it.isNotBlank() }
-    fun setGlance(ctx: Context, keys: List<String>) = prefs(ctx).edit().putString("glance", keys.joinToString(",")).apply()
-    /** The Output sections open (unfolded) on this phone (null: the default set). */
-    fun openSections(ctx: Context): Set<String>? = prefs(ctx).getString("open_sections", null)?.split(",")?.filter { it.isNotBlank() }?.toSet()
-    fun setOpenSections(ctx: Context, keys: Set<String>) = prefs(ctx).edit().putString("open_sections", keys.joinToString(",")).apply()
 }

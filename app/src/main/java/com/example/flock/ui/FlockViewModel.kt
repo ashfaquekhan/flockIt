@@ -146,6 +146,22 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     private val _loadedAt = MutableStateFlow(0L)
     val loadedAt: StateFlow<Long> = _loadedAt.asStateFlow()
 
+    /**
+     * The function running now (saving a day, repairing the sheet, closing a batch …), shown over the page while it
+     * runs; null when nothing runs. One at a time: a second button pressed meanwhile is turned away with a note.
+     */
+    private val _busy = MutableStateFlow<String?>(null)
+    val busy: StateFlow<String?> = _busy.asStateFlow()
+
+    private fun busy(label: String, block: suspend kotlinx.coroutines.CoroutineScope.() -> Unit) {
+        val running = _busy.value
+        if (running != null) { _userMessage.value = "Wait: ${running.replaceFirstChar { it.lowercase() }} is still running"; return }
+        _busy.value = label
+        viewModelScope.launch {
+            try { block() } finally { _busy.value = null }
+        }
+    }
+
     private val _lockStatus = MutableStateFlow(
         LockStatus(
             isPastDay = false,
@@ -477,7 +493,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Backs up the farm's spreadsheet then rewrites it to the current schema (for old sheets). */
     fun repairFarmSheet(spreadsheetId: String) {
-        viewModelScope.launch {
+        busy("Backing up and repairing the sheet") {
             _syncStatus.value = "syncing"
             _userMessage.value = "Backing up & repairing the sheet…"
             val res = syncManager.backupAndRepairFarm(spreadsheetId)
@@ -492,7 +508,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     /** Sets the active flock's target weight (g) and planned harvest age (days). */
     fun updateFlockPlan(targetWeightG: Double, harvestAge: Int) {
         val flock = _activeFlock.value ?: return
-        viewModelScope.launch {
+        busy("Saving the target") {
             repository.updateFlockPlan(_selectedSpreadsheetId.value, flock.flockId, targetWeightG, harvestAge)
             _activeFlock.value = _flocks.value.firstOrNull { it.flockId == flock.flockId }
                 ?: flock.copy(targetWeight = targetWeightG, harvestAge = harvestAge)
@@ -504,7 +520,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     fun clearDay() {
         val flock = _activeFlock.value ?: return
         val day = _selectedDay.value
-        viewModelScope.launch {
+        busy("Clearing day $day") {
             val sid = _selectedSpreadsheetId.value
             val res = repository.revertDay(sid, flock.flockId, day, authState.value.email)
             EntryDrafts.clear(getApplication(), EntryDrafts.key(sid, flock.flockId, day))
@@ -521,7 +537,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         val day = _selectedDay.value
         val userEmail = authState.value.email
 
-        viewModelScope.launch {
+        busy("Saving day $day") {
             val sid = _selectedSpreadsheetId.value
             val result = repository.saveDayEntry(
                 spreadsheetId = sid,
@@ -599,7 +615,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         val day = try { java.time.temporal.ChronoUnit.DAYS.between(LocalDate.parse(flock.startDate), t.toLocalDate()).toInt() } catch (e: Exception) { return }
         val row = _dailyRows.value.firstOrNull { it.dayNumber == day } ?: return
         val list = com.example.flock.data.parseFeedings(row.feedings) + (String.format("%02d:%02d", t.hour, t.minute) to bags)
-        viewModelScope.launch {
+        busy("Saving the feeding") {
             repository.setFeedings(_selectedSpreadsheetId.value, flock.flockId, day, com.example.flock.data.formatFeedings(list), authState.value.email)
         }
     }
@@ -609,7 +625,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         val flock = _activeFlock.value ?: return
         val row = _dailyRows.value.filter { it.feedings.isNotBlank() }.maxByOrNull { it.dayNumber } ?: return
         val list = com.example.flock.data.parseFeedings(row.feedings).sortedBy { it.first }.dropLast(1)
-        viewModelScope.launch {
+        busy("Taking back the feeding") {
             repository.setFeedings(_selectedSpreadsheetId.value, flock.flockId, row.dayNumber, com.example.flock.data.formatFeedings(list), authState.value.email)
         }
     }
@@ -629,7 +645,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         val flock = _activeFlock.value ?: return
         val spreadsheetId = _selectedSpreadsheetId.value
-        viewModelScope.launch {
+        busy("Saving the task") {
             val existing = taskId?.let { id -> _tasks.value.firstOrNull { it.taskId == id } }
             val task = (existing ?: TaskEntity(
                 spreadsheetId = spreadsheetId,
@@ -648,7 +664,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteTask(taskId: String) {
-        viewModelScope.launch {
+        busy("Deleting the task") {
             repository.deleteTask(_selectedSpreadsheetId.value, taskId)
             rescheduleAlerts()
         }
@@ -673,8 +689,8 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     /** Duplicate a task across a day-range as a daily task (quick "copy to other days"). */
     fun copyTaskToRange(taskId: String, fromDay: Int, toDay: Int) {
         val flock = _activeFlock.value ?: return
-        viewModelScope.launch {
-            val t = _tasks.value.firstOrNull { it.taskId == taskId } ?: return@launch
+        busy("Copying the task") {
+            val t = _tasks.value.firstOrNull { it.taskId == taskId } ?: return@busy
             val copy = t.copy(
                 taskId = "tsk_" + System.currentTimeMillis(),
                 startDay = fromDay.coerceIn(0, com.example.flock.engine.PhysiologicalEngine.MAX_FLOCK_DAY),
@@ -705,7 +721,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun createFarm(name: String, onComplete: (String) -> Unit) {
-        viewModelScope.launch {
+        busy("Creating the farm") {
             _syncStatus.value = "syncing"
             val newFarm = FarmEntity(farmName = name)
             val newConfig = ConfigEntity()
@@ -735,7 +751,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun shareFarm(spreadsheetId: String, email: String, isEditor: Boolean, onResult: (Boolean, String) -> Unit) {
-        viewModelScope.launch {
+        busy("Sharing the farm") {
             val res = syncManager.shareFarm(spreadsheetId, email, isEditor)
             res.onSuccess {
                 _userMessage.value = "Farm shared with $email as ${if (isEditor) "Editor" else "Viewer"}"
@@ -749,7 +765,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateFarmSettings(farm: FarmEntity, config: ConfigEntity) {
-        viewModelScope.launch {
+        busy("Saving the farm settings") {
             repository.updateFarm(farm)
             repository.updateConfig(config)
             _farm.value = farm
@@ -765,20 +781,20 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Save a farm setting changed from the Output page (e.g. the water refill multiplier). */
     fun updateFarm(farm: FarmEntity) {
-        viewModelScope.launch {
+        busy("Saving the setting") {
             repository.updateFarm(farm)
             _farm.value = farm
         }
     }
 
     fun saveFeedType(feedType: FeedTypeEntity) {
-        viewModelScope.launch {
+        busy("Saving the feed type") {
             repository.saveFeedType(feedType)
         }
     }
 
     fun deleteFeedType(code: String) {
-        viewModelScope.launch {
+        busy("Deleting the feed type") {
             repository.deleteFeedType(_selectedSpreadsheetId.value, code)
         }
     }
@@ -795,7 +811,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         startTime: String = "08:00",
         onComplete: (String) -> Unit = {}
     ) {
-        viewModelScope.launch {
+        busy("Creating the batch") {
             val id = repository.createFlock(
                 spreadsheetId = _selectedSpreadsheetId.value,
                 name = name,
@@ -815,7 +831,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun closeFlock(flockId: String) {
-        viewModelScope.launch {
+        busy("Closing the batch and saving it to the sheet") {
             val synced = repository.closeFlock(_selectedSpreadsheetId.value, flockId)
             _userMessage.value = if (synced) "Batch closed and saved to the Google Sheet" else "Batch closed on this phone — it will reach the sheet when online"
         }
@@ -828,7 +844,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun deleteFlock(flockId: String) {
-        viewModelScope.launch {
+        busy("Moving the batch to the recycle bin") {
             repository.softDeleteFlock(_selectedSpreadsheetId.value, flockId)
             if (_activeFlock.value?.flockId == flockId) _activeFlock.value = null
             _userMessage.value = "Flock moved to Recycle Bin"
@@ -836,21 +852,21 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun restoreFlock(spreadsheetId: String, flockId: String) {
-        viewModelScope.launch {
+        busy("Restoring the batch") {
             repository.restoreFlock(spreadsheetId, flockId)
             _userMessage.value = "Flock restored"
         }
     }
 
     fun purgeFlock(spreadsheetId: String, flockId: String) {
-        viewModelScope.launch {
+        busy("Deleting the batch") {
             repository.deleteFlock(spreadsheetId, flockId)
             _userMessage.value = "Flock permanently deleted"
         }
     }
 
     fun restoreFarm(spreadsheetId: String) {
-        viewModelScope.launch {
+        busy("Restoring the farm") {
             repository.restoreFarm(spreadsheetId)
             if (!authState.value.isDemoMode) {
                 runCatching { syncManager.setFarmDeletedInIndex(spreadsheetId, false) }
@@ -860,7 +876,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun purgeFarm(spreadsheetId: String) {
-        viewModelScope.launch {
+        busy("Deleting the farm") {
             repository.deleteFarm(spreadsheetId)
             if (!authState.value.isDemoMode) {
                 runCatching { syncManager.removeFarmFromIndex(spreadsheetId) }
@@ -870,21 +886,21 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleFlockLock(flockId: String, locked: Boolean) {
-        viewModelScope.launch {
+        busy(if (locked) "Locking the batch" else "Unlocking the batch") {
             repository.setFlockLocked(_selectedSpreadsheetId.value, flockId, locked)
             _userMessage.value = if (locked) "Flock locked (read-only)" else "Flock unlocked"
         }
     }
 
     fun toggleFarmLock(spreadsheetId: String, locked: Boolean) {
-        viewModelScope.launch {
+        busy(if (locked) "Locking the farm" else "Unlocking the farm") {
             repository.setFarmLocked(spreadsheetId, locked)
             _userMessage.value = if (locked) "Farm locked (read-only)" else "Farm unlocked"
         }
     }
 
     fun deleteFarm(spreadsheetId: String) {
-        viewModelScope.launch {
+        busy("Moving the farm to the recycle bin") {
             repository.softDeleteFarm(spreadsheetId)
             if (!authState.value.isDemoMode) {
                 runCatching { syncManager.setFarmDeletedInIndex(spreadsheetId, true) }
@@ -905,14 +921,14 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     fun openSharedFarm(input: String) {
         val spreadsheetId = extractSpreadsheetId(input)
         if (spreadsheetId.isBlank()) return
-        viewModelScope.launch {
+        busy("Opening the shared farm") {
             _syncStatus.value = "syncing"
             val validation = syncManager.validateCompatibility(spreadsheetId)
             if (validation.isFailure || validation.getOrNull() != true) {
                 _syncStatus.value = "offline"
                 _userMessage.value =
                     "Couldn't open shared farm: ${validation.exceptionOrNull()?.message ?: "not a FlockIt farm, or no access"}"
-                return@launch
+                return@busy
             }
 
             // Register a placeholder, then pull the real name + flocks + daily data.

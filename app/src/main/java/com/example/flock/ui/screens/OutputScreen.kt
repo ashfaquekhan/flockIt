@@ -51,6 +51,7 @@ import com.example.flock.data.FlockEntity
 import com.example.flock.network.HourPoint
 import com.example.flock.network.WeatherResult
 import com.example.flock.ui.Fmt
+import com.example.flock.data.savedGroups
 import com.example.ui.theme.BrandEmerald
 import com.example.ui.theme.StatusCrit
 import com.example.ui.theme.StatusWarn
@@ -129,7 +130,9 @@ fun OutputScreen(
     onUndoFeeding: () -> Unit = {},
     /** the weather at the farm acts on the house and the birds */
     weatherOn: Boolean = false,
-    onWeatherOn: (Boolean) -> Unit = {}
+    onWeatherOn: (Boolean) -> Unit = {},
+    /** opens another day (a day tapped in the flock book) */
+    onSelectDay: ((Int) -> Unit)? = null
 ) {
     // one scroll position for every day; the section being read stays put when the day changes
     val scroll = rememberScrollState()
@@ -165,28 +168,36 @@ fun OutputScreen(
     val localEvents = remember(flockKey) { FeedLog.load(ctx, flockKey) }
     val events = remember(dailyRows, localEvents, zone) { feedEvents(dailyRows, localEvents, zone) }
     val light = LightProgram(entry.lightHours)
-    // the clock: the projections that move with it are worked out afresh every half minute
+    // the time the page shows: today the clock (until the time slider is moved), another day midday
     val nowZ = remember(now, zone) { java.time.Instant.ofEpochMilli(now).atZone(zone) }
-    val nowView = remember(d, now) { if (isToday) d.nowView(nowZ) else null }
-    // the house this hour, worked out from the weather (null with the switch off: the ideal house)
-    val air = d.envAt(nowZ.hour)
-    // hungry, thirsty, panting: likelihoods from the feedings (those logged today; else the plan's), the lights and the weather
-    val nowHour = nowZ.hour + nowZ.minute / 60.0
-    val logged = remember(events, now, d) { if (isToday) loggedFeedings(events, now, zone, d.kgPerBag(d.phase)) else emptyList() }
+    var pinned by remember(d.day) { mutableStateOf<Int?>(null) }
+    val live = isToday && pinned == null
+    val minutes = pinned ?: if (isToday) nowZ.hour * 60 + nowZ.minute else 12 * 60
+    val dayDate = remember(entry.date) { try { java.time.LocalDate.parse(entry.date) } catch (e: Exception) { null } }
+    val viewZ = if (live || dayDate == null) nowZ else dayDate.atTime(minutes / 60, minutes % 60).atZone(zone)
+    val viewMs = viewZ.toInstant().toEpochMilli()
+    val view = remember(d, viewZ) { d.nowView(viewZ) }
+    val hour = viewZ.hour
+    // the house at that hour, worked out from the weather (null with the switch off: the ideal house)
+    val air = d.envAt(hour)
+    // hungry, thirsty, panting at that time: likelihoods from the feedings (those logged; else the plan's), the lights and the weather
+    val viewHour = hour + viewZ.minute / 60.0
+    val logged = remember(events, viewMs, d) { loggedFeedings(events, viewMs, zone, d.kgPerBag(d.phase)) }
     val fedKnown = logged.isNotEmpty()
     val fed = if (fedKnown) logged else d.plannedFeedings
-    val needsNow = remember(d, now, events) { d.needsAt(nowHour, fed) }
-    val needsSoon = remember(d, now, events) { d.needsAt(nowHour + 3, fed) }
-    // the house's map layers (like a map app): none, or body temp, density, litter, ammonia, air temp, humidity — ideal or projected, top or side
-    var layer by rememberSaveable { mutableStateOf<com.example.flock.domain.HouseField.Layer?>(null) }
-    var layerIdeal by rememberSaveable { mutableStateOf(false) }
-    var sideView by rememberSaveable { mutableStateOf(false) }
-    val field = remember(d, nowZ.hour) { houseFieldOf(d, nowZ.hour) }
-    val feeder = remember(events, now, d) {
+    val needsNow = remember(d, viewMs, events) { d.needsAt(viewHour, fed) }
+    val feeder = remember(events, viewMs, d) {
         feederState(events, zone, needsNow, (d.bagsFillOpen * d.kgPerBag(d.phase)).takeIf { it > 0 } ?: d.giveKg)
     }
+    // when the day's entries were made: the weighing, else the lifting, else the last save on that day
+    val entryHHmm = remember(entry) {
+        listOf(entry.weighedAt, entry.liftedAt).firstOrNull { it > 0 }?.let { java.time.Instant.ofEpochMilli(it).atZone(zone).toLocalTime() }
+            ?.let { String.format("%02d:%02d", it.hour, it.minute) }
+            ?: entry.updatedAt.takeIf { it > 0 && entry.savedGroups().isNotEmpty() }?.let { java.time.Instant.ofEpochMilli(it).atZone(zone) }
+                ?.takeIf { it.toLocalDate() == dayDate }?.let { String.format("%02d:%02d", it.hour, it.minute) }
+    }
     val coop = CoopInput(
-        age = d.day, meanG = d.bw, cvPct = d.cvEst?.coerceIn(3.0, 20.0), live = d.live, entry = d.entryBirds, stage = d.stage, light = light, feeder = feeder,
+        age = d.day, meanG = view.weightG.takeIf { d.vk != ValueKind.PRESENT } ?: d.bw, cvPct = d.cvEst?.coerceIn(3.0, 20.0), live = d.live, entry = d.entryBirds, stage = d.stage, light = light, feeder = feeder,
         zoneId = zone, airC = air?.air?.tempC ?: entry.tempIdeal, rhPct = air?.air?.rhPct ?: entry.rhIdeal, feelsC = air?.r?.feltC ?: d.plan.comfort,
         chillC = com.example.flock.engine.IbController.levelChill(d.minLevel, d.day, d.plan.comfort, d.fanCfm, d.plan.crossFt2),
         pressurePa = 22.5, litterC = d.litterTemp.second, litterMoist = 25.0, bodyC = d.bodyTemp.second,
@@ -201,17 +212,9 @@ fun OutputScreen(
         stateWord = air?.r?.state?.label, airFrom = air?.air?.source?.label,
         densityKgFt2 = d.live * d.bwNow / 1000.0 / d.areaInUseFt2, cvEstimated = !d.cvMeasured, compact = false,
         hungry = needsNow.hungry, thirsty = needsNow.thirsty, panting = needsNow.panting,
-        field = if (layer != null) field else null, layer = layer, layerIdeal = layerIdeal, ft2PerBird = d.space.ft2PerBird,
-        roam = d.roam
+        atMs = if (live) null else viewMs, ft2PerBird = d.space.ft2PerBird, roam = d.roam
     )
     var confirmClose by remember { mutableStateOf(false) }
-    // what shows on this page, chosen on this phone: the numbers at a glance, the sections, which are open
-    var glance by remember { mutableStateOf(com.example.flock.network.ViewPrefs.glance(ctx)?.mapNotNull { GlanceItem.of(it) } ?: GlanceItem.DEFAULT) }
-    var hidden by remember { mutableStateOf(com.example.flock.network.ViewPrefs.hiddenSections(ctx)) }
-    var opened by remember { mutableStateOf(com.example.flock.network.ViewPrefs.openSections(ctx) ?: OutSection.values().filter { it.openByDefault }.map { it.key }.toSet()) }
-    var choosing by remember { mutableStateOf(false) }
-    fun shows(s: OutSection) = s.key !in hidden
-    fun toggle(s: OutSection) { opened = if (s.key in opened) opened - s.key else opened + s.key; com.example.flock.network.ViewPrefs.setOpenSections(ctx, opened) }
 
     androidx.compose.runtime.CompositionLocalProvider(LocalScrollAnchors provides anchors) {
     Box(modifier.fillMaxSize().onGloballyPositioned { anchors.viewportTop = it.positionInRoot().y }) {
@@ -219,57 +222,45 @@ fun OutputScreen(
         modifier = Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal = 14.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        /** a section that folds to one line; open, its cards follow the title line */
-        @Composable fun folded(s: OutSection, alert: Int = 0, content: @Composable () -> Unit) {
-            if (!shows(s)) return
-            Anchored(s.key) { FoldHeader(s, sectionSummary(s, d, nowView), s.key in opened, alert) { toggle(s) } }
-            if (s.key in opened) content()
+        // the house and the birds in it, at the time on the slider
+        Anchored("coop") { GlassBox(Modifier.fillMaxWidth()) { Coop3D(coop) } }
+        Anchored("time") {
+            TimeCard(d, minutes, live, entryHHmm, { pinned = it }, if (isToday && pinned != null) ({ pinned = null }) else null,
+                weatherOn, onWeatherOn, needsNow, fedKnown)
         }
-        // the numbers picked for a quick look, then the house and the birds in it
-        if (shows(OutSection.GLANCE)) Anchored("glance") { GlanceCard(d, nowView, glance) { choosing = true } }
-        if (shows(OutSection.HOUSE)) {
-            Anchored("coop") {
-                GlassBox(Modifier.fillMaxWidth()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Coop3D(coop)
-                        LayerBar(layer, layerIdeal, sideView, { layer = it }, { layerIdeal = it }, { sideView = it })
-                        layer?.let { HouseMap(field, it, layerIdeal, sideView) }
-                        Spacer(Modifier.height(4.dp))
-                    }
-                }
-            }
-            // the weather at the farm: on, it drives the birds in the window and the day's plan; off, the ideal house
-            Anchored("weather") { WeatherRow(d, nowZ.hour, weatherOn, onWeatherOn) }
-        }
-        // how likely the birds are hungry, thirsty or panting — now, and in three hours if nothing more is poured
-        if (shows(OutSection.NEEDS)) Anchored("needs") { NeedsRow(needsNow, needsSoon, fedKnown) }
-        // a feeding given to the birds in the window: how many bags and at what time
-        if (shows(OutSection.FEEDLOG)) Anchored("feedlog") {
-            FeedEntryRow(d, feeder, zone, onFeed = { bags, at -> onLogFeeding(bags, at); now = System.currentTimeMillis() },
-                onUndo = { onUndoFeeding(); now = System.currentTimeMillis() })
-        }
-        if (shows(OutSection.ALERTS)) Anchored("alerts") { AlertList(d.allAlerts) }
+        // each number once: the flock at that time, entered against projected and the company
+        Anchored("now") { FlockNowCard(d, view, entryHHmm) }
+        Anchored("alerts") { AlertList(d.allAlerts) }
+
+        SectionLabel("Feed")
         // how many times to feed today: chosen in the feed card
         var feedPick by rememberSaveable(d.day, d.recommendedOption) { androidx.compose.runtime.mutableIntStateOf(d.recommendedOption) }
-        // entered and projected, side by side and never in one box
-        folded(OutSection.TODAY) { TodayCard(d, nowView) }
-        folded(OutSection.FEED, d.worst(Topic.FEED)) {
-            FeedTodayCard(d, feedPick) { feedPick = it }
+        Anchored("feed") {
+            FeedTodayCard(d, feedPick, { feedPick = it }) {
+                FeedEntryRow(d, feeder, zone, onFeed = { bags, at -> onLogFeeding(bags, at); now = System.currentTimeMillis() },
+                    onUndo = { onUndoFeeding(); now = System.currentTimeMillis() })
+            }
             if (d.day <= 7) FirstWeekCard(d)
             EatenCard(d)
-            FeedCharts(d)
         }
-        folded(OutSection.BIRDS, d.worst(Topic.BIRDS)) { BirdsTab(d, onFlockPlan, nowView) }
-        folded(OutSection.LIFTING) { LiftingCard(d) }
-        folded(OutSection.SPACE, if (d.space.room == com.example.flock.domain.SpacePlan.Room.TIGHT) 1 else 0) { SpaceCard(d) }
-        folded(OutSection.TRENDS, d.suggest.lines.maxOfOrNull { it.level } ?: 0) { SuggestCard(d) }
-        folded(OutSection.WATER) { WaterCard(d, onFarmChange) }
-        folded(OutSection.VENT, d.worst(Topic.VENT)) { VentTab(d, nowZ.hour) }
-        folded(OutSection.WEATHER) { WeatherEffects(d) }
-        OutlinedButton(onClick = { choosing = true }, modifier = Modifier.fillMaxWidth().testTag("choose_sections"),
-            border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine)) {
-            Text("Choose what shows on this page", color = MaterialTheme.colorScheme.onSurface)
-        }
+
+        SectionLabel("Floor and FCR")
+        Anchored("space") { SpaceCard(d) }
+        Anchored("lifting") { LiftingCard(d) }
+
+        SectionLabel("Birds")
+        Anchored("birds") { BirdsTab(d, onFlockPlan, hour) }
+        Anchored("trends") { SuggestCard(d) }
+
+        SectionLabel("House")
+        Anchored("litter") { LitterCard(d, hour) }
+        Anchored("water") { WaterCard(d, onFarmChange) }
+        Anchored("vent") { VentTab(d, hour) }
+        Anchored("weather") { WeatherEffects(d) }
+
+        SectionLabel("Records")
+        Anchored("book") { FlockBookCard(d, onSelectDay) }
+        Anchored("charts") { BirdCharts(d); FeedCharts(d) }
         if (onCloseBatch != null && flock?.status != "closed") {
             OutlinedButton(onClick = { confirmClose = true }, modifier = Modifier.fillMaxWidth(),
                 border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine)) {
@@ -280,11 +271,6 @@ fun OutputScreen(
     }
     }
     }
-    if (choosing) ChooseDialog(glance, hidden, onDone = { g, h ->
-        glance = g; hidden = h
-        com.example.flock.network.ViewPrefs.setGlance(ctx, g.map { it.key }); com.example.flock.network.ViewPrefs.setHiddenSections(ctx, h)
-        choosing = false
-    }, onDismiss = { choosing = false })
     if (confirmClose) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { confirmClose = false },
@@ -358,8 +344,10 @@ private fun FeedEntryRow(d: OutputData, feeder: FeederState, zone: java.time.Zon
         } ?: System.currentTimeMillis()
         onFeed(bags, at); text = ""; picked = null
     }
-    GlassBox(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(Modifier.fillMaxWidth().border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(10.dp)).padding(10.dp).testTag("feed_log"),
+        verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Log a feeding", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
+        run {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 androidx.compose.material3.OutlinedTextField(
                     value = text, onValueChange = { text = it.filter { c -> c.isDigit() || c == '.' || c == ',' } },

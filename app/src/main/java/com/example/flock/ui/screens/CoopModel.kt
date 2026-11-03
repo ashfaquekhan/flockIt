@@ -93,7 +93,8 @@ data class FeederState(
 
 /** The feedings logged in the last day and a half, on a clock where today's midnight (farm time) is 0. */
 fun loggedFeedings(events: List<FeedEvent>, now: Long, zone: ZoneId, kgPerBag: Double): List<com.example.flock.domain.FlockNeeds.Feeding> {
-    val midnight = LocalDate.now(zone).atStartOfDay(zone).toInstant().toEpochMilli()
+    // hours from the midnight of the day [now] is on (today, or the day on the time slider)
+    val midnight = Instant.ofEpochMilli(now).atZone(zone).toLocalDate().atStartOfDay(zone).toInstant().toEpochMilli()
     return events.filter { it.t <= now && it.t >= now - 36L * 3600_000 }
         .map { com.example.flock.domain.FlockNeeds.Feeding((it.t - midnight) / 3600_000.0, it.bags * kgPerBag) }
 }

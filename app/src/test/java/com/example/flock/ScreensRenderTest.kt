@@ -33,6 +33,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithTag
@@ -216,60 +220,82 @@ class ScreensRenderTest {
         assertEquals(before.value, rule.onNodeWithTag("feed_conclusion").getUnclippedBoundsInRoot().top.value, 40f)
     }
     @Config(qualifiers = "w360dp-h9000dp-xhdpi") @Test fun outputLong() = shoot("output_long") { output() }
-    /** One view: the glance, the house, and the sections folded to one line each. */
+    /** One view, no folds: the window, the time card, the flock table, then the feed. */
     @Config(qualifiers = "w360dp-h3600dp-xhdpi") @Test fun outputOne() = shoot("output_one") { output() }
     @Config(qualifiers = "w360dp-h4400dp-xhdpi") @Test fun outputOneBigText() = shoot("output_one_bigtext") {
         val dens = androidx.compose.ui.platform.LocalDensity.current
         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(dens.density, 1.3f)) { output() }
     }
-    /** The new sections opened, at 130 % text: nothing breaks mid-word. */
+    /** Every card is open on the page (no folds, no "choose what shows"), each in its group, at 130 % text. */
     @Config(qualifiers = "w360dp-h11000dp-xhdpi") @Test fun outputAllOpenBigText() {
         rule.mainClock.autoAdvance = false
         rule.setContent { MyApplicationTheme {
             val dens = androidx.compose.ui.platform.LocalDensity.current
             androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(dens.density, 1.3f)) { output() }
         } }
-        rule.mainClock.advanceTimeBy(800)
-        // from the bottom up, so opening one never pushes the next title off the screen
-        listOf("trends", "space", "lifting").forEach { k ->
-            rule.onNodeWithTag("fold_$k").performClick(); rule.mainClock.advanceTimeBy(300)
-        }
-        rule.mainClock.advanceTimeBy(800)
-        rule.onNodeWithTag("space_why").assertExists()
+        rule.mainClock.advanceTimeBy(1200)
+        listOf("time_card", "time_slider", "feed_conclusion", "feed_log", "space_why", "litter_view", "nipple_view", "flock_book").forEach { rule.onNodeWithTag(it).assertExists() }
+        assertTrue(rule.onAllNodesWithText("Choose what shows", substring = true).fetchSemanticsNodes().isEmpty())
+        assertTrue(rule.onAllNodesWithText("At a glance").fetchSemanticsNodes().isEmpty())
+        assertTrue(rule.onAllNodesWithText("Half", substring = true).fetchSemanticsNodes().isEmpty())
         rule.onRoot().captureRoboImage("src/test/screenshots/screen_output_all_open_bigtext.png")
     }
-    /** The map layers: air temperature from the side (floor to roof) and ammonia from the top, with the window's see-through sheets. */
-    @Config(qualifiers = "w360dp-h2600dp-xhdpi") @Test fun mapLayers() {
+    /** The parts of the page drawn new: the litter from the side, the nipple line with its gauge, the floor plan and the feed with the barricade. */
+    @Config(qualifiers = "w360dp-h4200dp-xhdpi") @Test fun newCards() {
+        val r = KgfFlock.computed(44)
+        val d = com.example.flock.ui.screens.OutputData(KgfFlock.flock, KgfFlock.farm, r.last(), r, KgfFlock.feedTypes, null, emptyList(), false, false)
+        rule.mainClock.autoAdvance = false
+        rule.setContent { MyApplicationTheme { androidx.compose.foundation.layout.Column(Modifier.fillMaxSize().background(Color.Black).padding(14.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
+            com.example.flock.ui.screens.FeedTodayCard(d, d.recommendedOption, {}) { }
+            com.example.flock.ui.screens.SpaceCard(d)
+            com.example.flock.ui.screens.LitterCard(d, 14)
+            com.example.flock.ui.screens.WaterCard(d)
+        } } }
+        rule.mainClock.advanceTimeBy(1600)
+        rule.onNodeWithTag("plan_step_2").assertExists()
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_new_cards.png")
+    }
+    /** The time slider moves the page to another time of the day; Now brings the clock back. */
+    @Config(qualifiers = "w360dp-h2400dp-xhdpi") @Test fun timeSliderPicksATime() {
         rule.mainClock.autoAdvance = false
         rule.setContent { MyApplicationTheme { output() } }
-        rule.mainClock.advanceTimeBy(800)
-        // the last chips of the row are past its edge: slide it along first
-        rule.onNodeWithTag("layer_bar").performTouchInput { swipeLeft() }; rule.mainClock.advanceTimeBy(800)
-        rule.onNodeWithTag("layer_air_t").performClick(); rule.mainClock.advanceTimeBy(300)
-        rule.onNodeWithTag("layer_side").performClick(); rule.mainClock.advanceTimeBy(600)
-        rule.onNodeWithTag("house_map").assertExists()
-        rule.onRoot().captureRoboImage("src/test/screenshots/screen_layers_air_side.png")
-        rule.onNodeWithTag("layer_top").performClick(); rule.mainClock.advanceTimeBy(200)
-        rule.onNodeWithTag("layer_ammonia").performClick(); rule.mainClock.advanceTimeBy(600)
-        rule.onRoot().captureRoboImage("src/test/screenshots/screen_layers_ammonia_top.png")
+        rule.mainClock.advanceTimeBy(1000)
+        rule.onNodeWithTag("time_slider").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.SetProgress) { it(18 * 60f) }
+        rule.mainClock.advanceTimeBy(600)
+        rule.onNodeWithTag("time_shown").assertTextEquals("18:00")
+        rule.onAllNodesWithText("Flock at 18:00")[0].assertExists()
+        rule.onNodeWithTag("time_now").performClick()
+        rule.mainClock.advanceTimeBy(600)
+        assertTrue(rule.onAllNodesWithTag("time_now").fetchSemanticsNodes().isEmpty())
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_time_card.png")
     }
-    /** "Choose what shows": ticking a section off hands it back as hidden (the dialog alone: small and quick). */
-    @Config(qualifiers = "w360dp-h900dp-xhdpi") @Test fun chooseHidesASection() {
-        var hidden: Set<String>? = null
-        rule.setContent { MyApplicationTheme { com.example.flock.ui.screens.ChooseDialog(com.example.flock.ui.screens.GlanceItem.DEFAULT, emptySet(), { _, h -> hidden = h }, {}) } }
-        rule.onNodeWithTag("choose_sec_vent").performScrollTo().performClick()
-        rule.onNodeWithText("Done").performClick()
-        assertEquals(setOf("vent"), hidden)
-    }
-    /** A section hidden on this phone is not on the page; the others are. */
-    @Config(qualifiers = "w360dp-h7000dp-xhdpi") @Test fun hiddenSectionLeavesThePage() {
-        com.example.flock.network.ViewPrefs.setHiddenSections(androidx.test.core.app.ApplicationProvider.getApplicationContext(), setOf("vent"))
+    /** A full-screen chart: opened from its corner, it reads the lifting days and closes again. */
+    @Config(qualifiers = "w360dp-h780dp-xhdpi") @Test fun chartOpensFullScreen() {
+        val r = KgfFlock.computed(44)
+        val d = com.example.flock.ui.screens.OutputData(KgfFlock.flock, KgfFlock.farm, r.last(), r, KgfFlock.feedTypes, null, emptyList(), false, false)
         rule.mainClock.autoAdvance = false
-        rule.setContent { MyApplicationTheme { output() } }
+        rule.setContent { MyApplicationTheme { Box(Modifier.fillMaxSize().background(Color.Black).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+            com.example.flock.ui.screens.BirdCharts(d) } } }
         rule.mainClock.advanceTimeBy(800)
-        assertTrue(rule.onAllNodesWithTag("fold_vent").fetchSemanticsNodes().isEmpty())
-        rule.onNodeWithTag("fold_space").assertExists()
-        com.example.flock.network.ViewPrefs.setHiddenSections(androidx.test.core.app.ApplicationProvider.getApplicationContext(), emptySet())
+        rule.onNodeWithTag("zoom_birds_in_the_house").performClick()
+        rule.mainClock.advanceTimeBy(800)
+        rule.onNodeWithTag("chart_zoomed").assertExists()
+        com.github.takahirom.roborazzi.captureScreenRoboImage("src/test/screenshots/screen_chart_zoomed.png")
+    }
+    /** The flock book: one line a day, lifting days marked; full screen too. */
+    @Config(qualifiers = "w360dp-h900dp-xhdpi") @Test fun flockBook() {
+        val r = KgfFlock.computed(44)
+        val d = com.example.flock.ui.screens.OutputData(KgfFlock.flock, KgfFlock.farm, r.last(), r, KgfFlock.feedTypes, null, emptyList(), false, false)
+        var picked = -1
+        rule.mainClock.autoAdvance = false
+        rule.setContent { MyApplicationTheme { Box(Modifier.fillMaxSize().background(Color.Black).padding(14.dp)) { com.example.flock.ui.screens.FlockBookCard(d) { picked = it } } } }
+        rule.mainClock.advanceTimeBy(800)
+        rule.onNodeWithTag("book_day_43").assertExists()
+        rule.onAllNodesWithText("43 L")[0].assertExists()
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_flock_book.png")
+        rule.onNodeWithTag("book_day_43").performClick()
+        assertEquals(43, picked)
     }
     /** The day clock is under the tasks now, and no longer on the Output page; the likelihoods card is. */
     @Config(qualifiers = "w360dp-h2400dp-xhdpi") @Test fun clockLivesUnderTheTasks() {
@@ -278,8 +304,8 @@ class ScreensRenderTest {
         rule.setContent { MyApplicationTheme { if (showTasks) tasks() else output() } }
         rule.mainClock.advanceTimeBy(1000)
         assertTrue(rule.onAllNodesWithText("Day clock").fetchSemanticsNodes().isEmpty())
-        rule.onNodeWithTag("needs_row").assertExists()
-        assertTrue(rule.onAllNodesWithText("Hungry").fetchSemanticsNodes().size >= 2)      // now, and in 3 h
+        rule.onNodeWithTag("time_card").assertExists()
+        assertTrue(rule.onAllNodesWithText("Hungry", substring = true).fetchSemanticsNodes().isNotEmpty())
         showTasks = true
         rule.mainClock.advanceTimeBy(1000)
         rule.onAllNodesWithText("Day clock")[0].assertExists()
@@ -309,7 +335,7 @@ class ScreensRenderTest {
     @Config(qualifiers = "w360dp-h2600dp-xhdpi") @Test fun outputWeatherOff() = shoot("output_weather_off") { output(weatherOn = false) }
     @Config(qualifiers = "w360dp-h3200dp-xhdpi") @Test fun entryNewDayLong() {
         shoot("entry_new_day") { entryNewDay() }
-        // nothing locks: no lock banner, no cut-off; the time of the entries can be picked
+        // a day not saved yet does not lock: no lock banner, no cut-off; the time of the entries can be picked
         assertTrue(rule.onAllNodesWithText("locked", substring = true, ignoreCase = true).fetchSemanticsNodes().isEmpty())
         assertTrue(rule.onAllNodesWithText("cut-off", substring = true, ignoreCase = true).fetchSemanticsNodes().isEmpty())
         rule.onNodeWithTag("entry_time").assertExists()
@@ -320,8 +346,6 @@ class ScreensRenderTest {
     @Config(qualifiers = "w360dp-h12000dp-xhdpi") @Test fun dialsGoBackToTheWeather() {
         rule.mainClock.autoAdvance = false
         rule.setContent { MyApplicationTheme { output() } }
-        rule.mainClock.advanceTimeBy(800)
-        rule.onNodeWithTag("fold_vent").performClick()
         rule.mainClock.advanceTimeBy(800)
         rule.onAllNodesWithText("The weather at the farm now · turn a dial to try another")[0].assertExists()
         rule.onAllNodesWithText("+")[0].performClick()
@@ -335,8 +359,35 @@ class ScreensRenderTest {
         val dens = androidx.compose.ui.platform.LocalDensity.current
         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(dens.density, 1.3f)) { output() }
     }
-    @Config(qualifiers = "w360dp-h11000dp-xhdpi") @Test fun outputLongVent() = shootFold("vent", "output_long_vent")
-    @Config(qualifiers = "w360dp-h9000dp-xhdpi") @Test fun outputLongSpace() = shootFold("space", "output_long_space")
+    /** A saved day locks: its entries can't be changed (notes and feed received can), until it is unlocked. */
+    @Config(qualifiers = "w360dp-h3200dp-xhdpi") @Test fun savedDayLocksUntilUnlocked() {
+        val r = rows(11)
+        val at = java.time.LocalDate.now().atTime(8, 15).atZone(java.time.ZoneId.of(farm.timeZone)).toInstant().toEpochMilli()
+        val saved = r.last().copy(savedFields = "W,M,F", updatedAt = at + 60_000, weighedAt = at, w1 = 600.0, n1 = 2, notes = "- litter turned")
+        var got: com.example.flock.ui.DailyInputs? = null
+        rule.mainClock.autoAdvance = false
+        rule.setContent { MyApplicationTheme { Dash(0) { EntriesScreen(saved, 11, "30 Sep", "29 Sep", feedTypes, lock, "k3", listOf(50), emptyList(), { got = it }, {}, farm = farm) } } }
+        rule.mainClock.advanceTimeBy(1000)
+        rule.onAllNodesWithText("Locked so it is not saved twice", substring = true)[0].assertExists()
+        rule.onNodeWithTag("mortality_input").assertIsNotEnabled()
+        rule.onNodeWithTag("notes_input").assertIsEnabled()
+        rule.onAllNodesWithText("Hold to save notes and feed received")[0].assertExists()
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_entry_locked.png")
+        // the hold: a fill and a count while held; saved with the time it was entered at, not now
+        rule.onAllNodesWithTag("hold_button")[0].performTouchInput { down(center) }
+        rule.mainClock.advanceTimeBy(500)
+        rule.onAllNodesWithText("Keep holding", substring = true)[0].assertExists()
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_entry_holding.png")
+        rule.mainClock.advanceTimeBy(700)
+        rule.onAllNodesWithTag("hold_button")[0].performTouchInput { up() }
+        rule.mainClock.advanceTimeBy(300)
+        assertEquals(at, got?.at)
+        // unlocked, the entries open again
+        rule.onNodeWithTag("unlock_day").performClick(); rule.mainClock.advanceTimeBy(300)
+        rule.onNodeWithTag("unlock_confirm").performClick(); rule.mainClock.advanceTimeBy(600)
+        rule.onNodeWithTag("mortality_input").assertIsEnabled()
+        rule.onAllNodesWithText("Unlocked", substring = true)[0].assertExists()
+    }
     @Config(qualifiers = "w360dp-h1500dp-xhdpi") @Test fun stockSmall() = shoot("stock_small") { stock() }
     /** The quarter-width window and its stats grid. */
     @Config(qualifiers = "w360dp-h1500dp-xhdpi") @Test fun outputQuarter() {
@@ -360,18 +411,9 @@ class ScreensRenderTest {
         rule.mainClock.autoAdvance = false
         rule.setContent { MyApplicationTheme { output() } }
         rule.mainClock.advanceTimeBy(800)
-        rule.onNodeWithTag("info_needs").performClick()
+        rule.onNodeWithTag("info_time").performClick()
         rule.mainClock.advanceTimeBy(800)
         rule.onAllNodesWithText("How it is worked out")[0].assertExists()
-        com.github.takahirom.roborazzi.captureScreenRoboImage("src/test/screenshots/screen_info_needs.png")
-    }
-
-    private fun shootFold(key: String, name: String) {
-        rule.mainClock.autoAdvance = false
-        rule.setContent { MyApplicationTheme { output() } }
-        rule.mainClock.advanceTimeBy(800)
-        rule.onNodeWithTag("fold_$key").performClick()
-        rule.mainClock.advanceTimeBy(800)
-        rule.onRoot().captureRoboImage("src/test/screenshots/screen_$name.png")
+        com.github.takahirom.roborazzi.captureScreenRoboImage("src/test/screenshots/screen_info_time.png")
     }
 }

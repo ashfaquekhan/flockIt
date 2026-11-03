@@ -3,7 +3,7 @@ package com.example.flock
 import com.example.flock.data.FlockCalc
 import com.example.flock.data.formatFeedings
 import com.example.flock.data.parseFeedings
-import com.example.flock.domain.HouseField.Layer
+import com.example.flock.domain.Litter
 import com.example.flock.domain.SpacePlan
 import com.example.flock.domain.Suggest
 import org.junit.Assert.assertEquals
@@ -129,36 +129,47 @@ class LiftingSpaceTest {
         assertTrue(real.lines.isNotEmpty())
     }
 
-    private fun field(fanCfm: Double, speed: Double, day: Int = 40) = com.example.flock.domain.HouseField.In(
-        lengthFt = 299.0, widthFt = 39.0, heightFt = 7.5, barricadeFt = 299.0,
-        feederYs = listOf(1, 3, 5, 7).map { (it + 0.5) * 39.0 / 9 }, drinkerYs = listOf(0, 2, 4, 6, 8).map { (it + 0.5) * 39.0 / 9 },
-        live = 12000, avgKg = 2.8, day = day, airC = 27.0, rhPct = 70.0, idealC = 21.0, idealRh = 60.0,
-        fanCfm = fanCfm, airSpeedMs = speed, heatLoadC = 2.0, outRh = 80.0, body = Triple(40.6, 41.2, 42.0), heatersOn = false)
+    /**
+     * The farm's question: 7,222 birds left of 15,664 in the 299 × 39 ft house, 4 feeder lines of 114 pans, 3 bags fill a
+     * line, about 26 bags a day. Warm: keep the house, shut pans to about 45 birds each (and each feeding still reaches the
+     * last open pan); cool: the barricade, every pan past it shut. The plan is three steps.
+     */
+    @Test fun aHalfEmptyHouseGetsAFloorPansAndFeedingsPlan() {
+        fun plan(hot: Double, cool: Double) = SpacePlan.plan(spaceIn(7222, 3.1, hot, cool).copy(dayBags = 26.0, bagsFullLine = 3.0, birdsPerPanMax = 71.0, feedingsWanted = 2))
+        val warm = plan(31.0, 24.0)
+        val w = warm.options[warm.best]
+        warm.steps.forEach { println("warm: $it") }
+        assertEquals("pans", w.key)
+        assertTrue(w.birdsPerPan in 35.0..60.0)
+        assertTrue(w.feedReaches)
+        assertEquals(2, w.feedings)
+        assertTrue("one fill ${w.fillBags} under a feeding ${w.bagsPerFeeding}", w.fillBags <= w.bagsPerFeeding)
+        assertEquals(3, warm.steps.size)
+        assertTrue(warm.steps[1].startsWith("Pans: "))
+        val cool = plan(24.0, 15.0)
+        val c = cool.options[cool.best]
+        cool.steps.forEach { println("cool: $it") }
+        assertEquals("pen", c.key)
+        assertTrue(c.shutPastPen > 0)
+        assertTrue(cool.steps[1].contains("past the barricade"))
+        // too few bags to fill the open pans even once: the plan says so
+        val short = SpacePlan.plan(spaceIn(7222, 3.1, 31.0, 24.0).copy(dayBags = 3.0, bagsFullLine = 3.0, birdsPerPanMax = 71.0))
+        assertTrue(short.options.first().let { !it.feedReaches })
+    }
 
-    @Test fun theHouseMapLayersPointTheRightWay() {
-        val H = com.example.flock.domain.HouseField
-        val tunnel = field(8 * 20000.0, 2.0); val still = field(20000.0, 0.15)
-        // air warms from the pads to the fans, more with little air moved
-        assertTrue(H.airC(tunnel, 290.0, 0.12) > H.airC(tunnel, 10.0, 0.12))
-        assertTrue(H.lengthRiseC(still) > H.lengthRiseC(tunnel))
-        // still air is warmer under the roof; fast air mixes it
-        val stillUp = H.airC(still, 150.0, 0.95) - H.airC(still, 150.0, 0.05)
-        val tunnelUp = H.airC(tunnel, 150.0, 0.95) - H.airC(tunnel, 150.0, 0.05)
-        assertTrue("still $stillUp tunnel $tunnelUp", stillUp > 2.0 && tunnelUp < 1.0)
-        // warmer air reads lower humidity
-        assertTrue(H.rh(still, 150.0, 0.95) < H.rh(still, 150.0, 0.05))
-        // the density averages to the floor's
-        val avg = H.densityAvg(tunnel)
-        val mean = (0 until 99).flatMap { xi -> (0 until 39).map { yi -> H.density(tunnel, xi * 3.0 + 1.5, yi + 0.5) } }.average()
-        assertEquals(avg, mean, avg * 0.03)
-        // wetter litter under a drinker line than between the lines; more ammonia where it is wetter
-        val dy = tunnel.drinkerYs[2]; val fy = tunnel.feederYs[1]
-        assertTrue(H.moisture(tunnel, 150.0, dy) > H.moisture(tunnel, 150.0, fy))
-        assertTrue(H.ammonia(still, 150.0, dy) > H.ammonia(still, 150.0, fy))
-        // the ideal is the same everywhere; the position on the scale is 0 in the good band
-        assertEquals(H.ideal(Layer.MOISTURE, tunnel, 10.0, 3.0), H.ideal(Layer.MOISTURE, tunnel, 280.0, 30.0), 0.0)
-        assertEquals(0.0, H.position(H.scale(Layer.AMMONIA, tunnel), 5.0), 0.0)
-        assertTrue(H.position(H.scale(Layer.AMMONIA, tunnel), 25.0) > 0.5)
+    @Test fun theLitterGetsDeeperWetterAndGivesOffAmmoniaWithAge() {
+        fun at(day: Int, feedKg: Double, rh: Double = 70.0, speed: Double = 0.3) =
+            Litter.state(Litter.In(day = day, kgM2 = 30.0, feedKgTD = feedKg, floorM2 = 1083.0, airC = 26.0, rhPct = rh, airSpeedMs = speed))
+        val young = at(5, 2000.0); val old = at(44, 60000.0)
+        println("day 5: ${young}\nday 44: $old")
+        assertTrue(old.depthCm > young.depthCm && old.depthCm in 8.0..16.0)
+        assertTrue(young.moisturePct in 12.0..22.0 && old.moisturePct in 24.0..34.0)
+        assertTrue(old.underDrinkersPct > old.moisturePct)
+        assertEquals(0.0, young.nh3Ppm, 0.0)
+        assertTrue(old.nh3Ppm > 0)
+        // more air over the litter clears ammonia; a humid day wets it
+        assertTrue(at(44, 60000.0, speed = 2.0).nh3Ppm < old.nh3Ppm)
+        assertTrue(at(44, 60000.0, rh = 90.0).moisturePct > old.moisturePct)
     }
 
     @Test fun feedingsRoundTrip() {

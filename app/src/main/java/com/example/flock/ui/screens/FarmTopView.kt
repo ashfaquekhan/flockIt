@@ -34,11 +34,11 @@ import kotlin.math.min
 
 /**
  * Top view of the house at its real aspect ratio: the front wall on the left, every feeder line
- * (hopper → pans → motor) and drinker line, the brooding barricade, and which pans are open today.
- * Long houses scroll sideways.
+ * (hopper → pans → motor) and drinker line, the barricade (a fence, the floor past it dark and its pans shut, ×), and
+ * which pans are open. Long houses scroll sideways.
  */
 @Composable
-fun FarmTopView(d: OutputData, pattern: OutputData.PanPattern = d.feedPattern) {
+fun FarmTopView(d: OutputData, pattern: OutputData.PanPattern = d.feedPattern, barricadeFt: Double = d.barricadeFtNow, pansInArea: Int = d.pansInArea) {
     val f = d.farm
     val lenFt = max(10.0, f.usableLengthFt)
     val widFt = max(5.0, f.usableWidthFt)
@@ -58,10 +58,16 @@ fun FarmTopView(d: OutputData, pattern: OutputData.PanPattern = d.feedPattern) {
             val paint = Paint().apply { isAntiAlias = true; textSize = 10f * px; typeface = com.example.ui.theme.AppFonts.mono; color = Color.White.copy(alpha = 0.7f).toArgb() }
             // house
             drawRect(line, Offset(X(0.0), Y(0.0)), Size((lenFt * s).toFloat(), (widFt * s).toFloat()), style = Stroke(1.2f))
-            // birds' area up to the barricade
-            val bar = d.barricadeFtNow
+            // birds' area up to the barricade; past it the floor is empty (dark) and fenced off
+            val bar = barricadeFt.coerceIn(0.0, lenFt)
             drawRect(ValueIdeal.copy(alpha = 0.07f), Offset(X(0.0), Y(0.0)), Size((bar * s).toFloat(), (widFt * s).toFloat()))
-            if (bar < lenFt - 0.5) drawLine(ValuePredicted, Offset(X(bar), Y(0.0) - 6f), Offset(X(bar), Y(widFt) + 6f), 2.4f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f)))
+            if (bar < lenFt - 0.5) {
+                drawRect(Color.White.copy(alpha = 0.06f), Offset(X(bar), Y(0.0)), Size(((lenFt - bar) * s).toFloat(), (widFt * s).toFloat()))
+                // the fence: a solid bar with posts
+                drawLine(ValuePredicted, Offset(X(bar), Y(0.0) - 6f), Offset(X(bar), Y(widFt) + 6f), 4f * px)
+                var post = 0.0
+                while (post <= widFt + 1e-6) { drawLine(ValuePredicted, Offset(X(bar) - 4f * px, Y(post)), Offset(X(bar) + 4f * px, Y(post)), 2f * px); post += 3.0 }
+            }
             // lines, spread across the width
             val gap = d.lineGapFt
             var fIdx = 0
@@ -80,7 +86,8 @@ fun FarmTopView(d: OutputData, pattern: OutputData.PanPattern = d.feedPattern) {
                         val pxFt = start + (p + 0.5) * d.panSpacingFt
                         val c = Offset(X(pxFt), Y(y))
                         when {
-                            p >= d.pansInArea -> drawCircle(faint, r, c, style = Stroke(1f))
+                            // past the barricade: shut (the auger would fill it for no bird)
+                            p >= pansInArea -> { drawCircle(faint, r, c, style = Stroke(1f)); drawLine(Color.White.copy(alpha = 0.45f), Offset(c.x - r, c.y - r), Offset(c.x + r, c.y + r), 1f); drawLine(Color.White.copy(alpha = 0.45f), Offset(c.x - r, c.y + r), Offset(c.x + r, c.y - r), 1f) }
                             pattern.isOpen(p) -> drawCircle(ValuePredicted, r, c)
                             else -> drawCircle(Color.White.copy(alpha = 0.45f), r, c, style = Stroke(1f))
                         }
@@ -107,7 +114,12 @@ fun FarmTopView(d: OutputData, pattern: OutputData.PanPattern = d.feedPattern) {
             paint.textAlign = Paint.Align.RIGHT
             drawContext.canvas.nativeCanvas.drawText("${Fmt.n(lenFt, 1)} × ${Fmt.n(widFt, 1)} ft", X(lenFt), Y(0.0) - 8f, paint)
             paint.textAlign = Paint.Align.LEFT
-            if (bar < lenFt - 0.5) { paint.color = ValuePredicted.toArgb(); drawContext.canvas.nativeCanvas.drawText("barricade ${Fmt.n(bar, 1)} ft", X(bar) + 6f, Y(widFt) + 18f, paint) }
+            if (bar < lenFt - 0.5) {
+                paint.color = ValuePredicted.toArgb(); paint.isFakeBoldText = true
+                drawContext.canvas.nativeCanvas.drawText("barricade ${Fmt.n(bar, 1)} ft", X(bar) + 8f * px, Y(widFt) + 18f, paint)
+                paint.isFakeBoldText = false; paint.color = Color.White.copy(alpha = 0.6f).toArgb()
+                drawContext.canvas.nativeCanvas.drawText("no birds · pans shut", X(bar) + 8f * px, Y(widFt / 2), paint)
+            }
             paint.color = Color.White.copy(alpha = 0.7f).toArgb()
             drawContext.canvas.nativeCanvas.drawText("lines ${Fmt.n(d.lineLenFt, 1)} ft · pans every ${Fmt.n(d.panSpacingFt, 1)} ft", X(0.0) + 60f * px, Y(0.0) - 8f, paint)
         }

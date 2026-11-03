@@ -52,14 +52,24 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O21 | Output review checklist (keep / change / drop) is waiting for the farm's choices | https://claude.ai/artifact/VDtyZmDKtLiJBu5Nxq6B3g |
 | O47 | Sheet schema 8 upgrade is tested on data, not yet run on the live sheet | It runs once on the first load after installing v47 and keeps a snapshot of the old sheet (same path as 6 → 7, which ran on this sheet on 9 Oct). A copy of the sheet as it stood on 3 Nov is also saved beside the APK. |
 | O48 | Lifting time is not known for the four liftings already entered | They are taken as 20:00 (the trucks loaded in the evening; the entries were saved 20:28–23:04). Pick the time when entering the next lifting. |
-| O49 | Which end is the pad (inlet) end is assumed | The map layers take the front wall (where x = 0, the brooding end) as the pads and the back as the fans. Say so if it is the other way round. |
-| O50 | The map layers are a model | Spreads along and across the house and floor-to-roof from published rules (heat picked up by the air, stratification, wet litter under drinkers, ammonia from wet warm litter); not fitted to this house. |
 | O51 | "Comfortable" density on hot days (30 / 34 kg/m²) is a rule of thumb | From heat-stress guidance; the farm's cap (39 kg/m²) stays the most. Say if the company uses other figures. |
 | O52 | Two phones changing the same value at the same time: the later save wins | Different values on the same day are merged; the same value is not. |
+| O53 | The litter is a model, and the bedding depth is assumed | 7.5 cm of bedding at placement unless known; droppings from the feed entered; moisture, warmth and ammonia from age, crowding, the house air and air speed. Not fitted to this house — a squeeze test and the nose decide. A farm setting for the bedding depth (and material) would firm it up. |
+| O54 | The nipple line drawing shows the age curve, not a reading | Pressure and height are the ideal for the age (there is no entry for them). Readings could be added to the entry page. |
+| O55 | The performance radar is in the design options, not in the app | Six axes against the company (growth, FCR, livability, evenness, appetite, EPEF). Add it once a design is chosen. |
+| O56 | The floor plan's pan figures are rules of thumb | About 45 birds a pan aimed for, under 25 counted as too few (feed goes stale), 2 m the longest walk (Ross). Say if the company uses others. |
 
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v48 | Livability 46 % and EPEF 220 after lifting (company 468) | Livability = live ÷ started: the lifted birds counted as lost | (live + lifted) ÷ started; EPEF on the average of every bird produced |
+| v48 | Holding Save again re-saved the morning's entry with the time moved to now | v47 removed the lock, and an empty time picker meant "now" | A saved day locks (notes and feed received stay open) until unlocked; a save keeps the saved time unless another is picked |
+| v48 | No hold animation on the Save button | The fill was a child box sized to the button's height, which is unbounded inside the scrolling Entry page: 0 px tall | Drawn behind the button; a ring and a count too; timed by frames |
+| v48 | The Save button could save stale values | The press gesture kept the action from the first drawing (pointerInput(Unit)) | The latest action is read when it fires (also the task tick) |
+| v48 | Two functions could be started at once (save and repair …), with nothing showing they ran | No shared "running" state | One function at a time, a card over the page with what runs and for how long; other buttons wait |
+| v48 | The same numbers several times on the Output page; folds and a "choose" list | "At a glance", the grid under the window and the cards each carried weight, FCR, density … | One table for the flock at a time; each number has one card; no folds |
+| v48 | No plan for a half-empty house: pans on/off or barricade, how many feedings | The space card and the feed card decided apart; the feed card had no lower limit on birds a pan | One plan (floor → pans → feedings) from the line fill, birds a pan and the walk; Feed today follows it |
+| v48 | The barricade was hard to see on the pan plan, which was folded away | A thin dashed line; the drawing sat in a fold | A fence, the floor past it dark, its pans crossed out; always shown |
 | v47 | FCR jumped to 3.08 over the lifting days | FCR = feed ÷ (live birds × weight): the lifted birds' kg were not counted | FCR on produced kg (live × weight + kg lifted); the birds left get their own average |
 | v47 | cFCR used the flock's weight, not the average of all birds produced | Same cause | Company cFCR on the cumulative body weight; a breed-curve cFCR beside it |
 | v47 | Loading only worked by swiping the farm list; flock pages did not refresh | The Google token (1 hour) was renewed only by the farm list's refresh; an expired one made every flock-page load fail quietly | Token renewed before it runs out and once more on a refused read; loads on open, on return and every 3 min; a loading bar |

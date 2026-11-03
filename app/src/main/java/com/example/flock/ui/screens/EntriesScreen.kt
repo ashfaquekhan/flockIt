@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.coroutineScope
@@ -143,8 +144,11 @@ fun EntriesScreen(
     var lameSeparated by remember { mutableStateOf("") }
     // where the barricade stands today, ft from the front wall (empty: the whole house, or the brooding plan)
     var penFt by remember { mutableStateOf("") }
-    // when what is entered happened: null = now (today) / the time already saved (a past day)
+    // when what is entered happened: null = the time already saved, else now (today) / 08:00 (a past day)
     var pickedAt by remember(draftKey) { mutableStateOf<String?>(null) }
+    // a saved day is locked (so it is not saved again by mistake) until unlocked here; it locks again once saved
+    var unlocked by remember(draftKey) { mutableStateOf(false) }
+    var askUnlock by remember(draftKey) { mutableStateOf(false) }
 
     var feedRecB1 by remember { mutableStateOf("") }
     var feedTypeB1 by remember { mutableStateOf("") }
@@ -223,8 +227,11 @@ fun EntriesScreen(
         // what is saved, before any draft: a draft keeps only what was typed over it, so a newer value loaded from
         // the sheet (another phone's) is never put back to an old one by a stale draft
         val loaded = currentValues()
-        // Unsaved draft typed earlier.
-        val d = EntryDrafts.load(context, draftKey)
+        // Unsaved draft typed earlier (on a saved day only what stays open there: notes and feed received).
+        val keepOpen = setOf("rec1", "rt1", "rec2", "rt2", "rec3", "rt3", "notes", "noteNew")
+        val d = EntryDrafts.load(context, draftKey).let { all ->
+            if ((entry?.updatedAt ?: 0L) > 0 && entry?.savedGroups().orEmpty().isNotEmpty()) all.filterKeys { it in keepOpen } else all
+        }
         locs.forEachIndexed { i, l -> d["w${i + 1}"]?.let { l.w = it }; d["n${i + 1}"]?.let { l.n = it } }
         d["indiv"]?.let { singles = it }
         // Bird counts per location rarely change: carry the last weighing's counts forward.
@@ -246,24 +253,28 @@ fun EntriesScreen(
         }
     }
 
-    // nothing locks with the clock or once saved (v47): today and every past day can be changed; a day to come cannot
+    // a day to come cannot be entered; a saved day is locked until unlocked (notes and feed received stay open on it)
     val isHardLocked = lockStatus.isFuture
     val openDay = !lockStatus.isFuture
-    val weightsEnabled = openDay
-    val mortEnabled = openDay
-    val feedEnabled = openDay
+    val dayLocked = openDay && !unlocked && (entry?.updatedAt ?: 0L) > 0 && (saved.isNotEmpty() || (entry?.birdsLifted ?: 0) > 0)
+    val weightsEnabled = openDay && !dayLocked
+    val mortEnabled = openDay && !dayLocked
+    val feedEnabled = openDay && !dayLocked
+    val othersEnabled = !isHardLocked && !dayLocked
     val zone = remember(farm?.timeZone) { try { java.time.ZoneId.of(farm?.timeZone ?: "Asia/Kolkata") } catch (e: Exception) { java.time.ZoneId.systemDefault() } }
     val dayIso = entry?.date.orEmpty()
-    // the time already saved for this day (its weighing, else its lifting), else 08:00 — the default on a past day
-    val savedHHmm = listOf(entry?.weighedAt ?: 0L, entry?.liftedAt ?: 0L).firstOrNull { it > 0 }?.let { ms ->
+    // the time already saved for this day (its weighing, else its lifting): a save again keeps it unless another is picked
+    val savedAtMs = listOf(entry?.weighedAt ?: 0L, entry?.liftedAt ?: 0L).firstOrNull { it > 0 }
+    val savedHHmm = savedAtMs?.let { ms ->
         java.time.Instant.ofEpochMilli(ms).atZone(zone).toLocalTime().let { String.format("%02d:%02d", it.hour, it.minute) }
     }
     var nowTick by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { delay(30_000); nowTick = System.currentTimeMillis() } }
     val nowHHmm = java.time.Instant.ofEpochMilli(nowTick).atZone(zone).toLocalTime().let { String.format("%02d:%02d", it.hour, it.minute) }
-    val shownHHmm = pickedAt ?: if (isToday) nowHHmm else (savedHHmm ?: "08:00")
-    /** the moment the entries are about, epoch ms (null: now) */
+    val shownHHmm = pickedAt ?: savedHHmm ?: if (isToday) nowHHmm else "08:00"
+    /** the moment the entries are about, epoch ms (null: now) — the saved time when none is picked */
     fun entryAt(): Long? {
+        if (pickedAt == null && savedAtMs != null) return savedAtMs
         if (pickedAt == null && isToday) return null
         val date = try { java.time.LocalDate.parse(dayIso) } catch (e: Exception) { return null }
         val h = shownHHmm.substringBefore(":").toIntOrNull() ?: return null
@@ -284,17 +295,26 @@ fun EntriesScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // what is already saved (nothing locks: change any value and hold Update)
+        // a saved day: what was saved and when; locked until unlocked (notes and feed received stay open)
         if (saved.isNotEmpty() && (entry?.updatedAt ?: 0L) > 0) {
             val names = mapOf("W" to "weights", "M" to "mortality", "F" to "feed used")
             val at = java.time.Instant.ofEpochMilli(entry!!.updatedAt).atZone(zone)
-            InfoBanner(
-                icon = Icons.Default.Check, tint = StatusGood, wash = StatusGoodWash,
-                text = "Saved: " + listOf("W", "M", "F").filter { it in saved }.mapNotNull { names[it] }.joinToString(", ") +
-                    " · last change ${at.toLocalDate().let { if (it.toString() == dayIso) "" else "${it.dayOfMonth} ${it.month.name.take(3).lowercase().replaceFirstChar { c -> c.uppercase() }} " }}" +
-                    String.format("%02d:%02d", at.hour, at.minute) + (entry.updatedBy.substringBefore("@").takeIf { it.isNotBlank() }?.let { " by $it" } ?: "") +
-                    ". Change any value and hold Update."
-            )
+            val what = listOf("W", "M", "F").filter { it in saved }.mapNotNull { names[it] }.joinToString(", ")
+            val by = entry.updatedBy.substringBefore("@").takeIf { it.isNotBlank() }?.let { " by $it" } ?: ""
+            val change = at.toLocalDate().let { if (it.toString() == dayIso) "" else "${it.dayOfMonth} ${it.month.name.take(3).lowercase().replaceFirstChar { c -> c.uppercase() }} " } +
+                String.format("%02d:%02d", at.hour, at.minute)
+            if (dayLocked) {
+                InfoBanner(icon = Icons.Default.Lock, tint = StatusGood, wash = StatusGoodWash,
+                    text = "Saved: $what" + (savedHHmm?.let { " · entries at $it" } ?: "") + " · last change $change$by. " +
+                        "Locked so it is not saved twice. Notes and feed received can still be added.")
+                OutlinedButton(onClick = { askUnlock = true }, shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("unlock_day")) {
+                    Icon(Icons.Default.LockOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Unlock day $dayNumber to change an entry")
+                }
+            } else InfoBanner(icon = Icons.Default.LockOpen, tint = StatusWarn, wash = StatusWarnWash,
+                text = "Unlocked: change what is wrong and hold Update" + (savedHHmm?.let { " — the time stays $it unless you pick another" } ?: "") +
+                    ". It locks again once saved.")
         }
         if (isHardLocked) {
             InfoBanner(
@@ -304,14 +324,15 @@ fun EntriesScreen(
         }
 
         // when what is entered happened: now, or an earlier time picked (the weighing at 08:15, the lifting at 21:00)
-        if (openDay) Section(title = "Time of these entries", subtitle = if (isToday) "Now, unless they were done earlier today — the weighing time starts the weight's projection" else "On $dayDate — the weighing or lifting time") {
+        if (openDay) Section(title = "Time of these entries", subtitle = if (savedHHmm != null) "As saved; pick another only if the weighing or lifting was at another time"
+            else if (isToday) "Now, unless they were done earlier today — the weighing time starts the weight's projection" else "On $dayDate — the weighing or lifting time") {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 com.example.flock.ui.components.TimePickerField(
-                    label = if (pickedAt == null && isToday) "At (now)" else "At", valueHHmm = shownHHmm,
-                    onPick = { picked -> pickedAt = if (isToday && picked > nowHHmm) nowHHmm else picked },
+                    label = if (pickedAt == null && savedHHmm != null) "At (as saved)" else if (pickedAt == null && isToday) "At (now)" else "At", valueHHmm = shownHHmm,
+                    onPick = { picked -> if (!dayLocked) pickedAt = if (isToday && picked > nowHHmm) nowHHmm else picked },
                     modifier = Modifier.weight(1f).testTag("entry_time"))
-                if (pickedAt != null) OutlinedButton(onClick = { pickedAt = null }, shape = RoundedCornerShape(10.dp)) {
-                    Text(if (isToday) "Use now" else "Reset", maxLines = 1, softWrap = false)
+                if (!dayLocked && pickedAt != null) OutlinedButton(onClick = { pickedAt = null }, shape = RoundedCornerShape(10.dp)) {
+                    Text(if (savedHHmm != null) "As saved" else if (isToday) "Use now" else "Reset", maxLines = 1, softWrap = false)
                 }
             }
         }
@@ -478,14 +499,14 @@ fun EntriesScreen(
                     value = birdsLifted, onValueChange = { birdsLifted = it },
                     label = { Text("Birds lifted") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    enabled = !isHardLocked, modifier = Modifier.weight(1f).testTag("birds_lifted_input")
+                    enabled = othersEnabled, modifier = Modifier.weight(1f).testTag("birds_lifted_input")
                 )
                 OutlinedTextField(
                     colors = entryFieldColors(),
                     value = weightLifted, onValueChange = { weightLifted = it },
                     label = { Text("Lift weight (kg)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    enabled = !isHardLocked, modifier = Modifier.weight(1f).testTag("weight_lifted_input")
+                    enabled = othersEnabled, modifier = Modifier.weight(1f).testTag("weight_lifted_input")
                 )
             }
             val liftN = birdsLifted.toIntOrNull() ?: 0
@@ -497,7 +518,7 @@ fun EntriesScreen(
                 value = lameSeparated, onValueChange = { lameSeparated = it },
                 label = { Text("Lame / culls separated") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                enabled = !isHardLocked, modifier = Modifier.fillMaxWidth().testTag("lame_separated_input")
+                enabled = othersEnabled, modifier = Modifier.fillMaxWidth().testTag("lame_separated_input")
             )
             OutlinedTextField(
                 colors = entryFieldColors(),
@@ -506,7 +527,7 @@ fun EntriesScreen(
                 supportingText = { Text("Where the birds' floor ends today; it holds until changed. Empty or ${farm?.usableLengthFt?.fmt() ?: "the house length"}: the whole house") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                enabled = !isHardLocked, modifier = Modifier.fillMaxWidth().testTag("pen_input")
+                enabled = othersEnabled, modifier = Modifier.fillMaxWidth().testTag("pen_input")
             )
         }
 
@@ -518,7 +539,7 @@ fun EntriesScreen(
                 label = { Text("Diesel cans used") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                enabled = !isHardLocked, modifier = Modifier.fillMaxWidth()
+                enabled = othersEnabled, modifier = Modifier.fillMaxWidth()
             )
             Text("Notes — one point each", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             noteItems.forEachIndexed { idx, item ->
@@ -559,7 +580,8 @@ fun EntriesScreen(
 
         // SAVE — press & hold ~1 s so it can't be tapped by accident; nothing locks after saving
         HoldButton(
-            label = (if (saved.isNotEmpty()) "Hold to update day $dayNumber" else "Hold to save day $dayNumber") + " · at $shownHHmm",
+            label = if (dayLocked) "Hold to save notes and feed received"
+                else (if (saved.isNotEmpty()) "Hold to update day $dayNumber" else "Hold to save day $dayNumber") + " · at $shownHHmm",
             enabled = openDay,
             onComplete = {
                 val rows = feedUse.filter { (it.bags.toDoubleOrNull() ?: 0.0) > 0.0 }
@@ -601,6 +623,7 @@ fun EntriesScreen(
                     )
                 )
                 pickedAt = null
+                unlocked = false
             }
         )
 
@@ -609,16 +632,24 @@ fun EntriesScreen(
             onComplete = onClearDay,
             container = StatusCrit,
             icon = Icons.Default.Close,
-            enabled = !isHardLocked && saved.isNotEmpty()
+            enabled = !isHardLocked && saved.isNotEmpty() && !dayLocked
         )
         Text(
-            text = "Nothing locks: change any value of any day so far and hold Update. Only what you change is sent, so what another phone entered stays. Clear empties the whole day.",
+            text = "A saved day locks, so it is not saved twice by mistake; notes and feed received can still be added. Unlock it to change an entry: only what you change is sent, so what another phone entered stays. Clear empties the whole day (unlock a saved day first).",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
         Spacer(modifier = Modifier.height(96.dp).navigationBarsPadding())
     }
+    if (askUnlock) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { askUnlock = false },
+        title = { Text("Unlock day $dayNumber?") },
+        text = { Text("Its saved entries can then be changed. Hold Update to save: only what you change is sent" +
+            (savedHHmm?.let { ", and the time stays $it unless you pick another" } ?: "") + ". It locks again once saved.") },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { unlocked = true; askUnlock = false }, modifier = Modifier.testTag("unlock_confirm")) { Text("Unlock") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = { askUnlock = false }) { Text("Keep locked") } }
+    )
 }
 
 /**
@@ -710,8 +741,9 @@ fun parseNoteItems(raw: String): List<String> =
 private fun Double.fmt(): String = if (this % 1.0 == 0.0) this.toInt().toString() else this.toString()
 
 /**
- * A full-width button that must be pressed and held for [holdSeconds] to fire, so it can't be
- * triggered by an accidental tap. A fill sweeps left→right while held; releasing early cancels.
+ * A full-width button that must be pressed and held for [holdSeconds] to fire, so it can't be triggered by an
+ * accidental tap. While held a fill sweeps left to right with a bright edge, a ring round the icon closes and the text
+ * counts up; let go early and it runs back. It waits while another function runs ([LocalBusy]).
  */
 @Composable
 fun HoldButton(
@@ -726,43 +758,57 @@ fun HoldButton(
 ) {
     // the edge and icon carry the button's colour when it is a risky one (clear); the save button stays white on black
     val accent = if (container == BrandEmerald) Color.White else container
+    val busy = com.example.flock.ui.components.LocalBusy.current
+    val active = enabled && busy == null
     val holdMs = holdSeconds * 1000f
+    // the latest action, not the one from the first time the button was drawn (the gesture below lives on)
+    val fire by androidx.compose.runtime.rememberUpdatedState(onComplete)
     var progress by remember { mutableStateOf(0f) }
     var pressed by remember { mutableStateOf(false) }
     var doneFlash by remember { mutableStateOf(false) }
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val scale by androidx.compose.animation.core.animateFloatAsState(if (pressed) 0.97f else 1f, label = "holdScale")
+    // let go early: the fill runs back instead of vanishing
+    val shownProgress by androidx.compose.animation.core.animateFloatAsState(progress, if (pressed) androidx.compose.animation.core.snap()
+        else androidx.compose.animation.core.tween(220), label = "holdFill")
     androidx.compose.runtime.LaunchedEffect(doneFlash) { if (doneFlash) { delay(900); doneFlash = false } }
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = height.dp)
-            .graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (enabled) 1f else 0.45f }
+            .graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (active || doneFlash) 1f else 0.45f }
             .clip(RoundedCornerShape(12.dp))
-            .border(if (pressed || doneFlash) 2.dp else 1.5.dp, if (!enabled) com.example.ui.theme.GlassLine.copy(alpha = 0.3f) else if (pressed || doneFlash) Color.White else accent.copy(alpha = 0.85f), RoundedCornerShape(12.dp))
+            // drawn behind the text (a child box can't fill the height inside a scrolling page)
+            .drawBehind {
+                val f = if (doneFlash) 1f else shownProgress
+                if (f > 0f) {
+                    drawRect(accent.copy(alpha = if (doneFlash) 0.30f else 0.24f), size = androidx.compose.ui.geometry.Size(size.width * f, size.height))
+                    if (!doneFlash) drawRect(Color.White, topLeft = androidx.compose.ui.geometry.Offset(size.width * f - 3.dp.toPx(), 0f),
+                        size = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height))
+                }
+            }
+            .border(if (pressed || doneFlash) 2.dp else 1.5.dp, if (!active) com.example.ui.theme.GlassLine.copy(alpha = 0.3f) else if (pressed || doneFlash) Color.White else accent.copy(alpha = 0.85f), RoundedCornerShape(12.dp))
             .then(
-                if (!enabled) Modifier
+                if (!active) Modifier
                 else Modifier.pointerInput(Unit) {
                     detectTapGestures(
                         onPress = {
                             progress = 0f
                             pressed = true
                             haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
-                            var fired = false
                             coroutineScope {
+                                // timed by the screen's frames: the fill moves every frame the finger stays down
                                 val anim = launch {
-                                    val t0 = System.nanoTime()
+                                    val t0 = androidx.compose.runtime.withFrameNanos { it }
                                     while (true) {
-                                        val elapsed = (System.nanoTime() - t0) / 1_000_000f
+                                        val elapsed = (androidx.compose.runtime.withFrameNanos { it } - t0) / 1_000_000f
                                         progress = (elapsed / holdMs).coerceIn(0f, 1f)
                                         if (progress >= 1f) {
-                                            fired = true
                                             haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
                                             doneFlash = true
-                                            onComplete(); break
+                                            fire(); break
                                         }
-                                        delay(16)
                                     }
                                 }
                                 tryAwaitRelease()
@@ -773,22 +819,30 @@ fun HoldButton(
                         }
                     )
                 }
-            ),
+            )
+            .testTag("hold_button"),
         contentAlignment = Alignment.Center
     ) {
-        // the fill sweeps across while held (white, so it shows on the black button), with a bright leading edge
-        if (progress > 0f || doneFlash) {
-            Box(Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(if (doneFlash) 1f else progress)
-                .background(Color.White.copy(alpha = if (doneFlash) 0.30f else 0.22f)))
-            if (!doneFlash) Box(Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(progress)) {
-                Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(3.dp).background(Color.White))
-            }
-        }
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-            Icon(if (doneFlash) Icons.Default.Check else icon, contentDescription = null, tint = accent, modifier = Modifier.size(22.dp))
+            // the icon in a ring that closes as the hold goes on
+            Box(Modifier.size(30.dp).drawBehind {
+                val stroke = 2.5.dp.toPx()
+                drawCircle(Color.White.copy(alpha = 0.18f), radius = size.minDimension / 2 - stroke / 2, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
+                val f = if (doneFlash) 1f else shownProgress
+                if (f > 0f) drawArc(accent, -90f, 360f * f, false, topLeft = androidx.compose.ui.geometry.Offset(stroke / 2, stroke / 2),
+                    size = androidx.compose.ui.geometry.Size(size.width - stroke, size.height - stroke),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+            }, contentAlignment = Alignment.Center) {
+                Icon(if (doneFlash) Icons.Default.Check else icon, contentDescription = null, tint = accent, modifier = Modifier.size(18.dp))
+            }
             Spacer(modifier = Modifier.width(10.dp))
             Text(
-                text = when { doneFlash -> "Done"; progress in 0.001f..0.999f -> "Keep holding… ${(progress * 100).toInt()} %"; else -> label },
+                text = when {
+                    doneFlash -> "Done"
+                    busy != null -> "Wait: ${busy.replaceFirstChar { it.lowercase() }}…"
+                    progress in 0.001f..0.999f -> "Keep holding… ${(progress * 100).toInt()} %"
+                    else -> label
+                },
                 color = Color.White,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,

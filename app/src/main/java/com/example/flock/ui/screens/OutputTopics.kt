@@ -99,42 +99,24 @@ fun StatTile(label: String, value: V, sub: String?, modifier: Modifier = Modifie
 
 // =================================== TABS ===================================
 
-/** Birds: how many, deaths, growth, uniformity, comfort and the curves — everything about the birds in one place. */
+/** Birds: the start and removals, the target and forecast, the projection check, evenness and comfort. */
 @Composable
-fun BirdsTab(d: OutputData, onFlockPlan: ((Double, Int) -> Unit)? = null, now: OutputData.NowView? = null) {
+fun BirdsTab(d: OutputData, onFlockPlan: ((Double, Int) -> Unit)? = null, hour: Int = d.hour) {
     val e = d.e
-    val live = d.live.toDouble()
-    val comCumBirds = d.comCumPct * d.entryBirds / 100.0
-    KpiCard("Flock", listOf(
-        Kpi("Live birds", "", live, d.mk, d.entryBirds - comCumBirds, null, Better.HIGHER, 0),
-        Kpi("Deaths today", "%", d.mortTodayPct, d.mk, d.comDailyPct, null, Better.LOWER, 3,
-            totalFactor = (d.live + d.mortToday) / 100.0, totalUnit = "birds", totalDec = 0),
-        Kpi("Mortality till date", "%", d.mortTDPct, d.mk, d.comCumPct, d.ceilingPct, Better.LOWER, 2,
-            totalFactor = d.entryBirds / 100.0, totalUnit = "birds", totalDec = 0),
-        Kpi("Livability", "%", e.livability, d.mk, 100 - d.comCumPct, 100 - d.ceilingPct, Better.HIGHER, 2)
-    ), info = "flock")
     OutputCard(title = "Start and removals", info = "reception") {
         Param("Placed", "", vi(d.placed, P, "Chicks placed"), vi(d.reception, P, "Reception deaths"), v(d.receptionPct, 2, P, "% of placed"))
-        Param("Started", "", vi(d.entryBirds, P, "Birds"), v(d.mortTDPct, 2, d.mk, "Mortality %"), v(d.mortWithReceptionPct, 2, d.mk, "With reception %"))
-        Param("Removed", "", vi(d.mortTD, d.mk, "Deaths"), vi(d.lameTD, P, "Culls"), vi(d.liftTD, P, "Lifted"))
+        Param("Started", "", vi(d.entryBirds, P, "Birds"), v(d.mortWithReceptionPct, 2, d.mk, "Mortality with reception %"))
+        Param("Removed till date", "", vi(d.mortTD, d.mk, "Deaths"), vi(d.lameTD, P, "Culls"), v(e.livability, 2, d.mk, "Livability %"))
     }
-    KpiCard("Growth", listOf(
-        Kpi("Body weight", "g", d.weightShown(now), d.vk, d.bwCom, d.bwIdeal, Better.HIGHER, 1, totalFactor = live / 1000, totalUnit = "kg"),
-        Kpi("Daily gain", "g/day", d.gain, d.gainKind, d.gainCom, d.gainIdeal, Better.HIGHER, 1, totalFactor = live / 1000, totalUnit = "kg"),
-        Kpi("FCR", "", d.fcrShown(now), d.fcrKind, d.fcrCom, d.fcrIdeal, Better.LOWER, 3, settling = d.day < 7),
-        Kpi("cFCR", "2 kg", e.cFcr, d.fcrKind, d.cfcrCom, d.cfcrIdeal, Better.LOWER, 3, settling = d.day < 7),
-        Kpi("EPEF", "", d.epef, d.fcrKind, d.epefCom, d.epefIdeal, Better.HIGHER, 1, settling = d.day < 7)
-    ), info = "growth")
     ForecastCard(d, onFlockPlan)
     AccuracyCard(d)
     UniformityCard(d)
     OutputCard(title = "Comfort", info = "comfort") {
-        RangeParam("Body temp", "°C", d.bodyTemp.first, d.bodyTemp.second, d.bodyTemp.third, null, projected = d.envAt(d.hour)?.r?.bodyTempC)
+        RangeParam("Body temp", "°C", d.bodyTemp.first, d.bodyTemp.second, d.bodyTemp.third, null, projected = d.envAt(hour)?.r?.bodyTempC)
         RangeParam("Feet", "°C", d.footTemp.first, d.footTemp.second, d.footTemp.third, null)
         Param("Light", "h", v(e.lightHours, 1, I, "Light"), v(24.0 - e.lightHours, 1, I, "Dark"))
         RangeParam("Light intensity", "lux", d.lightLux.first, null, d.lightLux.second, e.luxPerFt2, idealBand = d.lightLux)
     }
-    BirdCharts(d)
 }
 
 /** Trends worked out from the flock's own weights, feed and deaths. */
@@ -149,7 +131,6 @@ internal fun TrendsCard(d: OutputData) {
         KpiLine(Kpi("First-week mortality", "%", k.firstWeekMortPct, if (k.firstWeekComplete) P else PR, d.firstWeekMortCom, d.firstWeekMortIdeal, Better.LOWER, 2,
             settling = !k.firstWeekComplete))
         KpiLine(Kpi("Mortality, last 7 days", "%", k.mort7Pct, d.mk, d.mort7Com, null, Better.LOWER, 2))
-        KpiLine(Kpi("FCR with losses counted", "", k.adjFcr, d.fcrKind, null, null, Better.LOWER, 3))
     }
 }
 
@@ -324,16 +305,8 @@ fun VentTab(d: OutputData, hour: Int = d.hour) {
     OutputCard(title = "House air", info = "air") {
         RangeParam("Temperature", "°C", e.tempMin, e.tempIdeal, e.tempMax, null, projected = h?.air?.tempC)
         RangeParam("Humidity", "%", e.rhMin, e.rhIdeal, e.rhMax, null, projected = h?.air?.rhPct)
-        if (h != null) ValueRow(listOf(v(h.r.feltC, 1, stateKind(h.r.state), "Birds feel"), v(d.plan.comfort, 1, I, "Comfort °C"),
-            vt(h.r.state.short, stateKind(h.r.state), "Birds are")), "now")
-        More("Limits, measurements and litter", "air") {
-            RangeParam("Air speed", "ft/min", null, null, PhysiologicalEngine.maxAirSpeedFpm(d.day), e.measuredAirspeed)
-            RangeParam("Static pressure", "Pa", 20.0, null, 25.0, e.measuredPressure)
-            RangeParam("CO₂", "ppm", null, null, e.co2Max, e.measuredCo2)
-            RangeParam("NH₃", "ppm", null, null, e.nh3Max, e.measuredNh3)
-            RangeParam("Litter temperature", "°C", d.litterTemp.first, d.litterTemp.second, d.litterTemp.third, null)
-            RangeParam("Litter moisture", "%", 20.0, 25.0, 30.0, null)
-        }
+        RangeParam("Static pressure", "Pa", 20.0, null, 25.0, e.measuredPressure)
+        RangeParam("CO₂", "ppm", null, null, e.co2Max, e.measuredCo2)
     }
     VentSection(d, hour)
 }
@@ -476,7 +449,6 @@ internal fun WaterCard(d: OutputData, onFarmChange: ((com.example.flock.data.Far
     val refills = d.waterRefills
     OutputCard(title = "Water", info = "water") {
         TankPicture(d.tankL, refills, d.waterL)
-        ValueRow(listOf(v(d.tankL, 1, P, "Tank L"), v(d.waterTanksNeeded, 1, P, "Fills needed"), v(d.waterL / refills, 1, PR, "L each")), "tank")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             LeadLabel("refill ×")
             listOf(1.0, 2.0, 3.0, 4.0).forEach { m ->
@@ -490,6 +462,7 @@ internal fun WaterCard(d: OutputData, onFarmChange: ((com.example.flock.data.Far
             "mL/bird" to listOf(v(d.waterPerBird, 1, PR, "Today")),
             "farm L" to listOf(v(d.waterL, 1, PR, "Today"), v(d.waterL / max(0.5, e.lightHours), 1, PR, "L an hour, lit"))
         ), strong = true)
+        NippleLineView(d.drinkerHtIn, e.drinkerPressureIn.takeIf { it > 0 }, d.bw)
         Param("Nipple line", "", v(e.drinkerPressureIn.takeIf { it > 0 }, 2, I, "Pressure in"), v(d.drinkerHtIn, 1, I, "Height in"),
             v(e.drinkerFlowLHrLine.takeIf { it > 0 }, 1, I, "L/h per line"))
         if (d.birdsPerNipple != null) RangeParam("Birds / nipple", "", null, null, d.birdsPerNippleMax, d.birdsPerNipple, 1, PR)
@@ -593,13 +566,11 @@ private fun MinVentCard(d: OutputData) {
         HouseAirflow(l, f.fanCount, f.hasEC, false, false, d.airFpm(l.avgFans))
         Param("Timer", "s", vt(l.cyc.joinToString(",").ifEmpty { l.cont.joinToString(",") }, I, "Fan"), vi(if (l.isTimer) l.on else 0, I, "On"),
             vi(if (l.isTimer) l.off else 0, I, "Off"), v(l.avgFans, 2, PR, "Avg fans"), strong = true)
-        More("Air it gives", "minvent") {
-            Param("Air", "cfm", listOf(
-                "per bird" to listOf(v(d.plan.needCfm / live, 3, I, "Needed"), v(d.minAvgCfm / live, 3, PR, "Delivered")),
-                "house" to listOf(v(d.plan.needCfm, 1, I, "Needed"), v(d.minAvgCfm, 1, PR, "Delivered"))
-            ))
-            Param("Air speed", "ft/min", v(d.airFpm(l.avgFans), 1, PR), v(if (d.day <= 14) 29.5 else null, 1, MX, "Draught max"))
-        }
+        Param("Air", "cfm", listOf(
+            "per bird" to listOf(v(d.plan.needCfm / live, 3, I, "Needed"), v(d.minAvgCfm / live, 3, PR, "Delivered")),
+            "house" to listOf(v(d.plan.needCfm, 1, I, "Needed"), v(d.minAvgCfm, 1, PR, "Delivered"))
+        ))
+        Param("Air speed", "ft/min", v(d.airFpm(l.avgFans), 1, PR), v(if (d.day <= 14) 29.5 else null, 1, MX, "Draught max"))
     }
 }
 
@@ -623,13 +594,10 @@ private fun FanFinderCard(d: OutputData, tC: Double, rh: Double, heldS: Int?, se
         val cfm = s.fans * d.fanCfm
         HouseAirflow(lv, f.fanCount, f.hasEC, s.padEff > 0, s.heaterKw > 0.05, d.airFpm(s.fans))
         Param("Fans", "", v(s.fans, 2, PR, "Average"), vi(lv.fansOn, PR, "On"), vi(d.plan.maxFans, MX, "Allowed"), vi(s.level, PR, "Level"), strong = true)
-        Param("House", "", v(s.houseC, 1, PR, "°C"), v(e.tempIdeal, 1, I, "Ideal °C"), v(s.houseRh, 1, PR, "% RH"), v(e.rhIdeal, 1, I, "Ideal %"))
-        Param("Birds feel", "°C", v(s.feltC, 1, PR), v(d.plan.comfort, 1, I, "Comfort"))
-        More("Air, heat and pads", "fanfinder") {
-            Param("Air", "cfm", listOf("per bird" to listOf(v(cfm / live, 3, PR)), "house" to listOf(v(cfm, 1, PR))))
-            Param("Air speed", "ft/min", v(d.airFpm(s.fans), 1, PR), v(PhysiologicalEngine.maxAirSpeedFpm(d.day), 1, MX))
-            Param("Heat and pads", "", v(s.heaterKw, 1, PR, "Heat kW"), v(s.padEff * 100, 1, PR, "Pads %"))
-        }
+        Param("House", "", v(s.houseC, 1, PR, "°C"), v(s.houseRh, 1, PR, "% RH"), v(s.feltC, 1, PR, "Birds feel °C"))
+        Param("Air", "cfm", listOf("per bird" to listOf(v(cfm / live, 3, PR)), "house" to listOf(v(cfm, 1, PR))))
+        Param("Air speed", "ft/min", v(d.airFpm(s.fans), 1, PR), v(PhysiologicalEngine.maxAirSpeedFpm(d.day), 1, MX))
+        Param("Heat and pads", "", v(s.heaterKw, 1, PR, "Heat kW"), v(s.padEff * 100, 1, PR, "Pads %"))
     }
 }
 

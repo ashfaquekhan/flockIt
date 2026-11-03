@@ -285,7 +285,8 @@ object FlockCalc {
             // Reception / transit deaths only reduce the entry flock; they are not flock mortality.
             val entryBirds = (flock.birdsPlaced - flock.receptionMort).coerceAtLeast(0)
             val cumMortPct = if (entryBirds > 0) (cumMort.toDouble() / entryBirds) * 100.0 else null
-            val livability = if (entryBirds > 0) (live.toDouble() / entryBirds) * 100.0 else null
+            // birds lifted (sold) are not lost: livability is the share still alive in the house or on the trucks
+            val livability = if (entryBirds > 0) ((live + cumLift).toDouble() / entryBirds) * 100.0 else null
 
             // Area & density: the floor the birds have (the barricade entered, else the brooding plan) and the birds after any lifting
             r.broodingLength?.let { penFt = if (it <= 0 || it >= farm.usableLengthFt) null else it }

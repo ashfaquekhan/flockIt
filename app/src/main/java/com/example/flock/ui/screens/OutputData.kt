@@ -71,6 +71,8 @@ class OutputData(
     val vk = if (e.projected) ValueKind.PREDICTED else ValueKind.PRESENT
     val byDay = rows.associateBy { it.dayNumber }
     val upto = rows.filter { it.dayNumber <= day }
+    private val kgMap = feedTypes.associate { it.code to it.bagKg }
+    private val sortedRows = rows.sortedBy { it.dayNumber }
     /** A day after today: nothing in it has happened yet. */
     val isFuture: Boolean = try {
         java.time.LocalDate.parse(e.date).isAfter(java.time.LocalDate.now(java.time.ZoneId.of(farm.timeZone)))
@@ -122,8 +124,9 @@ class OutputData(
     val fcrIdeal = PhysiologicalEngine.stdFcrFromDay(day.toDouble(), breed)
     val cfcrCom: Double? = CompanyStandard.cfcr(day)
     val cfcrIdeal = PhysiologicalEngine.computeCorrectedFcr(bwIdeal / 1000.0, fcrIdeal)
-    val epef: Double? = if (day >= 7 && e.fcr != null && e.fcr > 0 && e.livability != null)
-        e.livability * (bw / 1000.0) * 100.0 / (day * e.fcr) else null
+    /** EPEF on the average of every bird produced (lifted ones too) once birds are lifted, else the flock's weight. */
+    val epef: Double? get() = if (day >= 7 && e.fcr != null && e.fcr > 0 && e.livability != null)
+        e.livability * (mass?.cumBwKg ?: (bw / 1000.0)) * 100.0 / (day * e.fcr) else null
     val epefCom: Double? = if (day >= 7 && fcrCom != null && bwCom != null)
         (100 - comCumPct) * (bwCom / 1000.0) * 100.0 / (day * fcrCom) else null
     val epefIdeal: Double? = if (day >= 7) (100 - ceilingPct) * (bwIdeal / 1000.0) * 100.0 / (day * fcrIdeal) else null
@@ -222,6 +225,8 @@ class OutputData(
             }
         }
     }
+    val hotC: Double = outsideHours.maxOf { it.second }
+    val coolC: Double = outsideHours.minOf { it.second }
     /** Body temperature of a comfortable bird: 39.4–40.5 °C in the first 2 days; about 41–42 °C once grown. */
     val bodyTemp: Triple<Double, Double, Double> = when {
         day <= 2 -> Triple(39.4, 40.0, 40.5)
@@ -400,6 +405,38 @@ class OutputData(
     val dayBags: Double = if (chartBags <= 0) 0.0 else if (intake.learning) chartBags
         else intakeAdvice.loadBags.coerceIn(ceil(chartBags * 0.75), ceil(chartBags * 1.25))
 
+    // ------------------------------- lifting: where the flock's meat is -------------------------------
+    /** The meat balance for every day: lifted, live, dead; FCR on what was produced; both cFCRs. */
+    val massByDay: Map<Int, com.example.flock.data.FlockCalc.Mass> by lazy {
+        if (flock == null) emptyMap() else com.example.flock.data.FlockCalc.mass(flock, farm,
+            com.example.flock.data.ConfigEntity(spreadsheetId = farm.spreadsheetId), sortedRows, kgMap).associateBy { it.day }
+    }
+    val mass: com.example.flock.data.FlockCalc.Mass? get() = massByDay[day]
+    /** The flock's average for the birds in the house now: after any lifting today. */
+    val bwNow: Double get() = mass?.avgAfterKg?.let { it * 1000 } ?: bw
+    /** Reception (transit) deaths as a share of the birds placed; and all deaths with them. */
+    val receptionPct: Double? = if (placed > 0) reception * 100.0 / placed else null
+    val mortWithReceptionPct: Double? = if (placed > 0) (mortTD + reception) * 100.0 / placed else null
+
+    // ------------------------------- the floor: density, walking, barricade or pans, feedings -------------------------------
+    /** The floor, pans and feedings for today (first principles, see [com.example.flock.domain.SpacePlan]). */
+    val space: com.example.flock.domain.SpacePlan.Out = com.example.flock.domain.SpacePlan.plan(com.example.flock.domain.SpacePlan.In(
+        live = live, avgKg = bwNow / 1000.0, day = day, houseLenFt = farm.usableLengthFt, widthFt = farm.usableWidthFt,
+        areaFt2 = areaInUseFt2, penFt = e.broodingLength?.takeIf { it > 0 && it < farm.usableLengthFt }
+            ?: rows.filter { it.dayNumber <= day }.lastOrNull { it.broodingLength != null }?.broodingLength?.takeIf { it > 0 && it < farm.usableLengthFt },
+        feederLines = feederLines, pansPerLine = pansPerLine, panSpacingFt = panSpacingFt, lineStartFt = lineStartFt,
+        feederGapFt = feederGapFt, drinkerGapFt = farm.usableWidthFt / max(1, drinkerLinesN),
+        capKgM2 = farm.densityCapDefault, hotC = hotC, coolC = coolC, lifted = liftTD > 0,
+        dayBags = dayBags, bagsFullLine = bagsFullLine, birdsPerPanMax = birdsPerPanMax, feedingsWanted = feedingsWanted))
+    /** The way the floor is set once the birds are grown or lifted (null: a young flock, the feed plan below decides). */
+    val floorPlan: com.example.flock.domain.SpacePlan.Option? = if (space.young) null else space.options[space.best]
+    /** The floor plan's pans as a series over the floor it uses. */
+    private val planPattern: PanPattern? = floorPlan?.let { o ->
+        val open = (0 until o.pansInPen).filter { (it % (o.on + o.off)) < o.on }
+        val cell = feederGapFt * (o.on + o.off) * panSpacingFt / o.on
+        PanPattern(o.on, o.off, open.size, open.lastOrNull() ?: -1, o.walkM, o.birdsPerPan, cell, cell * live / max(1.0, o.areaFt2))
+    }
+
     /**
      * One way to feed the day's bags: [feedings] a day, the same pour on every line each time, and the
      * most open safe series whose open pans that pour fills all the way to the last one (3 % slack for
@@ -414,7 +451,14 @@ class OutputData(
         /** Share of the pour that lands in the open pans at once; the rest waits in the hopper. */
         val usePct get() = if (canFill > 0) min(100.0, pattern.openPerLine / canFill * 100) else 0.0
     }
-    val feedOptions: List<FeedOption> = (2..4).map { n ->
+    val feedOptions: List<FeedOption> = if (floorPlan != null && planPattern != null) {
+        // grown or lifted: the floor plan's pans; a number of feedings is safe when each pour reaches the last open pan
+        (if (floorPlan.feedings == 1) 1..4 else 2..4).map { n ->
+            val perLine = dayBags / (feederLines * n)
+            val can = perLine * pansPerBag
+            FeedOption(n, dayBags / n, perLine, perLine * bagKg, can, planPattern, can >= planPattern.openPerLine * 0.97, false)
+        }
+    } else (2..4).map { n ->
         val perLine = dayBags / (feederLines * n)
         val can = perLine * pansPerBag
         val fits = patterns.filter { safe(it) && it.openPerLine <= can * 1.03 }
@@ -426,7 +470,8 @@ class OutputData(
      * Recommended: a safe option; if the pour covers every pan (all on, the hopper tops the line up) the
      * fewer feedings; otherwise the one whose pour goes into the pans best (5 % steps), then more pans open.
      */
-    val recommendedOption: Int = feedOptions.indices.sortedWith(compareBy<Int>(
+    val recommendedOption: Int = if (floorPlan != null) feedOptions.indexOfFirst { it.feedings == floorPlan.feedings }.coerceAtLeast(0)
+        else feedOptions.indices.sortedWith(compareBy<Int>(
         { if (feedOptions[it].safe) 0 else 1 },
         { if (feedOptions[it].adLib) 0 else 1 },
         { if (feedOptions[it].adLib) feedOptions[it].feedings.toDouble() else -floor(feedOptions[it].usePct / 5.0) },
@@ -608,6 +653,13 @@ class OutputData(
         val liveThen = byDay[d]?.liveBirds?.takeIf { it > 0 } ?: return null
         return usedKg(next).takeIf { it > 0 }?.let { it * 1000 / liveThen }
     }
+    /** For the flock book (any day, whichever day is open): bags used on day [d] and feed per bird (g) — both entered the next morning. */
+    fun bagsUsedOnDay(d: Int): Double? = byDay[d + 1]?.let { usedByType(it).values.sum() }?.takeIf { it > 0 }
+    fun eatenGOn(d: Int): Double? {
+        val next = byDay[d + 1] ?: return null
+        val liveThen = byDay[d]?.liveBirds?.takeIf { it > 0 } ?: return null
+        return usedKg(next).takeIf { it > 0 }?.let { it * 1000 / liveThen }
+    }
     val kpis: com.example.flock.domain.FlockKpis.Result = com.example.flock.domain.FlockKpis.compute(
         upto.sortedBy { it.dayNumber }.map { r ->
             com.example.flock.domain.FlockKpis.Day(r.dayNumber, weightOn(r), r.avgWeight != null, eatenOn(r.dayNumber), r.mortality, r.lameSeparated, r.liveBirds)
@@ -634,8 +686,6 @@ class OutputData(
         { d -> comBw(d) }, day, PhysiologicalEngine.MAX_FLOCK_DAY, targetG, harvestAge)
 
     // ------------------------------- what the app projected, day by day -------------------------------
-    private val kgMap = feedTypes.associate { it.code to it.bagKg }
-    private val sortedRows = rows.sortedBy { it.dayNumber }
     /** The last day anything was entered: days after it are a forecast. */
     val lastEnteredDay: Int = com.example.flock.data.FlockCalc.lastEnteredDay(rows)
     /** For every day, what was projected for it from the days before it (the same numbers the sheet's Projections tab holds). */
@@ -729,32 +779,6 @@ class OutputData(
         val fcr = if (cum > 0 && weight > 0 && day >= 1) cum / (liveNow * weight / 1000.0) else null
         return NowView(String.format("%02d:%02d", now.hour, now.minute), weight, since?.times(24), eaten, eaten / bagKg, eatShare,
             waterL * (0.9 * eatShare + 0.1 * dayShare), deaths, liveNow, fcr, envAt(now.hour))
-    }
-
-    // ------------------------------- lifting: where the flock's meat is -------------------------------
-    /** The meat balance for every day: lifted, live, dead; FCR on what was produced; both cFCRs. */
-    val massByDay: Map<Int, com.example.flock.data.FlockCalc.Mass> by lazy {
-        if (flock == null) emptyMap() else com.example.flock.data.FlockCalc.mass(flock, farm,
-            com.example.flock.data.ConfigEntity(spreadsheetId = farm.spreadsheetId), sortedRows, kgMap).associateBy { it.day }
-    }
-    val mass: com.example.flock.data.FlockCalc.Mass? get() = massByDay[day]
-    /** The flock's average for the birds in the house now: after any lifting today. */
-    val bwNow: Double get() = mass?.avgAfterKg?.let { it * 1000 } ?: bw
-    /** Reception (transit) deaths as a share of the birds placed; and all deaths with them. */
-    val receptionPct: Double? = if (placed > 0) reception * 100.0 / placed else null
-    val mortWithReceptionPct: Double? = if (placed > 0) (mortTD + reception) * 100.0 / placed else null
-
-    // ------------------------------- the floor: density, walking, barricade or pans -------------------------------
-    val hotC: Double = outsideHours.maxOf { it.second }
-    val coolC: Double = outsideHours.minOf { it.second }
-    val space: com.example.flock.domain.SpacePlan.Out by lazy {
-        com.example.flock.domain.SpacePlan.plan(com.example.flock.domain.SpacePlan.In(
-            live = live, avgKg = bwNow / 1000.0, day = day, houseLenFt = farm.usableLengthFt, widthFt = farm.usableWidthFt,
-            areaFt2 = areaInUseFt2, penFt = e.broodingLength?.takeIf { it > 0 && it < farm.usableLengthFt }
-                ?: rows.filter { it.dayNumber <= day }.lastOrNull { it.broodingLength != null }?.broodingLength?.takeIf { it > 0 && it < farm.usableLengthFt },
-            feederLines = feederLines, pansPerLine = pansPerLine, panSpacingFt = panSpacingFt, lineStartFt = lineStartFt,
-            feederGapFt = feederGapFt, drinkerGapFt = farm.usableWidthFt / max(1, drinkerLinesN),
-            capKgM2 = farm.densityCapDefault, hotC = hotC, coolC = coolC, lifted = liftTD > 0))
     }
 
     /**

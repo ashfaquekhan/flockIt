@@ -583,22 +583,3 @@ fun KeyLine(vararg items: Pair<Color, String>) {
         }
     }
 }
-
-/** A fold inside a card: the details stay out of sight until asked for ([key] keeps each fold's state apart). */
-@Composable
-fun More(label: String, key: String, content: @Composable () -> Unit) {
-    var open by androidx.compose.runtime.saveable.rememberSaveable(key) { androidx.compose.runtime.mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(8.dp))
-        .clickable { open = !open }.padding(horizontal = 10.dp, vertical = 7.dp).testTag("more_$key"), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.8f))
-        Canvas(Modifier.size(12.dp)) {
-            val w = size.width; val h = size.height
-            val path = androidx.compose.ui.graphics.Path().apply {
-                if (open) { moveTo(w * 0.1f, h * 0.7f); lineTo(w / 2, h * 0.25f); lineTo(w * 0.9f, h * 0.7f) }
-                else { moveTo(w * 0.1f, h * 0.3f); lineTo(w / 2, h * 0.75f); lineTo(w * 0.9f, h * 0.3f) }
-            }
-            drawPath(path, Color.White.copy(alpha = 0.8f), style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
-        }
-    }
-    if (open) content()
-}

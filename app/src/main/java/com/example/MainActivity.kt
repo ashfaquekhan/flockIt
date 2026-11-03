@@ -66,6 +66,8 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
     val deletedFarms by viewModel.deletedFarms.collectAsState()
     val deletedFlocks by viewModel.deletedFlocks.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
+    // the function running now (saving, repairing …): shown over the page, and every other button waits for it
+    val busy by viewModel.busy.collectAsState()
     // back in the app: load the open farm (or the farm list) again when the last load is a minute old or more
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { viewModel.refreshIfStale() }
 
@@ -117,6 +119,7 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
         }
     }
 
+    androidx.compose.runtime.CompositionLocalProvider(com.example.flock.ui.components.LocalBusy provides busy) {
     Box(modifier = Modifier.fillMaxSize()) {
         // Screens without their own Scaffold get the system-bar insets here; the dashboard
         // (which has its own Scaffold + bottom nav) handles insets itself to avoid a double gap.
@@ -170,6 +173,7 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
                 )
             }
         }
+        com.example.flock.ui.components.BusyOverlay(busy)
         // The app opens on its mark alone, in the middle of a black screen: it is put together once, then the app shows.
         var opening by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
         LaunchedEffect(Unit) { if (opening) { kotlinx.coroutines.delay(1650); opening = false } }
@@ -179,6 +183,7 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
                 .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent().changes.forEach { it.consume() } } },
                 contentAlignment = Alignment.Center) { com.example.flock.ui.components.FlockOpening() }
         }
+    }
     }
 
     if (showSettings) {

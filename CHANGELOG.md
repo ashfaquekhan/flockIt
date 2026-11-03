@@ -8,6 +8,55 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v48 — 2026-11-04 · One page with every number once, a saved day locks again, the plan for a half-empty house, swipe between pages, the litter and the nipple line drawn, a flock book, charts to zoom · no DB or sheet change
+- **No folds, no "choose what shows".** The Output page shows everything, grouped under Feed · Floor and FCR · Birds ·
+  House · Records, and each number has one place: the "At a glance" grid and the grid under the farm window (which
+  repeated each other) are gone; one table, "Flock at HH:MM", holds weight, gain, live birds, deaths, mortality, feed
+  eaten and water drunk — entered (with the time they were entered) against projected (at the time shown) and the
+  company, the ideal under the name. FCR, cFCR (both) and EPEF are only on the FCR card, density only on the floor card,
+  CV only on the uniformity card, litter and ammonia only on the litter card. No drop-downs inside cards either.
+- **A time slider for the day**, like the day slider: the page (the farm window's lights and feeders, the weather row,
+  hungry / thirsty / panting, the flock table, the litter, the house air) at any time of the day; the green mark is when
+  the day's entries were made, the dark hours are shaded; Now goes back to the clock.
+- **A saved day locks again** (by request after v47): weights, deaths, feed used, lifting, culls, the barricade and
+  diesel lock once saved, so a second hold does not save the morning's entry again; notes and feed received stay open.
+  "Unlock day N" (asked once) opens it; it locks again once saved. **The saved time is kept**: saving again (notes, or
+  after unlocking) keeps 08:15 unless another time is picked — v47 put "now" on it.
+- **The hold button shows the hold**: a fill sweeps across, a ring round the icon closes and the text counts up; let go
+  early and it runs back. Before, the fill had no height inside the scrolling Entry page, so nothing showed. It also
+  always runs the latest values (it had kept the first ones it was drawn with).
+- **One function at a time, with a card that says so**: saving a day, clearing it, repairing / backing up the sheet,
+  closing a batch, logging a feeding, settings, sharing, deleting … show "Saving day 45… · 3 s" over the page, and every
+  other button waits until it is done (a second press is turned away with a note).
+- **Swipe between Entry · Output · Stock · Tasks** (the bar still works).
+- **Floor, pans and feedings — a plan for a half-empty house** (or few bags), from first principles, in three steps:
+  1) floor — the whole house on a warm day (space sheds heat), the barricade on a cool day with room to spare;
+  2) pans — shut pans in a series so each open one has about 45 birds (under 25 the feed goes stale and the pans never
+  empty), never more than 2 m to walk, and every pan past a barricade shut; 3) feedings — each pour must fill the open
+  pans to the last one (bags to fill = open pans ÷ the pans one bag fills), keeping the feedings for the age while it
+  does. Feed today follows the same plan, so the two never disagree. Day 44 of the farm's flock (7,222 birds left,
+  20 bags): a warm day — the whole house, pans 1 on · 2 off (38 open a line, 47.5 birds a pan, the furthest walk
+  1.87 m), 2 feedings of 10 bags (2.5 a line; 4 bags fill the open pans); a cool day — the barricade at 185 ft and the
+  42 pans a line past it shut.
+- **Livability and EPEF count lifted birds as sold, not lost.** Livability = (live + lifted) ÷ started; it read 46 %
+  on day 44 and pulled EPEF to 220 — now 96.7 % and EPEF about 438 (company 468), on the average of every bird produced.
+- **The feeder plan view shows the barricade**: a fence with posts, the floor past it dark ("no birds · pans shut"),
+  the pans past it crossed out — always visible in Feed today (no longer folded away), with the pans on and off.
+- **Litter, drawn from the side** (new card): the bed's depth over the concrete against the ideal 5–10 cm, coloured by
+  how wet it is (wetter and caked under the drinker line), a bird and a pan for scale, a drop from the nipple and
+  ammonia rising off the top; with depth, moisture (house and under drinkers), temperature, ammonia and the caked share
+  — projected against ideal. A model (no sensors).
+- **The nipple line, drawn** (water card): the regulator's sight tube with the water column at the line pressure, a dial
+  reading the same, the line at its height over the litter and a bird of today's size drinking.
+- **Charts**: lifting days marked (dashed, L); every chart opens full screen ("⤢ Zoom") to pinch into the days, drag
+  along them and tap a day; a new "Birds in the house" chart (live present and projected, lifted till date, company);
+  FCR and cFCR present lines count the lifting (as the FCR card).
+- **Flock book** (new): one line a day like a small sheet — date, live, dead, mortality %, lifted, lift kg, bags, g a
+  bird, weight, company weight, CV, FCR, cFCR, kg/m²; entered green, projected yellow, lifting days marked; Day stays
+  put while the rest scrolls; tap a day to open it; full screen too.
+- **The farm window**: full or quarter width (half removed); the house map layers removed; the words over the window
+  are only what is about the window (its size, the birds in view, the time).
+
 ## v47 — 2026-11-03 · Lifting counted in FCR, nothing locks, safe loading, one view with a choice of what shows, map layers · **DB 17 → 18 (kept, no clearing)**, sheet schema 7 → 8 (one upgrade, snapshot first)
 Made with the farm's live sheet (read only, nothing written by hand): 45 days, 15,664 placed, 7,876 birds lifted on
 days 34, 40, 42 and 43 (22,646 kg). A copy of the sheet as it stood is kept beside the APK.

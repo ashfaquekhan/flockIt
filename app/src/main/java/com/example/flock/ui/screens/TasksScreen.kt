@@ -264,6 +264,8 @@ private fun TaskRow(
 @Composable
 private fun HoldCompleteButton(done: Boolean, onToggle: () -> Unit) {
     var progress by remember { mutableStateOf(0f) }
+    // the latest action (the gesture below outlives the first drawing of the row)
+    val toggle by androidx.compose.runtime.rememberUpdatedState(onToggle)
     val ring = if (done) BrandEmerald else MaterialTheme.colorScheme.outline
     Box(
         modifier = Modifier.size(30.dp).clip(CircleShape)
@@ -278,13 +280,14 @@ private fun HoldCompleteButton(done: Boolean, onToggle: () -> Unit) {
                             val t0 = System.nanoTime()
                             while (true) {
                                 progress = ((System.nanoTime() - t0) / 1_000_000f / 900f).coerceIn(0f, 1f)
-                                if (progress >= 1f) { fired = true; onToggle(); break }
+                                if (progress >= 1f) { fired = true; toggle(); break }
                                 delay(16)
                             }
                         }
                         tryAwaitRelease(); job.cancel()
                     }
-                    if (!fired) progress = 0f
+                    if (fired) delay(350)
+                    progress = 0f
                 })
             },
         contentAlignment = Alignment.Center
