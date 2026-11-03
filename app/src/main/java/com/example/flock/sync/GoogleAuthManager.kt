@@ -110,7 +110,7 @@ class GoogleAuthManager(private val context: Context) {
 
         try {
             val token = GoogleAuthUtil.getToken(context, email, oauthScopeString)
-            prefs.edit().putString("user_access_token", token).apply()
+            prefs.edit().putString("user_access_token", token).putLong("user_access_token_at", System.currentTimeMillis()).apply()
             _authState.value = _authState.value.copy(accessToken = token)
             token
         } catch (e: Exception) {
@@ -148,11 +148,32 @@ class GoogleAuthManager(private val context: Context) {
         }
     }
 
+    /**
+     * The header for a Google request. A Google access token lasts an hour: one kept from an earlier session, or
+     * older than [TOKEN_FRESH_MS], is swapped for a fresh one first — a stale token made every load on the flock
+     * pages fail quietly (v47).
+     */
     suspend fun getAuthHeader(): String? {
         var token = _authState.value.accessToken
-        if (token.isNullOrBlank() && _authState.value.isSignedIn && !_authState.value.isDemoMode) {
-            token = refreshAccessToken()
+        val signedIn = _authState.value.isSignedIn && !_authState.value.isDemoMode
+        val age = System.currentTimeMillis() - prefs.getLong("user_access_token_at", 0L)
+        if (signedIn && (token.isNullOrBlank() || age > TOKEN_FRESH_MS)) {
+            if (!token.isNullOrBlank()) invalidate(token)
+            token = refreshAccessToken() ?: token.takeIf { age < TOKEN_FRESH_MS }
         }
         return if (!token.isNullOrBlank()) "Bearer $token" else null
+    }
+
+    /** Drops a token Google no longer takes (expired or revoked), so the next request fetches a new one. */
+    suspend fun invalidate(token: String? = _authState.value.accessToken) = withContext(Dispatchers.IO) {
+        if (token.isNullOrBlank()) return@withContext
+        try { GoogleAuthUtil.clearToken(context, token) } catch (e: Exception) { Log.w("GoogleAuthManager", "clearToken: ${e.message}") }
+        prefs.edit().remove("user_access_token").putLong("user_access_token_at", 0L).apply()
+        _authState.value = _authState.value.copy(accessToken = null)
+    }
+
+    companion object {
+        /** a token is used for 45 minutes, then renewed (Google's last an hour) */
+        const val TOKEN_FRESH_MS = 45 * 60 * 1000L
     }
 }

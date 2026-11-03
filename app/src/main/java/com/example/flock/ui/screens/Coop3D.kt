@@ -103,7 +103,14 @@ data class CoopInput(
     /** the short view: the window only, without the size chips, the map and the tables */
     val compact: Boolean = false,
     /** how likely the birds are hungry, thirsty or panting right now, 0–1 (null: not worked out) */
-    val hungry: Double? = null, val thirsty: Double? = null, val panting: Double? = null
+    val hungry: Double? = null, val thirsty: Double? = null, val panting: Double? = null,
+    /** a map layer over the window (like a map app's layers): the house's field, the layer, ideal or projected */
+    val field: com.example.flock.domain.HouseField.In? = null, val layer: com.example.flock.domain.HouseField.Layer? = null,
+    val layerIdeal: Boolean = false,
+    /** space each bird has (ft²) */
+    val ft2PerBird: Double = 0.0,
+    /** how much the birds roam against the usual (1): more floor than they need, more and longer walks; tight, fewer */
+    val roam: Double = 1.0
 )
 
 /**
@@ -186,6 +193,9 @@ internal class CoopSim {
     var lenFt = VIEW_LEN_FT
     var widFt = 39.0
     var x0Ft = 0.0; var y0Ft = 0.0
+    /** the window's map-layer tiles, worked out once for each layer, window and day (not every frame) */
+    var tileKey: Any? = null
+    var tiles: List<Pair<Pair<Double, Double>, Color>> = emptyList()
     /** window size in metres: x along the house, z across it */
     val sx get() = lenFt * FT
     val sz get() = widFt * FT
@@ -557,7 +567,7 @@ internal class CoopSim {
         val walkSec = bud.walkBoutM / max(0.02, bud.walkMs)
         val w = listOf(
             "rest" to bud.rest / bud.restSec * (if (b.trait == Trait.LAZY) 1.5 else 1.0),
-            "walk" to bud.walk / walkSec * (if (b.trait == Trait.CURIOUS) 2.0 else 1.0),
+            "walk" to bud.walk / walkSec * (if (b.trait == Trait.CURIOUS) 2.0 else 1.0) * inp.roam,
             "goEat" to (if (feedIn) bud.eat / bud.mealSec * (if (b.trait == Trait.GLUTTON) 1.5 else 1.0) else 0.0),
             "goDrink" to bud.drink / bud.drinkSec,
             "peck" to bud.forage * 0.6 / 4.0, "scratch" to bud.forage * 0.4 / 4.0 * (1 - heavy * 0.5),
@@ -571,7 +581,7 @@ internal class CoopSim {
             "walk" -> {
                 // a short walk, as far as a bird of this size goes in one go, inside the window
                 val a = b.rnd.nextDouble(0.0, 2 * PI)
-                val d = b.rnd.nextDouble(0.3, 1.0) * bud.walkBoutM * (if (b.trait == Trait.CURIOUS) 1.5 else 1.0)
+                val d = b.rnd.nextDouble(0.3, 1.0) * bud.walkBoutM * (if (b.trait == Trait.CURIOUS) 1.5 else 1.0) * inp.roam
                 b.tx = (b.x + sin(a) * d).coerceIn(0.1, max(0.1, birdMaxX - 0.1)); b.tz = (b.zz + cos(a) * d).coerceIn(0.1, sz - 0.1); b.dur = 90.0
             }
             "rest" -> {
@@ -802,9 +812,11 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
             named.forEach { b ->
                 Row(Modifier.fillMaxWidth()) {
                     Text(b.name, Modifier.width(52.dp), style = lab, color = Color.White)
-                    Text(b.trait.label, Modifier.weight(1.2f), style = lab, color = Color.White.copy(alpha = 0.55f), maxLines = 1)
+                    Text(b.trait.label, Modifier.weight(1.0f), style = lab, color = Color.White.copy(alpha = 0.55f), maxLines = 1)
                     Text(Fmt.n(b.weightG, 1) + " g", Modifier.weight(1.05f), style = num, color = if (inp.weightMeasured) ValuePresent else ValuePredicted, maxLines = 1, softWrap = false)
-                    Text(Fmt.n(b.fullness * 100, 0) + "%", Modifier.weight(0.6f).padding(start = 6.dp), style = num, color = ValuePredicted, maxLines = 1, softWrap = false)
+                    // how full the crop is: its own column, wide enough for "100.0 %" so it never runs into the state word
+                    Text(Fmt.n(b.fullness * 100, 1) + "%", Modifier.weight(0.9f).padding(start = 4.dp, end = 6.dp), style = num, color = ValuePredicted, maxLines = 1, softWrap = false,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Clip)
                     Text(stateWord(b.state), Modifier.weight(1.1f), style = lab, color = Color.White.copy(alpha = 0.7f), maxLines = 1)
                 }
             }
@@ -824,8 +836,8 @@ private fun CoopStats(inp: CoopInput) {
     val cells = buildList {
         add(Cell(if (inp.weightMeasured) "Weight" else "Weight, projected", Fmt.n(inp.meanG, 1), "g", if (inp.weightMeasured) ValuePresent else ValuePredicted))
         add(Cell(if (inp.cvEstimated) "CV, estimated" else "CV", inp.cvPct?.let { Fmt.n(it, 1) } ?: "NA", "%", if (inp.cvEstimated) ValuePredicted else ValuePresent))
-        add(Cell("Birds on the floor", Fmt.n(inp.layout.birdsPerFt2, 2), "/ft²", ValuePresent))
-        add(Cell("Weight on the floor", Fmt.n(inp.densityKgFt2, 2), "kg/ft²", if (inp.weightMeasured) ValuePresent else ValuePredicted))
+        add(Cell("Space a bird", Fmt.n(if (inp.layout.birdsPerFt2 > 0) 1 / inp.layout.birdsPerFt2 else 0.0, 2), "ft²", ValuePresent))
+        add(Cell("Density", Fmt.n(inp.densityKgFt2 * 10.7639, 1), "kg/m²", if (inp.weightMeasured) ValuePresent else ValuePredicted))
         add(Cell("Ideal temp", Fmt.n(inp.idealC, 1), "°C", ValueIdeal))
         add(Cell(if (inp.airModelled) "House now" else "House", Fmt.n(inp.airC, 1), "°C", airCol))
         add(Cell("Min vent / bird", Fmt.n(inp.minVentCfmBird, 3), "cfm", ValuePredicted))
@@ -835,7 +847,7 @@ private fun CoopStats(inp: CoopInput) {
         add(Cell("Body temp, ideal", if (v == null) "NA" else "${Fmt.n(v.first, 1)}–${Fmt.n(v.third, 1)}", "°C", ValueIdeal))
         add(Cell("Body temp now", inp.bodyNowC?.let { Fmt.n(it, 1) } ?: "NA", "°C", ValuePredicted))
         add(Cell("Breaths, ideal", "${Fmt.n(inp.breaths.first, 1)}–${Fmt.n(inp.breaths.second, 1)}", "/min", ValueIdeal))
-        add(Cell("Breaths now", inp.breathsNow?.let { Fmt.n(it, 1) } ?: "NA", "/min", if ((inp.breathsNow ?: 0.0) > inp.pantAbove) ValueMax else ValuePredicted))
+        add(Cell("Breaths now", inp.breathsNow?.let { Fmt.n(it, 1) } ?: "NA", "/min", ValuePredicted))
         add(Cell("Panting over", Fmt.n(inp.pantAbove, 1), "/min", ValueMax))
         add(Cell("Feet", inp.feetC?.let { Fmt.n(it, 1) } ?: "NA", "°C", ValueIdeal))
     }
@@ -936,6 +948,34 @@ private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: 
             drawPath(ring, ValueIdeal.copy(alpha = 0.45f), style = Stroke(1.3f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f))))
         }
     }
+    // a map layer on the floor (body temp, density, litter, ammonia): 1 ft tiles, coloured by where each value sits on its scale
+    val fld = inp.field; val lay = inp.layer
+    val airLayer = lay == com.example.flock.domain.HouseField.Layer.AIR_T || lay == com.example.flock.domain.HouseField.Layer.RH
+    if (fld != null && lay != null && !airLayer) {
+        val key = listOf(fld, lay, inp.layerIdeal, sim.x0Ft, sim.y0Ft, sim.lenFt, sim.widFt)
+        if (sim.tileKey != key) {
+            val sc = com.example.flock.domain.HouseField.scale(lay, fld)
+            val out = ArrayList<Pair<Pair<Double, Double>, Color>>()
+            var xm = 0.0
+            while (xm < sx - 1e-6) {
+                var zm = 0.0
+                while (zm < sz - 1e-6) {
+                    val xf = sim.x0Ft + (xm + FT / 2) / FT; val yf = sim.y0Ft + (zm + FT / 2) / FT
+                    val v = if (inp.layerIdeal) com.example.flock.domain.HouseField.ideal(lay, fld, xf, yf) else com.example.flock.domain.HouseField.projected(lay, fld, xf, yf)
+                    out += (xm to zm) to layerColorOf(sc, v)
+                    zm += FT
+                }
+                xm += FT
+            }
+            sim.tiles = out; sim.tileKey = key
+        }
+        clipPath(floor) {
+            sim.tiles.forEach { (at, c) ->
+                val (xm, zm) = at
+                drawPath(quad(P(xm, 0.0, zm), P(min(sx, xm + FT), 0.0, zm), P(min(sx, xm + FT), 0.0, min(sz, zm + FT)), P(xm, 0.0, min(sz, zm + FT))), c.copy(alpha = 0.42f))
+            }
+        }
+    }
     drawPath(floor, line, style = Stroke(1.2f))
     // barricade: a low fence
     if (sim.birdMaxX < sx - 0.01) {
@@ -1026,6 +1066,22 @@ private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: 
     }
 
     // text: grey labels, coloured numbers (ideal values where there is no sensor)
+    // the air in see-through layers from the floor to the roof (air temperature or humidity): each sheet coloured along the house
+    if (fld != null && lay != null && airLayer) {
+        val sc = com.example.flock.domain.HouseField.scale(lay, fld)
+        listOf(0.05 to 0.12, 0.27 to 0.5, 0.50 to 0.95).forEach { (hm, zShare) ->
+            var xm = 0.0
+            while (xm < sx - 1e-6) {
+                val xe = min(sx, xm + 2 * FT)
+                val xf = sim.x0Ft + (xm + xe) / 2 / FT
+                val v = if (inp.layerIdeal) com.example.flock.domain.HouseField.ideal(lay, fld, xf, fld.widthFt / 2, zShare)
+                    else com.example.flock.domain.HouseField.projected(lay, fld, xf, fld.widthFt / 2, zShare)
+                drawPath(quad(P(xm, hm, 0.0), P(xe, hm, 0.0), P(xe, hm, sz), P(xm, hm, sz)), layerColorOf(sc, v).copy(alpha = 0.22f))
+                xm = xe
+            }
+            drawPath(quad(P(0.0, hm, 0.0), P(sx, hm, 0.0), P(sx, hm, sz), P(0.0, hm, sz)), Color.White.copy(alpha = 0.28f), style = Stroke(1f))
+        }
+    }
     val paint = Paint().apply { isAntiAlias = true; textSize = (size.width / 31f).coerceIn(10.5f * density, 14f * density); typeface = com.example.ui.theme.AppFonts.mono }
     val grey = Color.White.copy(alpha = 0.6f)
     fun seg(parts: List<Pair<String, Color>>, x: Float, y: Float, right: Boolean) {
@@ -1039,13 +1095,13 @@ private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: 
     seg(listOf("View " to grey, "${Fmt.n(sim.widFt, 1)} × ${Fmt.n(sim.lenFt, 1)}" to Color.White, " ft" to grey), pad, pad + lh, false)
     seg(listOf(Fmt.i(sim.birds.size) to ValuePresent, " birds" to grey), pad, pad + lh * 2, false)
     // birds on a square foot of floor, and their weight on it (the second grows every day)
-    seg(listOf(Fmt.n(inp.layout.birdsPerFt2, 2) to ValuePresent, " birds/ft²" to grey), pad, pad + lh * 3, false)
-    seg(listOf(Fmt.n(inp.densityKgFt2, 2) to (if (inp.weightMeasured) ValuePresent else ValuePredicted), " kg/ft²" to grey), pad, pad + lh * 4, false)
+    seg(listOf(Fmt.n(if (inp.layout.birdsPerFt2 > 0) 1 / inp.layout.birdsPerFt2 else 0.0, 2) to ValuePresent, " ft² a bird" to grey), pad, pad + lh * 3, false)
+    seg(listOf(Fmt.n(inp.densityKgFt2 * 10.7639, 1) to (if (inp.weightMeasured) ValuePresent else ValuePredicted), " kg/m²" to grey), pad, pad + lh * 4, false)
     // the house as worked out from the weather is a projection (yellow); the ideal house is blue
     val airCol = if (inp.airModelled) ValuePredicted else ideal
     seg(listOf("Air " to grey, Fmt.n(inp.airC, 1) to airCol, "°  " to grey, Fmt.n(inp.rhPct, 1) to airCol, "%" to grey), rx, pad + lh, true)
     seg(listOf("Feels " to grey, Fmt.n(inp.feelsC, 1) to airCol, "°" to grey), rx, pad + lh * 2, true)
-    if (inp.stateWord != null) seg(listOf(inp.stateWord to (if (inp.heatLoadC > 6 || inp.heatLoadC < -6) ValueMax else airCol)), rx, pad + lh * 3, true)
+    if (inp.stateWord != null) seg(listOf(inp.stateWord to airCol), rx, pad + lh * 3, true)
     else seg(listOf("Static " to grey, Fmt.n(inp.pressurePa, 1) to ideal, " Pa" to grey), rx, pad + lh * 3, true)
     val by = size.height - pad
     seg(listOf("Litter " to grey, Fmt.n(inp.litterC, 1) to ideal, "°  " to grey, Fmt.n(inp.litterMoist, 1) to ideal, "%" to grey), pad, by - lh * 2, false)
@@ -1054,7 +1110,7 @@ private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: 
     seg(listOf(if (awake) "Lights on (woken)" to grey else ("Dark " to grey), if (awake) "" to grey else "${hhmm(inp.light.darkStartHour)}–${hhmm(inp.light.darkEndHour)}" to ideal), pad, by, false)
     // no sensors in the house: how likely the birds are hungry, thirsty or panting (feedings, lights, weather)
     fun like(label: String, p: Double?, row: Int) {
-        if (p != null) seg(listOf("$label " to grey, Fmt.n(p * 100, 1) to (if (p >= 0.5) ValueMax else ValuePredicted), " %" to grey), rx, by - lh * row, true)
+        if (p != null) seg(listOf("$label " to grey, Fmt.n(p * 100, 1) to ValuePredicted, " %" to grey), rx, by - lh * row, true)
     }
     like("Hungry", inp.hungry, 2); like("Thirsty", inp.thirsty, 1); like("Panting", inp.panting, 0)
 }

@@ -8,6 +8,67 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v47 — 2026-11-03 · Lifting counted in FCR, nothing locks, safe loading, one view with a choice of what shows, map layers · **DB 17 → 18 (kept, no clearing)**, sheet schema 7 → 8 (one upgrade, snapshot first)
+Made with the farm's live sheet (read only, nothing written by hand): 45 days, 15,664 placed, 7,876 birds lifted on
+days 34, 40, 42 and 43 (22,646 kg). A copy of the sheet as it stood is kept beside the APK.
+- **FCR counts the lifted birds.** FCR = feed ÷ (live birds × weight + kg lifted till date). On the sheet it went
+  1.54 → 1.78 → 2.29 → 3.08 over the lifting days because the lifted meat was left out; now 1.34 (day 34) … 1.50 (day 43).
+  Also shown: FCR with the dead counted (deaths and culls × the weight of their day), the kg in the house, lifted and
+  dead, and the average of every bird produced ("cumulative body weight").
+- **Both cFCRs**, worked out in front of the reader: the company's FCR + (2 − cumulative body weight) × 0.25, and the
+  breed curve's (FCR − Ross table FCR at that weight + Ross table FCR at 2.0 kg). What the company's rule means is
+  written under it.
+- **The birds left after a lifting get their own average**: the morning's weighing grown on to the lifting time, the
+  lifted kg taken out, ÷ the birds left (day 34: 2,297 g weighed → 2,345 g at the lifting → lifted 2,390 g → 2,345 g left);
+  the days after are carried on from it, and density is on the birds left.
+- **Nothing locks.** No 11:00 / 20:00 cut-off, no "saved & locked", no Unlock day: any day up to today can be changed
+  and saved again by holding Update (a day to come still cannot be entered). The entry page shows what is saved, when
+  and by whom.
+- **Time of the entries.** The entry page has "Time of these entries": now (today) or an earlier time picked; on a
+  past day the day's own time. It is saved as the weighing time (starts the weight projection) and the new lifting
+  time (decides whether the weighing is grown on before the lifted kg come out).
+- **Safe loading and saving.** One load or save at a time; a save writes only the cells it changed and merges with what
+  another phone entered meanwhile (both phones' entries stay); a draft keeps only what was typed, so a stale draft can
+  no longer put back an old value; an unsent edit is never overwritten by a load.
+- **Loads by itself** when the app is opened or comes back, when a farm or a flock is opened, and every 3 minutes
+  while a flock is open — with a loading bar and a line saying so. **Why it only worked on the farm page:** the sign-in
+  token (it lasts an hour) was renewed only by the farm list's refresh; now it is renewed before it runs out and once
+  more when Google refuses a read.
+- **One view.** Basic / Advanced is gone. The Output page: At a glance (numbers you pick), the farm window, the weather,
+  hungry/thirsty/panting, log a feeding, alerts, then sections that fold to one line that says what is in them — Today,
+  Feed today, Birds and growth, Lifting and FCR, Space and density, Last 3 and 7 days, Water, Ventilation, What the
+  weather does. "Choose what shows" ticks numbers and sections on or off (kept on the phone).
+- **Feed today**: one conclusion — "N bags today; F feedings of B bags, X bags on each of the 4 lines" — the number of
+  feedings picked right there (best one marked), what a line takes to fill and how much of the open pans each feeding
+  fills; how the bags were worked out folds away. "Chart" is now "company" everywhere.
+- **Space and density** (new): kg/m² on the floor the birds have (the brooding area while penned, not the whole house —
+  the old figure was too low while brooding), the floor a bird has against what it needs today (30 kg/m² hot, 34 warm,
+  the cap otherwise), tight · right · roomy, the walk to feed and water, and after lifting the ways to set the floor:
+  the whole house, a barricade at N ft, or the whole house with pans shut — with the one to use and why (warm: keep the
+  floor and shut pans; cool and roomy: pen the birds) — from day 21 or once birds are lifted (a young flock grows into
+  its floor). A barricade field is on the entry page (it holds until changed). The birds in the farm window roam more on a
+  roomy floor and less on a tight one.
+- **Last 3 and 7 days** (new): eaten and gained against the company, CV first → last, and what to do (e.g. day 33:
+  eating 5.6 % under the company but growing 16.8 % over it — keep the ration).
+- **Map layers on the farm window** (like a map app): Plain, Body temp, Density, Litter temp, Litter moisture, Ammonia,
+  Air temp, Humidity — Projected (today's model) or Ideal — seen from the Top or the Side (the floor to the roof). The
+  3D window colours its floor, and shows the air as see-through sheets at floor, middle and roof height. A model, said so.
+- **Reception deaths shown properly**: placed, reception deaths and their %, the birds started, mortality with and
+  without reception deaths.
+- **Weather emojis**: the sky now in the top bar, by the weather row, and on each day of the 14-day forecast.
+- **Colours used for what they mean**: weather readings are white (not "Present"), likelihoods and weather effects are
+  Projected (not "Max"), the window's density reads kg/m² and ft² a bird.
+- **Buttons**: the hold buttons are taller, their words wrap instead of being cut, and a risky one has a red edge.
+- **Feedings on the sheet**: a feeding logged under the farm window is kept in the day's new Feedings column, so every
+  phone sees it (older ones on the phone still count).
+- Sheet schema 8: DailyData gains LiftedAt and Feedings; Computed gains the lifting columns (lifted birds and kg,
+  average after lifting, live / dead / produced kg, cumulative body weight, FCR with the dead, cFCR company and breed);
+  Formulas explains each. DB 18: liftedAt, feedings and the unsent-columns list (phone only).
+- Tests: the real flock to day 44 (FCR through the lifting days, the birds left, density on the floor in use, the
+  barricade carried on), the space plan, the 3/7-day reading, a schema 7 sheet upgraded to 8 keeping everything, two
+  phones on one day keeping each other's entries, DB 17 → 18, the map layers' directions; every screen re-rendered at
+  360 dp and 130 % text. 117 tests, all passing.
+
 ## v46 — 2026-10-09 · The original look is back: complete black · installs over a live flock (no database or sheet change)
 - **The v45 look is taken back** — it was too colourful. The app is as it was in v44: a pure black screen,
   thin white outlines, the calmer value colours (soft green, amber, blue, violet, cyan, rose), no blue

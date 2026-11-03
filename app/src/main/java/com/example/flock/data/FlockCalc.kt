@@ -61,16 +61,69 @@ object FlockCalc {
             .map { r -> r.filledSamples().map { (total, n) -> total / n to n } }.filter { it.size >= 3 })
 
     /**
+     * The flock's meat, day by day, once birds start to be lifted (sold): every kilo the flock has made is either
+     * still in the house (live birds x their weight), gone on the trucks (the lifted kilos, as weighed), or dead
+     * (deaths and culls x the weight on their day). FCR counts the first two (feed per kilo of bird produced, the
+     * way the company reckons it); [fcrAll] counts the dead as well (feed per kilo the flock grew).
+     */
+    data class Mass(
+        val day: Int,
+        /** birds and kg lifted till date */
+        val liftedBirds: Int, val liftedKg: Double,
+        /** the day's lifting: birds, average kg (null: none) */
+        val liftedToday: Int, val liftAvgKg: Double?,
+        /** the birds' average as weighed (or projected) that day, grown on to the lifting, and of the birds left (kg); all the same on a day without lifting */
+        val avgBeforeKg: Double, val avgAfterKg: Double,
+        /** the live birds' mass now, the dead and culled birds' mass till date (estimated), kg */
+        val liveKg: Double, val deadKg: Double,
+        /** live + lifted: what the feed has produced, kg */
+        val producedKg: Double,
+        /** average of every bird produced, live and lifted (the company's "cumulative body weight"), kg */
+        val cumBwKg: Double,
+        val fcr: Double?, val fcrAll: Double?,
+        /** the company's cFCR: FCR + (2 - cumulative body weight) x 0.25 */
+        val cFcrCompany: Double?,
+        /** FCR brought to a 2.0 kg bird along the breed's own FCR-for-weight curve (Ross / Cobb table) */
+        val cFcrBreed: Double?,
+        val avgAtLiftKg: Double = avgBeforeKg
+    )
+
+    /** FCR of the breed table at the age the table reaches [kg]. */
+    fun breedFcrAt(kg: Double, breed: String): Double =
+        PhysiologicalEngine.stdFcrFromDay(PhysiologicalEngine.weightAgeFromBW(kg * 1000.0, breed), breed)
+
+    /** FCR corrected to a 2.0 kg bird with the breed's own curve: FCR - (table FCR at this weight - table FCR at 2.0 kg). */
+    fun breedCorrectedFcr(fcr: Double, cumBwKg: Double, breed: String): Double =
+        fcr - (breedFcrAt(cumBwKg, breed) - breedFcrAt(2.0, breed))
+
+    /** The meat balance for every day (see [Mass]); worked out with [compute]. */
+    fun mass(flock: FlockEntity, farm: FarmEntity, config: ConfigEntity, rows: List<DailyDataEntity>, kgOf: Map<String, Double>): List<Mass> =
+        computeAll(flock, farm, config, rows, kgOf).second
+
+    /**
      * @param rows every day of the flock, in day order (inputs filled in; the worked-out fields are replaced)
      * @param kgOf bag weight (kg) of each feed variety
      */
-    fun compute(flock: FlockEntity, farm: FarmEntity, config: ConfigEntity, rows: List<DailyDataEntity>, kgOf: Map<String, Double>): List<DailyDataEntity> {
+    fun compute(flock: FlockEntity, farm: FarmEntity, config: ConfigEntity, rows: List<DailyDataEntity>, kgOf: Map<String, Double>): List<DailyDataEntity> =
+        computeAll(flock, farm, config, rows, kgOf).first
+
+    /** Hour of the day (farm time) of an epoch-ms moment; null when not known. */
+    private fun hourOf(ms: Long, zone: java.time.ZoneId): Double? = if (ms <= 0) null else
+        java.time.Instant.ofEpochMilli(ms).atZone(zone).let { it.hour + it.minute / 60.0 }
+
+    private fun computeAll(flock: FlockEntity, farm: FarmEntity, config: ConfigEntity, rows: List<DailyDataEntity>, kgOf: Map<String, Double>): Pair<List<DailyDataEntity>, List<Mass>> {
         val bagKg = farm.feedBagKg
+        val zone = try { java.time.ZoneId.of(farm.timeZone) } catch (e: Exception) { java.time.ZoneId.systemDefault() }
 
         var cumMort = 0
         var cumLift = 0
         var cumLame = 0
         var cumFeedKg = 0.0
+        var cumLiftKg = 0.0
+        var cumDeadKg = 0.0
+        val masses = mutableListOf<Mass>()
+        // the barricade the farm entered last (ft from the front wall); it holds until another is entered
+        var penFt: Double? = null
 
         // Stock tracking per feed type (Bug 3 Fix)
         var totalReceivedBags = 0.0
@@ -138,6 +191,34 @@ object FlockCalc {
 
             val avgKg = (if (sampleRes.hasSample) sampleRes.flockAvgG else projWeight) / 1000.0
 
+            // ---- lifting: the birds that stay are what is left of the flock's meat once the trucks are loaded ----
+            val liftAvg = if (r.birdsLifted > 0 && r.weightLifted > 0) r.weightLifted / r.birdsLifted else null
+            var avgAfterKg = avgKg
+            var avgAtLift = avgKg
+            if (liftAvg != null && live > 0) {
+                val weighH = hourOf(r.weighedAt, zone) ?: 8.0
+                val liftH = hourOf(r.liftedAt, zone) ?: 20.0     // the trucks are loaded in the evening unless told otherwise
+                if (sampleRes.hasSample && r.weighedAt > 0 && r.liftedAt > 0 && r.weighedAt > r.liftedAt) {
+                    // weighed after the lifting: the weighing is already the birds that stayed
+                    avgAfterKg = avgKg
+                } else {
+                    // the flock's average grown on to the lifting, then the lifted kilos taken out
+                    val dt = ((liftH - weighH) / 24.0).coerceIn(0.0, 1.0)
+                    val beforeAtLift = grow(avgKg * 1000.0, dt, flock.breed) / 1000.0
+                    avgAtLift = beforeAtLift
+                    val after = ((live + r.birdsLifted) * beforeAtLift - r.weightLifted) / live
+                    avgAfterKg = after.coerceIn(beforeAtLift * 0.80, beforeAtLift * 1.10)
+                    // the next days are carried on from the birds that stayed
+                    lastSample = day to (PhysiologicalEngine.weightAgeFromBW(avgAfterKg * 1000.0, flock.breed) - dt)
+                }
+            }
+            cumLiftKg += r.weightLifted.coerceAtLeast(0.0)
+            cumDeadKg += (r.mortality + r.lameSeparated).coerceAtLeast(0) * avgKg
+            val liveKg = live * avgAfterKg
+            val producedKg = liveKg + cumLiftKg
+            val producedBirds = live + cumLift
+            val cumBwKg = if (producedBirds > 0) producedKg / producedBirds else avgKg
+
             // Temperature & ventilation
             val tempKnown = r.outTemp != null
             val meanTemp = if (tempKnown) r.outTemp!! else 20.0
@@ -194,24 +275,29 @@ object FlockCalc {
                 tunTrigYoung = config.tunTrigYoung
             )
 
-            // FCR & cFCR
-            val fcr = if (live > 0 && avgKg > 0 && cumFeedKg > 0) cumFeedKg / (live * avgKg) else null
-            val cFcr = if (fcr != null) PhysiologicalEngine.computeCorrectedFcr(avgKg, fcr, config.cFcrDivisor) else null
+            // FCR: feed per kilo produced - the birds in the house and the birds already lifted
+            val fcr = if (producedKg > 0 && cumFeedKg > 0) cumFeedKg / producedKg else null
+            val cFcr = if (fcr != null) PhysiologicalEngine.computeCorrectedFcr(cumBwKg, fcr, config.cFcrDivisor) else null
+            masses += Mass(day, cumLift, cumLiftKg, r.birdsLifted, liftAvg, avgKg, avgAfterKg, liveKg, cumDeadKg, producedKg, cumBwKg,
+                fcr, if (cumFeedKg > 0 && producedKg + cumDeadKg > 0) cumFeedKg / (producedKg + cumDeadKg) else null,
+                cFcr, fcr?.let { breedCorrectedFcr(it, cumBwKg, flock.breed) }, avgAtLift)
 
             // Reception / transit deaths only reduce the entry flock; they are not flock mortality.
             val entryBirds = (flock.birdsPlaced - flock.receptionMort).coerceAtLeast(0)
             val cumMortPct = if (entryBirds > 0) (cumMort.toDouble() / entryBirds) * 100.0 else null
             val livability = if (entryBirds > 0) (live.toDouble() / entryBirds) * 100.0 else null
 
-            // Area & density
+            // Area & density: the floor the birds have (the barricade entered, else the brooding plan) and the birds after any lifting
+            r.broodingLength?.let { penFt = if (it <= 0 || it >= farm.usableLengthFt) null else it }
             val areaRes = PhysiologicalEngine.computeAreaAndDensity(
                 liveBirds = live,
-                avgKg = avgKg,
+                avgKg = avgAfterKg,
                 usableLengthFt = farm.usableLengthFt,
                 usableWidthFt = farm.usableWidthFt,
                 broodDensity = farm.broodDensity,
                 densityCapDefault = farm.densityCapDefault,
-                day = day
+                day = day,
+                penLengthFt = penFt
             )
 
             // Climate display targets
@@ -345,6 +431,6 @@ object FlockCalc {
             )
         }
 
-        return updatedRows
+        return updatedRows to masses
     }
 }

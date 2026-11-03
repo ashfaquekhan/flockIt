@@ -110,7 +110,7 @@ class DataBackendTest {
         // the layout of the version before: as now, without the WeighedAt column and without the three new report tabs
         val d = day(9, mort = 7, used = "B1=10.0;B2=6.0", w1 = 5000.0, n1 = 14)
         val now = SheetSchema.dailyHeader(listOf("B1", "B2"), 5)
-        val six = now - "WeighedAt"
+        val six = now - "WeighedAt" - "LiftedAt" - "Feedings"
         val cells = SheetSchema.dayCells(d, now)
         val raw = SheetSchema.RawFile(titles = (SheetSchema.TABS + listOf(SheetReports.FEED_LEDGER, SheetReports.DAILY_SUMMARY)).toSet(),
             meta = listOf(listOf("Key", "Value"), listOf("schemaVersion", 6)),
@@ -130,6 +130,53 @@ class DataBackendTest {
         // a weighing time written is read back
         val timed = SheetSchema.parse(sid, rawOf(SheetSchema.blocks(c.copy(days = listOf(d.copy(weighedAt = 1791203469469L))), SheetSchema.primaryMeta("farm_1", 7))), farm, null)
         assertEquals(1791203469469L, timed.days.single().weighedAt)
+    }
+
+    @Test fun schemaSevenSheetUpgradesToEightAndKeepsEverything() {
+        // the live sheet's layout (v46): as now, without LiftedAt and Feedings
+        val d = day(34, mort = 6, used = "B3=43.0", w1 = 24250.0, n1 = 10).copy(birdsLifted = 1008, weightLifted = 2409.0, weighedAt = 1792729080000L)
+        val now = SheetSchema.dailyHeader(listOf("B3"), 5)
+        val seven = now - "LiftedAt" - "Feedings"
+        val cells = SheetSchema.dayCells(d, now)
+        val raw = SheetSchema.RawFile(titles = (SheetSchema.TABS + SheetReports.TABS).toSet(),
+            meta = listOf(listOf("Key", "Value"), listOf("schemaVersion", 7)),
+            flocks = listOf(SheetSchema.FLOCK_HEADERS, SheetSchema.flockRow(flock)),
+            days = listOf(seven, seven.map { cells[now.indexOf(it)] }))
+        val reasons = SheetSchema.upgradeReasons(raw)
+        assertTrue(reasons.toString(), reasons.any { it.startsWith("schema 7") })
+        assertTrue(reasons.any { it.contains("DailyData columns differ") })
+        val c = SheetSchema.parse(sid, raw, farm, null)
+        val back = c.days.single()
+        assertEquals(1008, back.birdsLifted); assertEquals(2409.0, back.weightLifted, 1e-9); assertEquals(1792729080000L, back.weighedAt)
+        assertEquals(0L, back.liftedAt); assertEquals("", back.feedings)
+        val b = SheetSchema.blocks(c, SheetSchema.primaryMeta("farm_1", 7))
+        assertTrue(SheetSchema.verify(c, rawOf(b)).isEmpty())
+        val h = b["DailyData"]!![0]
+        assertTrue(h.contains("LiftedAt") && h.contains("Feedings"))
+        // a lifting time and the feedings written are read back
+        val timed = SheetSchema.parse(sid, rawOf(SheetSchema.blocks(c.copy(days = listOf(back.copy(liftedAt = 1792774800000L, feedings = "08:30=13;14:00=10"))),
+            SheetSchema.primaryMeta("farm_1", 8))), farm, null).days.single()
+        assertEquals(1792774800000L, timed.liftedAt); assertEquals("08:30=13;14:00=10", timed.feedings)
+    }
+
+    @Test fun twoPhonesOnOneDayKeepEachOthersEntries() {
+        // phone A loaded the day before phone B saved the deaths; A then saves the weighing only
+        val base = day(20, used = "B2=29.0")
+        val mine = base.copy(w1 = 10315.0, n1 = 10, weighedAt = 1791565200000L, savedFields = "W,F")
+        val changed = SheetSchema.changedColumns(base, mine)
+        assertEquals(setOf("w1", "n1", "weighedat"), changed)
+        // the sheet as phone B left it: deaths 14 and a note
+        val header = SheetSchema.dailyHeader(listOf("B2"), 5)
+        val theirs = SheetSchema.dayCells(base.copy(mortality = 14, notes = "- litter turned", savedFields = "M,F"), header)
+        val (cells, merged) = SheetSchema.mergeDay(sid, header, theirs, mine, changed)
+        assertEquals(14, merged.mortality); assertEquals("- litter turned", merged.notes)          // B's entries stay
+        assertEquals(10315.0, merged.w1!!, 1e-9); assertEquals(1791565200000L, merged.weighedAt)   // A's weighing is in
+        assertEquals(setOf("W", "M", "F"), merged.savedFields.split(",").toSet()); assertTrue(merged.committed)
+        assertEquals(29.0, SheetSchema.usedSplit(merged)["B2"]!!, 1e-9)
+        assertEquals(14.0, (cells[header.indexOf("Mortality")] as Number).toDouble(), 1e-9)
+        // the feed changed from one variety to another: the old variety's column is emptied, not left behind
+        val moved = SheetSchema.changedColumns(base, base.copy(feedUsedBreakdown = "B3=29.0", feedUsedType = "B3"))
+        assertTrue(moved.toString(), "usedb2" in moved && "usedb3" in moved)
     }
 
     @Test fun feedLedgerKeepsEachVarietyApartWithRunningTotals() {

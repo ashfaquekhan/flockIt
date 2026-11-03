@@ -18,7 +18,6 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O9 | Foot temperature has no official target | Range shown is from the cheek test and thermal-camera studies; treat as a guide. |
 | O10 | Breast height vs pan lip is an estimate | ≈4.0 cm at 40 g, scaling with weight^⅓; pan lip height is a farm setting. |
 | O11 | Feeding times and "hot day" (≥ 33 °C) are rules of thumb | Based on farm practice + heat-stress research (no feed ~5 h before peak heat). |
-| O12 | Feedings logged on the Output page are kept on the phone only | They drive the coop animation; the day's feed used is still entered on the Entry tab. Sync to the sheet if wanted. |
 | O13 | Pan plan uses the farm's "bags to fill 1 line" as a straight pans-per-bag rate | Pan spacing and line gap are farm settings (default 2.5 ft, width ÷ lines); first pan 5 ft from the front wall; 3 % slack on the fill; birds-per-pan limit scaled by weight^⅓ below 2 kg (Ross gives 45–80 for grown birds only). |
 | O14 | Lighting schedule assumes the dark period ends at 05:00 | Make it a farm setting if the farm's dark period differs. |
 | O15 | Coop environment values are ideals | No house sensors; birds behave as in comfortable air. |
@@ -51,10 +50,28 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O45 | The flock's own response to heat is unknown | The weather has been too steady since day 9 (outside high 31–32.6 °C every day) to learn it from the records; the published figures are used. |
 | O46 | The slider's colours have no written key on the screen | By request the legend was removed to keep it clean: orange = brooding (days 0–10), green = growing (11–27), blue = finishing (28 to harvest), red = past the planned harvest. The dot beside "Day N" shows the colour of the chosen day. |
 | O21 | Output review checklist (keep / change / drop) is waiting for the farm's choices | https://claude.ai/artifact/VDtyZmDKtLiJBu5Nxq6B3g |
+| O47 | Sheet schema 8 upgrade is tested on data, not yet run on the live sheet | It runs once on the first load after installing v47 and keeps a snapshot of the old sheet (same path as 6 → 7, which ran on this sheet on 9 Oct). A copy of the sheet as it stood on 3 Nov is also saved beside the APK. |
+| O48 | Lifting time is not known for the four liftings already entered | They are taken as 20:00 (the trucks loaded in the evening; the entries were saved 20:28–23:04). Pick the time when entering the next lifting. |
+| O49 | Which end is the pad (inlet) end is assumed | The map layers take the front wall (where x = 0, the brooding end) as the pads and the back as the fans. Say so if it is the other way round. |
+| O50 | The map layers are a model | Spreads along and across the house and floor-to-roof from published rules (heat picked up by the air, stratification, wet litter under drinkers, ammonia from wet warm litter); not fitted to this house. |
+| O51 | "Comfortable" density on hot days (30 / 34 kg/m²) is a rule of thumb | From heat-stress guidance; the farm's cap (39 kg/m²) stays the most. Say if the company uses other figures. |
+| O52 | Two phones changing the same value at the same time: the later save wins | Different values on the same day are merged; the same value is not. |
 
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v47 | FCR jumped to 3.08 over the lifting days | FCR = feed ÷ (live birds × weight): the lifted birds' kg were not counted | FCR on produced kg (live × weight + kg lifted); the birds left get their own average |
+| v47 | cFCR used the flock's weight, not the average of all birds produced | Same cause | Company cFCR on the cumulative body weight; a breed-curve cFCR beside it |
+| v47 | Loading only worked by swiping the farm list; flock pages did not refresh | The Google token (1 hour) was renewed only by the farm list's refresh; an expired one made every flock-page load fail quietly | Token renewed before it runs out and once more on a refused read; loads on open, on return and every 3 min; a loading bar |
+| v47 | A save could overwrite what another phone entered, a load could land on a save | Whole rows were written; loads and saves ran side by side; drafts kept every field | Only changed cells are written and merged with the sheet's row; one load or save at a time; drafts keep only what was typed |
+| v47 | Past days could not be changed; the cut-off locked today | Time lock and per-field locks | Removed: any day up to today can be changed and saved again |
+| v47 | Density too low while brooding; "kg/ft²" and "birds/ft²" puzzling | kg/m² was over the whole house, not the floor in use | kg/m² on the floor the birds have; ft² a bird; the space card |
+| v47 | Reception deaths hard to find | Shown only as "Reception" in one row | Placed, reception deaths and %, started, mortality with and without them |
+| v47 | Too scattered: Basic / Advanced, tabs, repeated numbers, "chart" | Two views and three tabs | One view, sections that fold, a choice of what shows; "company" for the company's standard |
+| v47 | Feed plan had many bag numbers and no clear answer | Plan flow, options, details all at once | One conclusion line; feedings picked in place; details folded |
+| v47 | Value colours used for alerts (Max for high likelihoods, Present for the weather) | Colours borrowed to flag | Each colour means one kind of value only |
+| v47 | No weather emojis | The weather code was not asked from the service | Weather code read; sky emoji in the top bar, the weather row and the forecast |
+| v47 | Hold-button words cut and small | One line, fixed height | Taller, words wrap, risky ones red-edged |
 | v46 | The v45 look was too colourful and not black | A whole new theme (vivid value colours, a blue accent, a near-black screen) was shipped from one reference picture without showing a sample first | Back to the original look: pure black, white outlines, the calmer colours. A change of look is shown as a sample before it is built in |
 | v45 | The colour band and legend under the day slider were not what was asked | The request was for the colour coding and the slider to be one thing | The slider's own track carries the periods; band and legend removed |
 | v45 | Too many outlines and boxes | Every value and card had a white outline on pure black | Expo-styleguide look: see-through panels with a hairline, faint fills, one blue accent |

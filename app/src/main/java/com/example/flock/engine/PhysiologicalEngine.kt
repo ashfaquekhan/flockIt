@@ -617,10 +617,11 @@ object PhysiologicalEngine {
         usableWidthFt: Double,
         broodDensity: Double = 3.7,
         densityCapDefault: Double = 39.0,
-        day: Int
+        day: Int,
+        /** where the barricade stands (ft from the front wall) when the farm entered one; null = the brooding plan */
+        penLengthFt: Double? = null
     ): AreaDensityResult {
         val grossUsableFt2 = usableLengthFt * usableWidthFt
-        val usableM2 = grossUsableFt2 * 0.092903
 
         // Brooding expansion: chicks start on a portion of the house and the barricade is moved
         // back a little EVERY DAY, reaching the full house by ~day 11. This makes the occupied
@@ -632,7 +633,9 @@ object PhysiologicalEngine {
 
         // As birds get heavy they need at least the area that keeps them under the density cap.
         val areaCap = if (densityCapDefault > 0) (liveBirds * avgKg / densityCapDefault) / 0.092903 else 0.0
-        val areaNeeded = max(broodArea, areaCap).coerceAtMost(grossUsableFt2)
+        // a barricade the farm entered is where the birds are, whatever the plan says (the density alert shows if it is too tight)
+        val areaNeeded = if (penLengthFt != null && penLengthFt > 0) (penLengthFt * usableWidthFt).coerceAtMost(grossUsableFt2)
+            else max(broodArea, areaCap).coerceAtMost(grossUsableFt2)
 
         val fullHouse = areaNeeded >= grossUsableFt2 * 0.98
         val occupiedFt2 = areaNeeded
@@ -640,7 +643,9 @@ object PhysiologicalEngine {
 
         val ftPerBird = if (liveBirds > 0) occupiedFt2 / liveBirds else 0.0
         val minFtPerBird = if (densityCapDefault > 0) (avgKg / densityCapDefault) / 0.092903 else 0.0
-        val densityKgM2 = if (usableM2 > 0) (liveBirds * avgKg) / usableM2 else 0.0
+        // kg of bird on each m2 the birds actually have (the brooding area while they are penned, not the whole house)
+        val occupiedM2 = occupiedFt2 * 0.092903
+        val densityKgM2 = if (occupiedM2 > 0) (liveBirds * avgKg) / occupiedM2 else 0.0
 
         return AreaDensityResult(
             occupiedFt2 = occupiedFt2,

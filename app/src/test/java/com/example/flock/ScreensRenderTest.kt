@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
+import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.runtime.setValue
@@ -35,6 +36,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithText
 import com.example.flock.data.DailyDataEntity
 import com.example.flock.data.FarmEntity
 import com.example.flock.data.FarmRegistryEntity
@@ -113,10 +117,10 @@ class ScreensRenderTest {
     }
 
     @Composable
-    private fun Dash(tab: Int, basic: Boolean = false, content: @Composable () -> Unit) {
+    private fun Dash(tab: Int, content: @Composable () -> Unit) {
         val r = rows(11)
         Scaffold(
-            topBar = { TopFlockBar(farm.farmName, flock, 11, 11, "30 Sep 2026", lock, weather, "synced", {}, {}, {}, {}, {}, basicView = basic) },
+            topBar = { TopFlockBar(farm.farmName, flock, 11, 11, "30 Sep 2026", lock, weather, "synced", {}, {}, {}, {}, {}) },
             bottomBar = {
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                     listOf("Entry" to Icons.Default.Edit, "Output" to Icons.Default.Insights, "Stock" to Icons.Default.Inventory2, "Tasks" to Icons.Default.Checklist).forEachIndexed { i, (l, ic) ->
@@ -136,16 +140,16 @@ class ScreensRenderTest {
 
     @Composable private fun entry() = Dash(0) {
         val r = rows(11)
-        EntriesScreen(r.last(), 11, "30 Sep", "29 Sep", feedTypes, lock, true, "k", listOf(50, 50, 50, 50, 50, 50), emptyList(), {}, {}, {}, farm = farm)
+        EntriesScreen(r.last(), 11, "30 Sep", "29 Sep", feedTypes, lock, "k", listOf(50, 50, 50, 50, 50, 50), emptyList(), {}, {}, farm = farm)
     }
-    @Composable private fun output(basic: Boolean = false, weatherOn: Boolean = true) = Dash(1, basic) {
+    @Composable private fun output(weatherOn: Boolean = true) = Dash(1) {
         val r = rows(11)
-        OutputScreen(flock, farm, r.last(), r, FeedStockSummary(0.0, 0.0, 0.0, emptyMap()), feedTypes, weather, hourly(), true, {}, basic = basic, weatherOn = weatherOn)
+        OutputScreen(flock, farm, r.last(), r, FeedStockSummary(0.0, 0.0, 0.0, emptyMap()), feedTypes, weather, hourly(), true, {}, weatherOn = weatherOn)
     }
-    @Composable private fun entryBasic() = Dash(0, true) {
+    @Composable private fun entryNewDay() = Dash(0) {
         val r = rows(11)
         // a day with no feed entered yet: its feed row starts with the variety entered last (B3 here)
-        EntriesScreen(r.last().copy(feedBagsUsed = 0.0, feedUsedBreakdown = "", savedFields = ""), 11, "30 Sep", "29 Sep", feedTypes, lock, true, "k2", listOf(50, 50, 50, 50, 50, 50), emptyList(), {}, {}, {}, farm = farm, basic = true, lastFeedType = "B3")
+        EntriesScreen(r.last().copy(feedBagsUsed = 0.0, feedUsedBreakdown = "", savedFields = ""), 11, "30 Sep", "29 Sep", feedTypes, lock, "k2", listOf(50, 50, 50, 50, 50, 50), emptyList(), {}, {}, farm = farm, lastFeedType = "B3")
     }
     @Composable private fun stock() = Dash(2) {
         val r = rows(11)
@@ -193,44 +197,85 @@ class ScreensRenderTest {
             OutputScreen(flock, farm, all[day], all.take(day + 1), FeedStockSummary(0.0, 0.0, 0.0, emptyMap()), feedTypes, weather, emptyList(), day == 11, {})
         } } }
         rule.mainClock.advanceTimeBy(1000)
-        // the feeding plan is in the Feed & water tab: scroll the tab bar into view and open it
-        var g0 = 0
-        while (rule.onNodeWithTag("tab_out_2").getUnclippedBoundsInRoot().top.value > 500f && g0++ < 40) {
-            rule.onRoot().performTouchInput { swipe(Offset(8f, height * 0.7f), Offset(8f, height * 0.5f), 1200) }
-            rule.mainClock.advanceTimeBy(1500)
-        }
-        rule.onNodeWithTag("tab_out_2").performClick()
-        rule.mainClock.advanceTimeBy(600)
-        // scroll with the finger (in the page margin, clear of the map and the clocks) until the plan is near the top
+        // scroll with the finger (in the page margin, clear of the map and the clocks) until the feed card is near the top
         var guard = 0
-        // slow, short swipes (no fling) until the plan is the card at the top of the screen (the one being read)
-        while (rule.onAllNodesWithText("Feeding plan")[0].getUnclippedBoundsInRoot().top.value > 12f && guard++ < 120) {
+        // slow, short swipes (no fling) until the feed card is the card at the top of the screen (the one being read)
+        while (rule.onNodeWithTag("feed_conclusion").getUnclippedBoundsInRoot().top.value > 60f && guard++ < 160) {
             rule.onRoot().performTouchInput { swipe(Offset(8f, height * 0.7f), Offset(8f, height * 0.6f), 1200) }
             rule.mainClock.advanceTimeBy(1500)
         }
-        val before = rule.onAllNodesWithText("Feeding plan")[0].getUnclippedBoundsInRoot().top
+        val before = rule.onNodeWithTag("feed_conclusion").getUnclippedBoundsInRoot().top
         day = 4          // a first-week day: alerts and growth cards above change height
         rule.mainClock.advanceTimeBy(900)
-        val after = rule.onAllNodesWithText("Feeding plan")[0].getUnclippedBoundsInRoot().top
-        println("feeding plan top: day 11 ${before.value} dp, day 4 ${after.value} dp")
-        assertTrue("the plan is the card at the top", before.value in -80f..12f)
-        assertEquals(before.value, after.value, 30f)
+        val after = rule.onNodeWithTag("feed_conclusion").getUnclippedBoundsInRoot().top
+        println("feed card top: day 11 ${before.value} dp, day 4 ${after.value} dp")
+        assertTrue("the feed card is at the top", before.value in -120f..60f)
+        assertEquals(before.value, after.value, 40f)
         day = 11
         rule.mainClock.advanceTimeBy(900)
-        assertEquals(before.value, rule.onAllNodesWithText("Feeding plan")[0].getUnclippedBoundsInRoot().top.value, 30f)
+        assertEquals(before.value, rule.onNodeWithTag("feed_conclusion").getUnclippedBoundsInRoot().top.value, 40f)
     }
     @Config(qualifiers = "w360dp-h9000dp-xhdpi") @Test fun outputLong() = shoot("output_long") { output() }
-    /** The short view: the whole day on a few screens. */
-    @Config(qualifiers = "w360dp-h3600dp-xhdpi") @Test fun outputBasic() = shoot("output_basic") { output(basic = true) }
-    @Config(qualifiers = "w360dp-h4400dp-xhdpi") @Test fun outputBasicBigText() = shoot("output_basic_bigtext") {
+    /** One view: the glance, the house, and the sections folded to one line each. */
+    @Config(qualifiers = "w360dp-h3600dp-xhdpi") @Test fun outputOne() = shoot("output_one") { output() }
+    @Config(qualifiers = "w360dp-h4400dp-xhdpi") @Test fun outputOneBigText() = shoot("output_one_bigtext") {
         val dens = androidx.compose.ui.platform.LocalDensity.current
-        androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(dens.density, 1.3f)) { output(basic = true) }
+        androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(dens.density, 1.3f)) { output() }
+    }
+    /** The new sections opened, at 130 % text: nothing breaks mid-word. */
+    @Config(qualifiers = "w360dp-h11000dp-xhdpi") @Test fun outputAllOpenBigText() {
+        rule.mainClock.autoAdvance = false
+        rule.setContent { MyApplicationTheme {
+            val dens = androidx.compose.ui.platform.LocalDensity.current
+            androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(dens.density, 1.3f)) { output() }
+        } }
+        rule.mainClock.advanceTimeBy(800)
+        // from the bottom up, so opening one never pushes the next title off the screen
+        listOf("trends", "space", "lifting").forEach { k ->
+            rule.onNodeWithTag("fold_$k").performClick(); rule.mainClock.advanceTimeBy(300)
+        }
+        rule.mainClock.advanceTimeBy(800)
+        rule.onNodeWithTag("space_why").assertExists()
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_output_all_open_bigtext.png")
+    }
+    /** The map layers: air temperature from the side (floor to roof) and ammonia from the top, with the window's see-through sheets. */
+    @Config(qualifiers = "w360dp-h2600dp-xhdpi") @Test fun mapLayers() {
+        rule.mainClock.autoAdvance = false
+        rule.setContent { MyApplicationTheme { output() } }
+        rule.mainClock.advanceTimeBy(800)
+        // the last chips of the row are past its edge: slide it along first
+        rule.onNodeWithTag("layer_bar").performTouchInput { swipeLeft() }; rule.mainClock.advanceTimeBy(800)
+        rule.onNodeWithTag("layer_air_t").performClick(); rule.mainClock.advanceTimeBy(300)
+        rule.onNodeWithTag("layer_side").performClick(); rule.mainClock.advanceTimeBy(600)
+        rule.onNodeWithTag("house_map").assertExists()
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_layers_air_side.png")
+        rule.onNodeWithTag("layer_top").performClick(); rule.mainClock.advanceTimeBy(200)
+        rule.onNodeWithTag("layer_ammonia").performClick(); rule.mainClock.advanceTimeBy(600)
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_layers_ammonia_top.png")
+    }
+    /** "Choose what shows": ticking a section off hands it back as hidden (the dialog alone: small and quick). */
+    @Config(qualifiers = "w360dp-h900dp-xhdpi") @Test fun chooseHidesASection() {
+        var hidden: Set<String>? = null
+        rule.setContent { MyApplicationTheme { com.example.flock.ui.screens.ChooseDialog(com.example.flock.ui.screens.GlanceItem.DEFAULT, emptySet(), { _, h -> hidden = h }, {}) } }
+        rule.onNodeWithTag("choose_sec_vent").performScrollTo().performClick()
+        rule.onNodeWithText("Done").performClick()
+        assertEquals(setOf("vent"), hidden)
+    }
+    /** A section hidden on this phone is not on the page; the others are. */
+    @Config(qualifiers = "w360dp-h7000dp-xhdpi") @Test fun hiddenSectionLeavesThePage() {
+        com.example.flock.network.ViewPrefs.setHiddenSections(androidx.test.core.app.ApplicationProvider.getApplicationContext(), setOf("vent"))
+        rule.mainClock.autoAdvance = false
+        rule.setContent { MyApplicationTheme { output() } }
+        rule.mainClock.advanceTimeBy(800)
+        assertTrue(rule.onAllNodesWithTag("fold_vent").fetchSemanticsNodes().isEmpty())
+        rule.onNodeWithTag("fold_space").assertExists()
+        com.example.flock.network.ViewPrefs.setHiddenSections(androidx.test.core.app.ApplicationProvider.getApplicationContext(), emptySet())
     }
     /** The day clock is under the tasks now, and no longer on the Output page; the likelihoods card is. */
     @Config(qualifiers = "w360dp-h2400dp-xhdpi") @Test fun clockLivesUnderTheTasks() {
         rule.mainClock.autoAdvance = false
         var showTasks by mutableStateOf(false)
-        rule.setContent { MyApplicationTheme { if (showTasks) tasks() else output(basic = true) } }
+        rule.setContent { MyApplicationTheme { if (showTasks) tasks() else output() } }
         rule.mainClock.advanceTimeBy(1000)
         assertTrue(rule.onAllNodesWithText("Day clock").fetchSemanticsNodes().isEmpty())
         rule.onNodeWithTag("needs_row").assertExists()
@@ -243,7 +288,7 @@ class ScreensRenderTest {
     /** The day slider is one piece — its track carries the periods — and it still chooses a day by tap, drag or an accessibility action. */
     @Config(qualifiers = "w360dp-h260dp-xhdpi") @Test fun daySliderChoosesADay() {
         var picked = -1
-        rule.setContent { MyApplicationTheme { TopFlockBar(farm.farmName, flock, 11, 20, "30 Sep 2026", lock, weather, "synced", {}, {}, { picked = it }, {}, {}, basicView = true) } }
+        rule.setContent { MyApplicationTheme { TopFlockBar(farm.farmName, flock, 11, 20, "30 Sep 2026", lock, weather, "synced", {}, {}, { picked = it }, {}, {}) } }
         assertTrue(rule.onAllNodesWithText("Brooding", substring = true).fetchSemanticsNodes().isEmpty())     // no separate legend
         rule.onNodeWithTag("day_slider").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.SetProgress) { it(30f) }
         assertEquals(30, picked)
@@ -261,18 +306,22 @@ class ScreensRenderTest {
         assertEquals(listOf("Brooding" to (0 to 10), "Growing" to (11 to 21)), com.example.flock.ui.components.dayPeriods(21, 21).map { it.name to (it.from to it.to) })
     }
     /** The weather switch off: the ideal house, as before. */
-    @Config(qualifiers = "w360dp-h2600dp-xhdpi") @Test fun outputWeatherOff() = shoot("output_weather_off") { output(basic = true, weatherOn = false) }
-    @Config(qualifiers = "w360dp-h2600dp-xhdpi") @Test fun entryBasicLong() {
-        shoot("entry_basic") { entryBasic() }
+    @Config(qualifiers = "w360dp-h2600dp-xhdpi") @Test fun outputWeatherOff() = shoot("output_weather_off") { output(weatherOn = false) }
+    @Config(qualifiers = "w360dp-h3200dp-xhdpi") @Test fun entryNewDayLong() {
+        shoot("entry_new_day") { entryNewDay() }
+        // nothing locks: no lock banner, no cut-off; the time of the entries can be picked
+        assertTrue(rule.onAllNodesWithText("locked", substring = true, ignoreCase = true).fetchSemanticsNodes().isEmpty())
+        assertTrue(rule.onAllNodesWithText("cut-off", substring = true, ignoreCase = true).fetchSemanticsNodes().isEmpty())
+        rule.onNodeWithTag("entry_time").assertExists()
         // a new day's feed row starts with the variety entered last: B3 shows in the feed row as well as in the third delivery
         assertTrue(rule.onAllNodesWithText("B3", substring = true).fetchSemanticsNodes().size >= 2)
     }
     /** A dial turned by hand holds for 30 seconds, then the dials go back to the weather. */
-    @Config(qualifiers = "w360dp-h5200dp-xhdpi") @Test fun dialsGoBackToTheWeather() {
+    @Config(qualifiers = "w360dp-h12000dp-xhdpi") @Test fun dialsGoBackToTheWeather() {
         rule.mainClock.autoAdvance = false
         rule.setContent { MyApplicationTheme { output() } }
         rule.mainClock.advanceTimeBy(800)
-        rule.onNodeWithTag("tab_out_1").performClick()
+        rule.onNodeWithTag("fold_vent").performClick()
         rule.mainClock.advanceTimeBy(800)
         rule.onAllNodesWithText("The weather at the farm now · turn a dial to try another")[0].assertExists()
         rule.onAllNodesWithText("+")[0].performClick()
@@ -286,8 +335,8 @@ class ScreensRenderTest {
         val dens = androidx.compose.ui.platform.LocalDensity.current
         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(dens.density, 1.3f)) { output() }
     }
-    @Config(qualifiers = "w360dp-h5200dp-xhdpi") @Test fun outputLongVent() = shootTab(1, "output_long_vent")
-    @Config(qualifiers = "w360dp-h8200dp-xhdpi") @Test fun outputLongFeed() = shootTab(2, "output_long_feed")
+    @Config(qualifiers = "w360dp-h11000dp-xhdpi") @Test fun outputLongVent() = shootFold("vent", "output_long_vent")
+    @Config(qualifiers = "w360dp-h9000dp-xhdpi") @Test fun outputLongSpace() = shootFold("space", "output_long_space")
     @Config(qualifiers = "w360dp-h1500dp-xhdpi") @Test fun stockSmall() = shoot("stock_small") { stock() }
     /** The quarter-width window and its stats grid. */
     @Config(qualifiers = "w360dp-h1500dp-xhdpi") @Test fun outputQuarter() {
@@ -317,11 +366,11 @@ class ScreensRenderTest {
         com.github.takahirom.roborazzi.captureScreenRoboImage("src/test/screenshots/screen_info_needs.png")
     }
 
-    private fun shootTab(tab: Int, name: String) {
+    private fun shootFold(key: String, name: String) {
         rule.mainClock.autoAdvance = false
         rule.setContent { MyApplicationTheme { output() } }
         rule.mainClock.advanceTimeBy(800)
-        rule.onNodeWithTag("tab_out_$tab").performClick()
+        rule.onNodeWithTag("fold_$key").performClick()
         rule.mainClock.advanceTimeBy(800)
         rule.onRoot().captureRoboImage("src/test/screenshots/screen_$name.png")
     }

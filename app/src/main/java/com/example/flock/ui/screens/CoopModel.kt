@@ -41,6 +41,22 @@ object FeedLog {
     }
 }
 
+/**
+ * Every feeding known: those on the sheet (each day's "HH:mm=bags") and any logged on this phone before v47 that the
+ * sheet does not have (same time within two minutes counts as the same feeding).
+ */
+fun feedEvents(rows: List<com.example.flock.data.DailyDataEntity>, local: List<FeedEvent>, zone: ZoneId): List<FeedEvent> {
+    val sheet = rows.flatMap { r ->
+        val date = try { LocalDate.parse(r.date) } catch (e: Exception) { return@flatMap emptyList<FeedEvent>() }
+        com.example.flock.data.parseFeedings(r.feedings).mapNotNull { (t, bags) ->
+            val h = t.substringBefore(":").toIntOrNull() ?: return@mapNotNull null
+            val m = t.substringAfter(":").toIntOrNull() ?: return@mapNotNull null
+            FeedEvent(date.atTime(h.coerceIn(0, 23), m.coerceIn(0, 59)).atZone(zone).toInstant().toEpochMilli(), bags)
+        }
+    }
+    return (sheet + local.filter { l -> sheet.none { kotlin.math.abs(it.t - l.t) < 120_000 } }).sortedBy { it.t }
+}
+
 /** Lighting programme: [lightHours] of light a day, the dark period ending at [darkEndHour] (05:00). */
 data class LightProgram(val lightHours: Double, val darkEndHour: Double = 5.0) {
     val darkHours get() = (24.0 - lightHours).coerceIn(0.0, 24.0)

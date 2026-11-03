@@ -13,6 +13,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import com.example.flock.sync.SheetSchema
 import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.LocalTime
@@ -71,17 +74,28 @@ class FlockRepository(
      * Pulls the whole farm workspace from the sheet, then recomputes every flock locally.
      * No-op (success) when offline. Used on farm open and on login.
      */
-    suspend fun refreshFromCloud(spreadsheetId: String) = withContext(Dispatchers.IO) {
-        val s = sync ?: return@withContext
-        if (!s.isOnline()) return@withContext
-        resendDirtyDays(spreadsheetId)
-        val res = s.pullFarmData(spreadsheetId)
-        if (res.isSuccess) {
-            flockDao.getAllFlocksList(spreadsheetId).forEach { recomputeFlock(spreadsheetId, it.flockId) }
-        } else {
-            _syncNote.value = "Couldn't load latest from Google Sheet: ${res.exceptionOrNull()?.message ?: "unknown"}"
+    suspend fun refreshFromCloud(spreadsheetId: String): Boolean = withContext(Dispatchers.IO) {
+        val s = sync ?: return@withContext false
+        if (!s.isOnline()) return@withContext false
+        // one load or save at a time: a load never lands on top of a save in flight (or the other way round)
+        ioLock.withLock {
+            resendDirtyDays(spreadsheetId)
+            val res = s.pullFarmData(spreadsheetId)
+            if (res.isSuccess) {
+                flockDao.getAllFlocksList(spreadsheetId).forEach { recomputeFlock(spreadsheetId, it.flockId) }
+                lastLoadedAt[spreadsheetId] = System.currentTimeMillis()
+                true
+            } else {
+                _syncNote.value = "Couldn't load latest from Google Sheet: ${res.exceptionOrNull()?.message ?: "unknown"}"
+                false
+            }
         }
     }
+
+    /** Every read from and write to the sheet goes one at a time (see [refreshFromCloud], [saveDayEntry]). */
+    private val ioLock = Mutex()
+    /** When each farm was last loaded from its sheet (epoch ms). */
+    val lastLoadedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     /** Runs a verified cloud write and records a user-visible note. No-op when offline. */
     private suspend fun cloudPush(label: String, block: suspend (SheetsSyncManager) -> Result<Unit>): Boolean {
@@ -96,15 +110,31 @@ class FlockRepository(
         return r.isSuccess
     }
 
-    /** Saves a day row as "not yet sent", pushes it, and clears the flag once the sheet has it. */
+    /**
+     * Saves a day row as "not yet sent" (with the columns changed on this phone), then sends it: only those columns
+     * are written and the row comes back as the sheet now has it — another phone's entries included.
+     */
     private suspend fun saveAndPushDay(label: String, spreadsheetId: String, row: DailyDataEntity) {
         dailyDataDao.insertOrUpdateDay(row.copy(dirty = true))
         recomputeFlock(spreadsheetId, row.flockId)
-        if (cloudPush(label) { it.pushDayEntry(spreadsheetId, row) }) clearDirty(spreadsheetId, row.flockId, row.dayNumber)
+        pushDirtyDay(label, spreadsheetId, row.flockId, row.dayNumber, updateReports = true)
     }
 
-    private suspend fun clearDirty(spreadsheetId: String, flockId: String, day: Int) {
-        dailyDataDao.getDayEntry(spreadsheetId, flockId, day)?.let { if (it.dirty) dailyDataDao.insertOrUpdateDay(it.copy(dirty = false)) }
+    /** Sends one unsent day row; true once the sheet has it. */
+    private suspend fun pushDirtyDay(label: String?, spreadsheetId: String, flockId: String, day: Int, updateReports: Boolean): Boolean {
+        val row = dailyDataDao.getDayEntry(spreadsheetId, flockId, day)?.takeIf { it.dirty } ?: return true
+        var merged: DailyDataEntity? = null
+        val push: suspend (SheetsSyncManager) -> Result<Unit> = { s -> s.pushDayEntry(spreadsheetId, row, updateReports, row.dirtyColumns()).map { merged = it } }
+        val ok = if (label != null) cloudPush(label, push) else (sync?.let { push(it).isSuccess } ?: false)
+        merged?.let { m ->
+            // the sheet's row with this phone's changes in; an edit made here meanwhile (newer) stays unsent
+            val now = dailyDataDao.getDayEntry(spreadsheetId, flockId, day)
+            if (now == null || now.updatedAt <= row.updatedAt) {
+                dailyDataDao.insertOrUpdateDay(m.copy(spreadsheetId = spreadsheetId, dirty = false, dirtyFields = ""))
+                recomputeFlock(spreadsheetId, flockId)
+            }
+        }
+        return ok
     }
 
     /** Re-sends day rows saved while offline (or whose push failed). */
@@ -114,7 +144,7 @@ class FlockRepository(
         var sent = 0
         flockDao.getAllFlocksList(spreadsheetId).forEach { f ->
             dailyDataDao.getDailyDataList(spreadsheetId, f.flockId).filter { it.dirty }.forEach { row ->
-                if (s.pushDayEntry(spreadsheetId, row, updateReports = false).isSuccess) { clearDirty(spreadsheetId, row.flockId, row.dayNumber); sent++ }
+                if (pushDirtyDay(null, spreadsheetId, row.flockId, row.dayNumber, updateReports = false)) sent++
             }
         }
         if (sent > 0) s.pushReports(spreadsheetId)      // the report tabs once, after all the rows
@@ -290,19 +320,6 @@ class FlockRepository(
     }
 
     /**
-     * Reverts (unlocks) a day: its saved groups open again for editing, every value stays in place so
-     * only the wrong ones need changing.
-     */
-    suspend fun unlockDay(spreadsheetId: String, flockId: String, dayNumber: Int, userEmail: String): Result<Unit> =
-        withContext(Dispatchers.IO) {
-            val existing = dailyDataDao.getDayEntry(spreadsheetId, flockId, dayNumber)
-                ?: return@withContext Result.failure(Exception("Day entry not found"))
-            val open = existing.copy(committed = false, savedFields = "", updatedAt = System.currentTimeMillis(), updatedBy = userEmail)
-            saveAndPushDay("Day $dayNumber unlocked", spreadsheetId, open)
-            Result.success(Unit)
-        }
-
-    /**
      * Clears a day: all of that day's inputs (samples, mortality, feed, deliveries, notes) and its
      * lock, recomputes, and pushes the cleared row to the sheet.
      */
@@ -320,11 +337,14 @@ class FlockRepository(
                 notes = "", waterTempC = null, waterPh = null, feedMoisturePct = null,
                 measuredCo2 = null, measuredNh3 = null, measuredO2 = null, measuredPressure = null,
                 measuredAirspeed = null, padWetMin = null, padDryMin = null, luxPerFt2 = null,
-                dieselCansUsed = 0.0,
+                dieselCansUsed = 0.0, weighedAt = 0L, liftedAt = 0L, feedings = "",
                 sampleEntered = false, committed = false, savedFields = "",
                 updatedAt = System.currentTimeMillis(), updatedBy = userEmail
             )
-            saveAndPushDay("Day $dayNumber reverted", spreadsheetId, cleared)
+            ioLock.withLock {
+                saveAndPushDay("Day $dayNumber cleared", spreadsheetId,
+                    cleared.copy(dirtyFields = mergeDirtyFields(existing.dirty, existing.dirtyFields, SheetSchema.changedColumns(existing, cleared))))
+            }
             Result.success(Unit)
         }
 
@@ -335,7 +355,7 @@ class FlockRepository(
     suspend fun closeFlock(spreadsheetId: String, flockId: String): Boolean = withContext(Dispatchers.IO) {
         val flock = flockDao.getFlockById(spreadsheetId, flockId) ?: return@withContext false
         recomputeFlock(spreadsheetId, flockId)
-        resendDirtyDays(spreadsheetId)
+        ioLock.withLock { resendDirtyDays(spreadsheetId) }
         val closed = flock.copy(status = "closed", locked = true)
         flockDao.updateFlock(closed)
         cloudPush("Batch \"${flock.name}\" closed") { it.upsertFlock(spreadsheetId, closed) }
@@ -439,38 +459,9 @@ class FlockRepository(
     }
 
     /**
-     * Checks if hard fields are locked for a given flock and day.
-     * Hard fields (samples, mortality, feedBagsUsed) lock after cutoffTime on current day,
-     * and are always locked on past or future days.
-     */
-    suspend fun isDayHardLocked(spreadsheetId: String, flock: FlockEntity, dayNumber: Int): Pair<Boolean, String> = withContext(Dispatchers.IO) {
-        val farm = getFarm(spreadsheetId)
-        val zone = ZoneId.of(farm.timeZone)
-        val curDay = calculateCurrentDay(flock.startDate, farm.timeZone)
-
-        if (dayNumber < curDay) {
-            return@withContext true to "Past days are read-only. Edit directly in Google Sheet."
-        }
-        if (dayNumber > curDay) {
-            return@withContext true to "Cannot enter data for future days."
-        }
-
-        // It is today. Check 11:00 AM cutoff
-        val cutoffParts = farm.cutoffTime.split(":")
-        val cutoffHour = cutoffParts.getOrNull(0)?.toIntOrNull() ?: 11
-        val cutoffMin = cutoffParts.getOrNull(1)?.toIntOrNull() ?: 0
-        val cutoff = LocalTime.of(cutoffHour, cutoffMin)
-        val now = LocalTime.now(zone)
-
-        if (now.isAfter(cutoff)) {
-            return@withContext true to "Inputs locked: cutoff time (${farm.cutoffTime}) has passed for today."
-        }
-
-        false to ""
-    }
-
-    /**
-     * Saves daily inputs and enforces the lock in the data layer (Bug 2 Fix).
+     * Saves a day's inputs. Nothing locks with the clock or once saved: any day up to today can be changed (a closed or
+     * locked flock or farm cannot). [at] is when what was entered happened (the weighing, the lifting) — now unless an
+     * earlier time was picked. Only the columns this save changes are sent to the sheet.
      */
     suspend fun saveDayEntry(
         spreadsheetId: String,
@@ -478,6 +469,7 @@ class FlockRepository(
         dayNumber: Int,
         userEmail: String,
         entered: Set<String> = emptySet(),
+        at: Long? = null,
         updateAction: (DailyDataEntity) -> DailyDataEntity
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val flock = flockDao.getFlockById(spreadsheetId, flockId)
@@ -488,60 +480,53 @@ class FlockRepository(
         if (farmRegistryDao.getFarm(spreadsheetId)?.locked == true) {
             return@withContext Result.failure(IllegalStateException("This farm is locked. Unlock it to edit."))
         }
-        val existing = dailyDataDao.getDayEntry(spreadsheetId, flockId, dayNumber)
-            ?: return@withContext Result.failure(Exception("Day entry not found"))
-
-        val modified = updateAction(existing)
-
-        // Per-field locking: a group (W weights, M mortality, F feed used) locks once it has been
-        // entered and saved. Groups never entered stay open — even after the cut-off or on a past
-        // day — so a late mortality count or feed figure can still be added. Future days: no.
-        val curDay = calculateCurrentDay(flock.startDate, getFarm(spreadsheetId).timeZone)
-        val saved = existing.savedGroups()
-        val weightsChanged = modified.w1 != existing.w1 || modified.n1 != existing.n1 ||
-                modified.w2 != existing.w2 || modified.n2 != existing.n2 ||
-                modified.w3 != existing.w3 || modified.n3 != existing.n3 ||
-                modified.w4 != existing.w4 || modified.n4 != existing.n4 ||
-                modified.w5 != existing.w5 || modified.n5 != existing.n5 ||
-                modified.moreSamples != existing.moreSamples ||
-                modified.indivWeights != existing.indivWeights
-        val mortChanged = modified.mortality != existing.mortality
-        val feedChanged = modified.feedBagsUsed != existing.feedBagsUsed || modified.feedUsedBreakdown != existing.feedUsedBreakdown
-        if ((weightsChanged || mortChanged || feedChanged) && dayNumber > curDay) {
-            return@withContext Result.failure(IllegalStateException("Cannot enter data for future days."))
+        ioLock.withLock {
+            val existing = dailyDataDao.getDayEntry(spreadsheetId, flockId, dayNumber)
+                ?: return@withLock Result.failure(Exception("Day entry not found"))
+            val modified = updateAction(existing)
+            val changed = SheetSchema.changedColumns(existing, modified)
+            val curDay = calculateCurrentDay(flock.startDate, getFarm(spreadsheetId).timeZone)
+            if (changed.isNotEmpty() && dayNumber > curDay) {
+                return@withLock Result.failure(IllegalStateException("Day $dayNumber has not come yet — nothing to enter."))
+            }
+            val hasSample = modified.filledSamples().isNotEmpty() || PhysiologicalEngine.parseWeights(modified.indivWeights).isNotEmpty()
+            val weightsChanged = changed.any { SheetSchema.isWeightColumn(it) }
+            val liftChanged = "birdslifted" in changed || "weightlifted" in changed
+            val now = System.currentTimeMillis()
+            val stamp = at?.takeIf { it in 1..(now + 60_000) } ?: now
+            val groups = existing.savedGroups().toMutableSet().apply {
+                if (hasSample) add("W") else remove("W")
+                if ("M" in entered) add("M")
+                if ("F" in entered || dayNumber == 0) add("F")
+            }
+            val stamped = modified.copy(
+                // when the weights were taken: the time-based projections start from here
+                weighedAt = if (!hasSample) 0L else if (weightsChanged || existing.weighedAt == 0L) stamp else existing.weighedAt,
+                liftedAt = if (modified.birdsLifted <= 0) 0L else if (liftChanged || existing.liftedAt == 0L) stamp else existing.liftedAt,
+                sampleEntered = hasSample,
+                savedFields = listOf("W", "M", "F").filter { it in groups }.joinToString(","),
+                committed = groups.containsAll(listOf("W", "M", "F")),
+                updatedAt = now,
+                updatedBy = userEmail
+            )
+            val toSave = stamped.copy(dirtyFields = mergeDirtyFields(existing.dirty, existing.dirtyFields, SheetSchema.changedColumns(existing, stamped)))
+            saveAndPushDay("Day $dayNumber", spreadsheetId, toSave)
+            Result.success(Unit)
         }
-        val blocked = listOfNotNull(
-            "weights".takeIf { weightsChanged && "W" in saved },
-            "mortality".takeIf { mortChanged && "M" in saved },
-            "feed used".takeIf { feedChanged && "F" in saved }
-        )
-        if (blocked.isNotEmpty()) {
-            return@withContext Result.failure(IllegalStateException(
-                "Day $dayNumber ${blocked.joinToString(", ")} already saved and locked. Use Revert day to change them."))
-        }
-
-        // Bug 4 Fix: sampleEntered is ONLY true when at least one location has BOTH weight > 0 AND count > 0
-        val hasSample = modified.filledSamples().isNotEmpty() ||
-                PhysiologicalEngine.parseWeights(modified.indivWeights).isNotEmpty()
-
-        val newSaved = saved.toMutableSet()
-        if (hasSample) newSaved += "W"
-        if ("M" in entered) newSaved += "M"
-        if ("F" in entered || dayNumber == 0) newSaved += "F"
-        val toSave = modified.copy(
-            // the moment the weights were saved: time-based projections start from here
-            weighedAt = if (!hasSample) 0L else if (weightsChanged || existing.weighedAt == 0L) System.currentTimeMillis() else existing.weighedAt,
-            sampleEntered = hasSample,
-            savedFields = listOf("W", "M", "F").filter { it in newSaved }.joinToString(","),
-            committed = newSaved.containsAll(listOf("W", "M", "F")),
-            updatedAt = System.currentTimeMillis(),
-            updatedBy = userEmail
-        )
-
-        // Push the day's inputs to the sheet (upsert by FlockId+Day); kept as "not yet sent" until it lands.
-        saveAndPushDay("Day $dayNumber", spreadsheetId, toSave)
-        Result.success(Unit)
     }
+
+    /** The feedings poured on a day ("HH:mm=bags;…"), sent to the sheet like any other entry. */
+    suspend fun setFeedings(spreadsheetId: String, flockId: String, dayNumber: Int, feedings: String, userEmail: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            ioLock.withLock {
+                val existing = dailyDataDao.getDayEntry(spreadsheetId, flockId, dayNumber)
+                    ?: return@withLock Result.failure(Exception("Day entry not found"))
+                if (existing.feedings == feedings) return@withLock Result.success(Unit)
+                val row = existing.copy(feedings = feedings, updatedAt = System.currentTimeMillis(), updatedBy = userEmail)
+                saveAndPushDay("Feeding", spreadsheetId, row.copy(dirtyFields = mergeDirtyFields(existing.dirty, existing.dirtyFields, setOf("feedings"))))
+                Result.success(Unit)
+            }
+        }
 
     /**
      * Complete mathematical recalculation for a flock across its entire life-cycle.

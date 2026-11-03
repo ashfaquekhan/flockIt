@@ -7,6 +7,7 @@ import com.example.flock.data.FeedTypeEntity
 import com.example.flock.data.FlockEntity
 import com.example.flock.data.TaskEntity
 import com.example.flock.data.filledSamples
+import com.example.flock.data.savedGroups
 import kotlin.math.min
 
 /**
@@ -29,8 +30,10 @@ object SheetSchema {
      * 7: DailyData gains WeighedAt (when the day's weights were saved); three more report tabs — Computed (every
      *    value the app works out for a day, next to the inputs it comes from), Projections (what the app
      *    projected for each day before the entry, the entry, and the miss) and Formulas (how each is worked out).
+     * 8: DailyData gains LiftedAt (when the day's birds were lifted) and Feedings (the feedings poured, "HH:mm=bags;…");
+     *    Computed gains the lifting mass balance (birds and kg lifted, live and dead mass, both cFCRs).
      */
-    const val VERSION = 7
+    const val VERSION = 8
 
     val FLOCK_HEADERS = listOf(
         "flockId", "name", "breed", "startDate", "startTime", "birdsPlaced", "receptionMort",
@@ -44,14 +47,15 @@ object SheetSchema {
         "BroodingLength", "ActualFans", "ActualFanTime", "OutTemp", "OutRH", "Notes",
         "WaterTempC", "WaterPh", "FeedMoisturePct", "MeasuredCo2", "MeasuredNh3", "MeasuredO2",
         "MeasuredPressure", "MeasuredAirspeed", "PadWetMin", "PadDryMin", "LuxPerFt2", "DieselCansUsed",
-        "UpdatedAt", "UpdatedBy", "Committed", "FeedUsedBreakdown", "SavedFields", "IndividualWeights", "Locations", "WeighedAt"
+        "UpdatedAt", "UpdatedBy", "Committed", "FeedUsedBreakdown", "SavedFields", "IndividualWeights", "Locations", "WeighedAt",
+        "LiftedAt", "Feedings"
     )
 
     // ---- how DailyData is written (schema 6): related columns side by side, per-variety and extra-location columns in place
     private val LAYOUT_A = listOf("FlockId", "Day", "Date", "Locked", "SampleEntered", "Locations",
         "W1", "N1", "W2", "N2", "W3", "N3", "W4", "N4", "W5", "N5")
-    private val LAYOUT_B = listOf("IndividualWeights", "Mortality", "BirdsLifted", "WeightLifted", "LameSeparated", "FeedBagsUsed")
-    private val LAYOUT_C = listOf("FeedUsedType", "FeedUsedBreakdown",
+    private val LAYOUT_B = listOf("IndividualWeights", "Mortality", "BirdsLifted", "WeightLifted", "LiftedAt", "LameSeparated", "FeedBagsUsed")
+    private val LAYOUT_C = listOf("FeedUsedType", "FeedUsedBreakdown", "Feedings",
         "FeedRecB1", "FeedTypeB1", "FeedRecB2", "FeedTypeB2", "FeedRecB3", "FeedTypeB3", "DieselCansUsed", "Notes",
         "BroodingLength", "ActualFans", "ActualFanTime", "OutTemp", "OutRH",
         "WaterTempC", "WaterPh", "FeedMoisturePct", "MeasuredCo2", "MeasuredNh3", "MeasuredO2",
@@ -220,7 +224,8 @@ object SheetSchema {
             committed = r.b("Committed"), feedUsedBreakdown = r.s("FeedUsedBreakdown"), savedFields = r.s("SavedFields"),
             indivWeights = r.s("IndividualWeights"),
             moreSamples = r.moreSamples(), locCount = (r.i("Locations") ?: 0).coerceIn(0, com.example.flock.data.MAX_LOCATIONS),
-            weighedAt = r.l("WeighedAt") ?: 0L
+            weighedAt = r.l("WeighedAt") ?: 0L,
+            liftedAt = r.l("LiftedAt") ?: 0L, feedings = r.s("Feedings")
         )
         // The per-variety columns are the bags record when the sheet has them: they set the split and the total.
         val perType = r.usedByCode().filterValues { it > 0 }
@@ -254,7 +259,8 @@ object SheetSchema {
         n(d.measuredPressure), n(d.measuredAirspeed), n(d.padWetMin), n(d.padDryMin), n(d.luxPerFt2), d.dieselCansUsed,
         d.updatedAt, d.updatedBy, d.committed, d.feedUsedBreakdown, d.savedFields, d.indivWeights,
         if (d.locCount > 0) d.locCount else "",
-        if (d.weighedAt > 0) d.weighedAt else ""
+        if (d.weighedAt > 0) d.weighedAt else "",
+        if (d.liftedAt > 0) d.liftedAt else "", d.feedings
     )
     /** Sample locations 6 and up as column name → value. */
     fun sampleColumns(d: DailyDataEntity): Map<String, Any> = buildMap {
@@ -275,6 +281,50 @@ object SheetSchema {
     /** A day row laid out for [header] (a column the row has no value for is left blank). */
     fun dayCells(d: DailyDataEntity, header: List<String>): List<Any> = dayValues(d).let { v -> header.map { v[norm(it)] ?: "" } }
     fun dayKey(d: DailyDataEntity) = d.flockId + "|" + d.dayNumber
+
+    /** A column of the day's weighing (a location's weight or count, the birds weighed one by one). */
+    fun isWeightColumn(normName: String): Boolean = normName == "individualweights" || Regex("^[wn]\\d{1,2}$").matches(normName)
+
+    /** Columns about the row itself (who saved it, when, which groups are in): written with every change. */
+    val DAY_META = setOf("updatedat", "updatedby", "savedfields", "committed", "sampleentered")
+    private fun cellText(v: Any?): String = when (v) {
+        null -> ""
+        is Number -> v.toDouble().let { if (it == kotlin.math.floor(it) && kotlin.math.abs(it) < 1e15) it.toLong().toString() else it.toString() }
+        else -> v.toString().trim()
+    }
+
+    /**
+     * The sheet columns (normalised names) whose value an edit changed, [before] → [after] — what this phone has to
+     * write. Only these go to the sheet, so whatever another phone entered in the other columns stays.
+     */
+    fun changedColumns(before: DailyDataEntity, after: DailyDataEntity): Set<String> {
+        val a = dayValues(before); val b = dayValues(after)
+        return (a.keys + b.keys).filter { it !in DAY_META && cellText(a[it]) != cellText(b[it]) }.toSet()
+    }
+
+    /**
+     * Two versions of a day row brought together: the row as the sheet has it now ([sheet] cells under [header]) with
+     * this phone's values put into the [columns] it changed. The groups entered are the union of both. Returns the
+     * cells to write (same order as [header]) and the merged row.
+     */
+    fun mergeDay(sid: String, header: List<String>, sheet: List<Any?>, mine: DailyDataEntity, columns: Set<String>): Pair<List<Any?>, DailyDataEntity> {
+        val mineVals = dayValues(mine)
+        val cells = header.mapIndexed { i, name ->
+            val k = norm(name)
+            if (k in columns) mineVals[k] ?: "" else sheet.getOrNull(i) ?: ""
+        }
+        val h = Header(header)
+        val theirs = day(sid, Row(sheet, h))
+        val merged0 = day(sid, Row(cells, h)) ?: mine
+        val groups = (mine.savedGroups() + (theirs?.savedGroups() ?: emptySet())).let { g -> listOf("W", "M", "F").filter { it in g } }
+        val merged = merged0.copy(
+            savedFields = groups.joinToString(","), committed = groups.size == 3,
+            updatedAt = mine.updatedAt, updatedBy = mine.updatedBy
+        )
+        val metaVals = dayValues(merged)
+        val out = header.mapIndexed { i, name -> val k = norm(name); if (k in DAY_META) metaVals[k] ?: "" else cells[i] }
+        return out to merged
+    }
 
     fun task(sid: String, r: Row): TaskEntity? {
         val id = r.s("taskId"); if (id.isBlank()) return null

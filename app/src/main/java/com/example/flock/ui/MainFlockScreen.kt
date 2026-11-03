@@ -66,11 +66,15 @@ fun MainFlockScreen(
     modifier: Modifier = Modifier
 ) {
     var currentTab by remember { mutableStateOf(FlockNavTab.ENTRY) }
-    // how the app is shown on this phone: the short or the full view, and whether the weather acts on the house and birds
+    // whether the weather acts on the house and birds (one view for everything since v47)
     val ctx = androidx.compose.ui.platform.LocalContext.current
-    var basicView by remember { mutableStateOf(com.example.flock.network.ViewPrefs.basic(ctx)) }
     var weatherOn by remember { mutableStateOf(com.example.flock.network.ViewPrefs.weatherOn(ctx)) }
     val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val loadedAt by viewModel.loadedAt.collectAsState()
+    // while a flock is open the sheet is loaded again every few minutes (another phone's entries come in by themselves)
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        while (true) { kotlinx.coroutines.delay(3 * 60_000L); viewModel.refreshIfStale(3 * 60_000L) }
+    }
 
     val activeFlock by viewModel.activeFlock.collectAsState()
     val farm by viewModel.farm.collectAsState()
@@ -82,7 +86,6 @@ fun MainFlockScreen(
     val feedStockSummary by viewModel.feedStockSummary.collectAsState()
     val tasks by viewModel.tasks.collectAsState()
     val lockStatus by viewModel.lockStatus.collectAsState()
-    val cutoffLockEnabled by viewModel.cutoffLockEnabled.collectAsState()
     val weather by viewModel.weather.collectAsState()
     val syncStatus by viewModel.syncStatus.collectAsState()
     val showForecast by viewModel.showForecast.collectAsState()
@@ -151,9 +154,7 @@ fun MainFlockScreen(
                 onFarmClick = onNavFarms,
                 onFlockClick = onNavFlocks,
                 onWeatherClick = { viewModel.openWeatherForecast() },
-                lastDay = lastDay,
-                basicView = basicView,
-                onBasicView = { basicView = it; com.example.flock.network.ViewPrefs.setBasic(ctx, it) }
+                lastDay = lastDay
             )
         },
         bottomBar = {
@@ -197,6 +198,9 @@ fun MainFlockScreen(
         }
     ) { innerPadding ->
         val pullState = androidx.compose.material3.pulltorefresh.rememberPullToRefreshState()
+        androidx.compose.foundation.layout.Column(Modifier.fillMaxSize().padding(innerPadding)) {
+        // loading from the sheet: a bar and a line of text, so a load is never silent
+        com.example.flock.ui.components.LoadingStrip(isRefreshing, syncStatus, loadedAt, farm.timeZone)
         PullToRefreshBox(
             isRefreshing = isRefreshing,
             onRefresh = { viewModel.refreshCurrentFarm() },
@@ -204,7 +208,6 @@ fun MainFlockScreen(
             indicator = { FlockPullIndicator(pullState, isRefreshing) },
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.background)
         ) {
             when (currentTab) {
@@ -215,16 +218,13 @@ fun MainFlockScreen(
                     yesterdayDate = yesterdayDateStr,
                     feedTypes = feedTypes,
                     lockStatus = lockStatus,
-                    cutoffLockEnabled = cutoffLockEnabled,
                     draftKey = EntryDrafts.key(spreadsheetId, activeFlock?.flockId ?: "", selectedDay),
                     previousCounts = previousCounts,
                     recentNotes = recentNotes,
                     onSave = { inputs -> viewModel.saveDayEntry(inputs) },
-                    onToggleLockTimer = { viewModel.toggleCutoffLock() },
-                    onRevertDay = { viewModel.revertDay() },
                     onClearDay = { viewModel.clearDay() },
                     farm = farm,
-                    basic = basicView,
+                    isToday = selectedDay == currentFlockDay,
                     lastFeedType = dailyRows.filter { it.dayNumber < selectedDay && it.feedBagsUsed > 0 }.maxByOrNull { it.dayNumber }
                         ?.let { r -> com.example.flock.data.FlockCalc.usedSplit(r).maxByOrNull { it.value }?.key }
                 )
@@ -241,7 +241,8 @@ fun MainFlockScreen(
                     onCloseBatch = activeFlock?.let { f -> { viewModel.closeFlock(f.flockId) } },
                     onFarmChange = { viewModel.updateFarm(it) },
                     onFlockPlan = { w, h -> viewModel.updateFlockPlan(w, h) },
-                    basic = basicView,
+                    onLogFeeding = { bags, at -> viewModel.logFeeding(bags, at) },
+                    onUndoFeeding = { viewModel.undoLastFeeding() },
                     weatherOn = weatherOn,
                     onWeatherOn = { weatherOn = it; com.example.flock.network.ViewPrefs.setWeatherOn(ctx, it) }
                 )
@@ -270,6 +271,7 @@ fun MainFlockScreen(
                     }
                 )
             }
+        }
         }
     }
 

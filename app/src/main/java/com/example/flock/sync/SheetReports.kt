@@ -137,6 +137,14 @@ object SheetReports {
         return com.example.flock.data.FlockCalc.compute(f, c.farm, cfg, rows, kgOf(c))
     }
 
+    /** A flock's meat balance day by day (lifted, live, dead; both cFCRs), exactly as the phone works it out. */
+    private fun massOf(c: SheetSchema.Content, f: FlockEntity): Map<Int, com.example.flock.data.FlockCalc.Mass> {
+        val rows = c.days.filter { it.flockId == f.flockId }.sortedBy { it.dayNumber }
+        if (rows.isEmpty()) return emptyMap()
+        val cfg = c.config ?: com.example.flock.data.ConfigEntity(spreadsheetId = c.farm.spreadsheetId)
+        return com.example.flock.data.FlockCalc.mass(f, c.farm, cfg, rows, kgOf(c)).associateBy { it.day }
+    }
+
     /**
      * Every value the app works out for a day (to the last day entered), beside the entries it is worked
      * out from. The [formulas] tab says how each one is calculated.
@@ -152,6 +160,10 @@ object SheetReports {
             "Gain g a day", "CV % (birds weighed singly)", "CV % (estimated from groups)", "Spread between locations %",
             // feed
             "Feed till date kg", "Feed till date g per bird", "FCR", "cFCR", "EPEF",
+            // lifting: where the flock's meat is
+            "Lifted birds", "Lifted kg", "Lifted average kg", "Lifted till date birds", "Lifted till date kg",
+            "Average after lifting g", "Live mass kg", "Dead and culled mass kg", "Produced kg (live + lifted)", "Cumulative body weight kg",
+            "FCR with the dead", "cFCR company", "cFCR breed",
             "Feed plan g per bird", "Feed plan kg", "Feed plan bags", "Commercial feed g per bird", "Ideal feed g per bird",
             "Feed store bags",
             // water, house
@@ -164,6 +176,7 @@ object SheetReports {
         val std = com.example.flock.engine.CompanyStandard
         for (f in c.flocks) {
             val rows = worked(c, f)
+            val mass = massOf(c, f)
             val last = com.example.flock.data.FlockCalc.lastEnteredDay(rows)
             var cumKg = 0.0; var prevW: Pair<Int, Double>? = null
             for (d in rows) {
@@ -186,6 +199,11 @@ object SheetReports {
                     r(std.ageForWeight(w) - d.dayNumber, 2),
                     o(gain, 1), o(d.cv, 2), o(com.example.flock.data.FlockCalc.cvEstimate(rows, d.dayNumber)?.takeIf { samples.size >= 3 }, 1), o(d.locSpreadPct, 2),
                     r(cumKg, 1), if (d.liveBirds > 0 && cumKg > 0) r(cumKg * 1000 / d.liveBirds, 1) else "", o(d.fcr, 3), o(d.cFcr, 3), o(epef, 1),
+                    *(mass[d.dayNumber]?.let { m ->
+                        arrayOf<Any>(m.liftedToday, r(d.weightLifted, 1), o(m.liftAvgKg, 3), m.liftedBirds, r(m.liftedKg, 1),
+                            r(m.avgAfterKg * 1000, 1), r(m.liveKg, 1), r(m.deadKg, 1), r(m.producedKg, 1), r(m.cumBwKg, 3),
+                            o(m.fcrAll, 3), o(m.cFcrCompany, 3), o(m.cFcrBreed, 3))
+                    } ?: Array<Any>(13) { "" }),
                     r(d.feedPerBird, 1), r(d.totalFeedKg, 1), d.feedBags, o(std.feedPerDay(std.duringDay(d.dayNumber)), 1),
                     r(PhysiologicalEngine.dailyFeedFromDay((d.dayNumber + 1).toDouble(), f.breed), 1),
                     r(d.stockOnHand),
@@ -245,6 +263,12 @@ object SheetReports {
     fun formulas(): List<List<Any>> = listOf(
         listOf("Value", "Unit", "How it is worked out", "Worked out from"),
         listOf("Live birds", "birds", "Birds placed − reception deaths − deaths, culls and birds lifted till date", "Flocks: birdsPlaced, receptionMort · DailyData: Mortality, LameSeparated, BirdsLifted"),
+        listOf("Reception deaths %", "%", "Birds dead on arrival or in the first hours ÷ birds placed × 100 — not counted in the flock's mortality", "Flocks: receptionMort, birdsPlaced"),
+        listOf("Lifted average kg", "kg", "Weight lifted ÷ birds lifted (the truck's weighing)", "DailyData: WeightLifted, BirdsLifted"),
+        listOf("Average after lifting g", "g", "(Birds before lifting × their average grown on to the lifting time − kg lifted) ÷ birds left; the days after are carried on from it. A weighing saved after the lifting is taken as it is", "Weight g · WeightLifted · BirdsLifted · WeighedAt, LiftedAt"),
+        listOf("Produced kg (live + lifted)", "kg", "Live birds × average after lifting + kg lifted till date", "Live birds · Average after lifting · WeightLifted"),
+        listOf("Dead and culled mass kg", "kg", "Each day's deaths and culls × that day's average weight, added up (estimated)", "Mortality, LameSeparated · Weight g"),
+        listOf("Cumulative body weight kg", "kg", "Produced kg ÷ (live birds + birds lifted till date): the average of every bird the flock has made", "Produced kg · Live birds · BirdsLifted"),
         listOf("Mortality %", "%", "Deaths till date ÷ (birds placed − reception deaths) × 100", "Mortality · birdsPlaced, receptionMort"),
         listOf("Livability %", "%", "Live birds ÷ (birds placed − reception deaths) × 100", "Live birds"),
         listOf("Weight g (measured)", "g", "Total weight of every location ÷ birds weighed (birds weighed one by one are added in)", "W1…W12, N1…N12, IndividualWeights"),
@@ -256,8 +280,10 @@ object SheetReports {
         listOf("CV % (estimated from groups)", "%", "Spread between the location averages × √(birds per location), pooled over the last 3 weighings. Rough: a light or heavy corner of the house counts too", "W1…W12, N1…N12"),
         listOf("Feed till date kg", "kg", "Sum of the bags entered × that variety's bag weight", "Used B1 / B2 / B3 · _FeedTypes: bagKg"),
         listOf("Feed g per bird (a day)", "g", "Feed entered on a day × 1,000 ÷ the birds alive the day before (the entry is what they ate the day before)", "Feed entered kg · Live birds"),
-        listOf("FCR", "", "Feed till date kg ÷ (live birds × weight kg)", "Feed till date · Live birds · Weight g"),
-        listOf("cFCR", "", "FCR + (2 − weight kg) × 0.25  (FCR brought to a 2 kg bird)", "FCR · Weight g · _Config: cFcrDivisor"),
+        listOf("FCR", "", "Feed till date kg ÷ produced kg (live birds × weight + kg lifted till date)", "Feed till date · Produced kg"),
+        listOf("FCR with the dead", "", "Feed till date kg ÷ (produced kg + dead and culled mass): feed per kilo the flock grew", "Feed till date · Produced kg · Dead and culled mass"),
+        listOf("cFCR (company)", "", "FCR + (2 − cumulative body weight kg) × 0.25: every kilo the average bird is under 2 kg adds 0.25, every kilo over takes 0.25 off, so flocks lifted at different weights can be compared", "FCR · Cumulative body weight · _Config: cFcrDivisor"),
+        listOf("cFCR breed", "", "FCR − (breed table FCR at the cumulative body weight − breed table FCR at 2.0 kg): the same correction along the breed's own curve", "FCR · Cumulative body weight · breed table"),
         listOf("EPEF", "", "Livability % × weight kg × 100 ÷ (day × FCR), from day 7", "Livability · Weight g · FCR"),
         listOf("Feed plan g per bird", "g", "The company chart's feed for a bird of the flock's weight (the chart day after the one that has that weight)", "Weight g · company chart"),
         listOf("Feed plan kg / bags", "kg, bags", "Feed plan g per bird × live birds ÷ 1,000; bags = that ÷ bag weight, rounded up", "Feed plan g per bird · Live birds · feedBagKg"),
@@ -268,8 +294,8 @@ object SheetReports {
         listOf("Min air cfm per bird", "cfm", "Ross minimum-ventilation rate for the flock's weight × 1.3 air-quality margin × the farm's factor", "Weight g · _Farm: minVentFactor"),
         listOf("Min vent fans / on / off", "s", "The first step of the fan ladder that delivers the minimum air for the house", "Min air · Live birds · _Farm: fanCount, fanRatedCfm, fanDerate"),
         listOf("Light hours", "h", "23 h for two days, down to 18 h by day 7, 18 h through the grow-out, back to 23 h over the last week", "Day · Flocks: harvestAge"),
-        listOf("Density kg per m2", "kg/m²", "Live birds × weight kg ÷ floor area", "Live birds · Weight g · _Farm: usableLengthFt, usableWidthFt"),
-        listOf("Floor in use ft2", "ft²", "30 % of the house on day 0, a little more every day, all of it from day 11", "Day · floor area"),
+        listOf("Density kg per m2", "kg/m²", "Live birds × average after lifting ÷ the floor the birds have (in use)", "Live birds · Weight g · Floor in use"),
+        listOf("Floor in use ft2", "ft²", "Barricade entered × house width; without one, 30 % of the house on day 0, a little more every day, all of it from day 11", "DailyData: BroodingLength · Day · floor area"),
         listOf("Projected weight (Projections)", "g", "The weighing before, carried along the breed curve to the day", "weighings of the days before"),
         listOf("Projected feed (Projections)", "bags", "Feed plan of the day before × the flock's appetite so far − feed still in the lines (Kalman filter on the entries from day 6)", "Feed plan · feed entered on the days before"),
         listOf("Projected FCR (Projections)", "", "(Feed till the day before + projected feed) ÷ (projected live birds × projected weight)", "the three projections above"),

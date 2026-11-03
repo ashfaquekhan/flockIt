@@ -71,7 +71,9 @@ data class DailyInputs(
     val padWetMin: Double? = null, val padDryMin: Double? = null, val luxPerFt2: Double? = null,
     val dieselCansUsed: Double = 0.0,
     // Important groups the user actually filled in this time: "W" weights, "M" mortality, "F" feed used.
-    val entered: Set<String> = emptySet()
+    val entered: Set<String> = emptySet(),
+    /** when what was entered happened (epoch ms) — the weighing, the lifting; null = now */
+    val at: Long? = null
 )
 
 class FlockViewModel(application: Application) : AndroidViewModel(application) {
@@ -140,9 +142,9 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
-    // When false, the daily cut-off timer does NOT hard-lock today's inputs (user override).
-    private val _cutoffLockEnabled = MutableStateFlow(true)
-    val cutoffLockEnabled: StateFlow<Boolean> = _cutoffLockEnabled.asStateFlow()
+    /** When the open farm was last loaded from its sheet (epoch ms; 0 = not yet) — shown by the loading bar. */
+    private val _loadedAt = MutableStateFlow(0L)
+    val loadedAt: StateFlow<Long> = _loadedAt.asStateFlow()
 
     private val _lockStatus = MutableStateFlow(
         LockStatus(
@@ -221,20 +223,41 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Pull-to-refresh on a farm/flock/dashboard: pull the sheet + weather for the open farm. */
+    private var loadJob: Job? = null
+
+    /**
+     * Loads the open farm from its sheet (and the weather): pull-to-refresh, opening a farm or a flock, coming back to
+     * the app. One load at a time; a load asked for while one runs is the same load. The repository keeps saves and
+     * loads apart, so nothing typed on the phone is overwritten by an older sheet.
+     */
     fun refreshCurrentFarm() {
         val id = _selectedSpreadsheetId.value
-        viewModelScope.launch {
+        if (loadJob?.isActive == true) return
+        loadJob = viewModelScope.launch {
             _isRefreshing.value = true
-            if (!authState.value.isDemoMode && id != "local_default") {
+            if (!authState.value.isDemoMode && authState.value.isSignedIn && id != "local_default") {
                 _syncStatus.value = "syncing"
-                runCatching { repository.refreshFromCloud(id) }
-                _syncStatus.value = "synced"
+                val ok = runCatching { repository.refreshFromCloud(id) }.getOrDefault(false)
+                _syncStatus.value = if (ok) "synced" else "offline"
+                if (ok) _loadedAt.value = System.currentTimeMillis()
             }
             refreshWeather()
             _isRefreshing.value = false
         }
     }
+
+    /** Back in the app (or on a timer while a flock is open): load again when the last load is older than [maxAgeMs]. */
+    fun refreshIfStale(maxAgeMs: Long = 60_000L) {
+        when (_appScreen.value) {
+            AppScreen.FARMS -> if (System.currentTimeMillis() - lastFarmsSync > 5 * 60_000L) { lastFarmsSync = System.currentTimeMillis(); refreshFarms() }
+            else -> {
+                val id = _selectedSpreadsheetId.value
+                val last = repository.lastLoadedAt[id] ?: 0L
+                if (id != "local_default" && System.currentTimeMillis() - last > maxAgeMs) refreshCurrentFarm()
+            }
+        }
+    }
+    private var lastFarmsSync = 0L
 
     // No auto-selection of a farm/flock: the user opens one explicitly from the lists.
 
@@ -246,8 +269,8 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openFarm(spreadsheetId: String) {
-        selectFarm(spreadsheetId)
         _appScreen.value = AppScreen.FLOCKS
+        selectFarm(spreadsheetId)
     }
 
     fun goToFlocks() {
@@ -257,21 +280,17 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     fun openFlock(flockId: String) {
         selectFlock(flockId)
         _appScreen.value = AppScreen.DASHBOARD
-        // Auto-refresh from the sheet when a flock is opened (collaborators' latest data).
-        refreshCurrentFarm()
+        // the latest from the sheet when a flock is opened (another phone's entries) — unless it was just loaded
+        refreshIfStale(20_000L)
     }
 
     fun selectFarm(spreadsheetId: String) {
+        val changed = _selectedSpreadsheetId.value != spreadsheetId
         _selectedSpreadsheetId.value = spreadsheetId
+        if (changed) _loadedAt.value = repository.lastLoadedAt[spreadsheetId] ?: 0L
         loadFarmData(spreadsheetId)
-        // Pull the latest workspace from the sheet (collaborators' changes, cross-device).
-        if (authState.value.isSignedIn && !authState.value.isDemoMode && spreadsheetId != "local_default") {
-            viewModelScope.launch {
-                _syncStatus.value = "syncing"
-                repository.refreshFromCloud(spreadsheetId)
-                _syncStatus.value = "synced"
-            }
-        }
+        // the latest workspace from the sheet (another phone's changes), with the loading bar showing
+        refreshIfStale(20_000L)
     }
 
     private fun loadFarmData(spreadsheetId: String) {
@@ -386,23 +405,10 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
             val isToday = day == curDay
             val isFuture = day > curDay
 
-            val cutoffParts = farm.cutoffTime.split(":")
-            val cutoffHour = cutoffParts.getOrNull(0)?.toIntOrNull() ?: 11
-            val cutoffMin = cutoffParts.getOrNull(1)?.toIntOrNull() ?: 0
-            val cutoff = LocalTime.of(cutoffHour, cutoffMin)
-            val now = LocalTime.now(zone)
-
-            val cutoffPassed = _cutoffLockEnabled.value && isToday && now.isAfter(cutoff)
-            val isHardLocked = isPast || isFuture || cutoffPassed
-
-            val isApproaching = _cutoffLockEnabled.value && isToday && !cutoffPassed && now.isAfter(cutoff.minusMinutes(45))
-
-            val reason = when {
-                isPast -> "Past days are read-only. Direct sheet edit required."
-                isFuture -> "Future day — inputs not allowed."
-                cutoffPassed -> "Inputs locked: ${farm.cutoffTime} cut-off has passed for today."
-                else -> ""
-            }
+            // no clock locks (v47): today and every past day can be entered and changed; only a day to come cannot
+            val isHardLocked = isFuture
+            val isApproaching = false
+            val reason = if (isFuture) "Day $day has not come yet — nothing to enter." else ""
 
             _lockStatus.value = LockStatus(
                 isPastDay = isPast,
@@ -483,13 +489,6 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Enable/disable the daily cut-off timer lock for entering data. */
-    fun toggleCutoffLock() {
-        _cutoffLockEnabled.value = !_cutoffLockEnabled.value
-        updateLockStatus()
-        _userMessage.value = if (_cutoffLockEnabled.value) "Cut-off timer lock ON" else "Cut-off timer lock OFF — you can edit past the cut-off"
-    }
-
     /** Sets the active flock's target weight (g) and planned harvest age (days). */
     fun updateFlockPlan(targetWeightG: Double, harvestAge: Int) {
         val flock = _activeFlock.value ?: return
@@ -498,16 +497,6 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
             _activeFlock.value = _flocks.value.firstOrNull { it.flockId == flock.flockId }
                 ?: flock.copy(targetWeight = targetWeightG, harvestAge = harvestAge)
             _userMessage.value = "Target ${targetWeightG.toInt()} g at day $harvestAge saved"
-        }
-    }
-
-    /** Unlocks the selected day for editing; every value stays so only the wrong ones need changing. */
-    fun revertDay() {
-        val flock = _activeFlock.value ?: return
-        val day = _selectedDay.value
-        viewModelScope.launch {
-            val res = repository.unlockDay(_selectedSpreadsheetId.value, flock.flockId, day, authState.value.email)
-            _userMessage.value = if (res.isSuccess) "Day $day open for editing — change what's wrong and hold Update" else (res.exceptionOrNull()?.message ?: "Could not revert")
         }
     }
 
@@ -539,12 +528,12 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
                 flockId = flock.flockId,
                 dayNumber = day,
                 userEmail = userEmail,
-                entered = inputs.entered
+                entered = inputs.entered,
+                at = inputs.at
             ) { existing ->
-                val locked = existing.savedGroups()
-                // Groups already saved keep their saved values; groups not entered keep what's there.
-                val keepW = "W" in locked
-                val keepF = "F" in locked || "F" !in inputs.entered
+                // nothing locks (v47): every value is as on the page; feed used not touched keeps what is there
+                val keepW = false
+                val keepF = "F" !in inputs.entered
                 existing.copy(
                     w1 = if (keepW) existing.w1 else inputs.w1, n1 = if (keepW) existing.n1 else inputs.n1,
                     w2 = if (keepW) existing.w2 else inputs.w2, n2 = if (keepW) existing.n2 else inputs.n2,
@@ -554,7 +543,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
                     indivWeights = if (keepW) existing.indivWeights else inputs.indivWeights,
                     moreSamples = if (keepW) existing.moreSamples else inputs.moreSamples,
                     locCount = if (keepW) existing.locCount else inputs.locCount,
-                    mortality = if ("M" in locked) existing.mortality else (inputs.mortality ?: existing.mortality),
+                    mortality = inputs.mortality ?: existing.mortality,
                     feedBagsUsed = if (day == 0) 0.0 else if (keepF) existing.feedBagsUsed else inputs.feedBagsUsed,
                     feedUsedType = if (keepF) existing.feedUsedType else inputs.feedUsedType,
                     feedUsedBreakdown = if (day == 0) "" else if (keepF) existing.feedUsedBreakdown else inputs.feedUsedBreakdown,
@@ -596,6 +585,32 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
                 _userMessage.value = err.message ?: "Failed to save entry"
                 onError(err.message ?: "Failed to save entry")
             }
+        }
+    }
+
+    /**
+     * A feeding poured for the birds: [bags] at [at] (epoch ms). It goes on the day it was given, on the sheet, so
+     * every phone on the farm sees it (it drives the hungry / thirsty likelihoods).
+     */
+    fun logFeeding(bags: Double, at: Long) {
+        val flock = _activeFlock.value ?: return
+        val zone = try { ZoneId.of(_farm.value.timeZone) } catch (e: Exception) { ZoneId.systemDefault() }
+        val t = java.time.Instant.ofEpochMilli(at).atZone(zone)
+        val day = try { java.time.temporal.ChronoUnit.DAYS.between(LocalDate.parse(flock.startDate), t.toLocalDate()).toInt() } catch (e: Exception) { return }
+        val row = _dailyRows.value.firstOrNull { it.dayNumber == day } ?: return
+        val list = com.example.flock.data.parseFeedings(row.feedings) + (String.format("%02d:%02d", t.hour, t.minute) to bags)
+        viewModelScope.launch {
+            repository.setFeedings(_selectedSpreadsheetId.value, flock.flockId, day, com.example.flock.data.formatFeedings(list), authState.value.email)
+        }
+    }
+
+    /** Takes back the last feeding logged (the latest day that has one). */
+    fun undoLastFeeding() {
+        val flock = _activeFlock.value ?: return
+        val row = _dailyRows.value.filter { it.feedings.isNotBlank() }.maxByOrNull { it.dayNumber } ?: return
+        val list = com.example.flock.data.parseFeedings(row.feedings).sortedBy { it.first }.dropLast(1)
+        viewModelScope.launch {
+            repository.setFeedings(_selectedSpreadsheetId.value, flock.flockId, row.dayNumber, com.example.flock.data.formatFeedings(list), authState.value.email)
         }
     }
 

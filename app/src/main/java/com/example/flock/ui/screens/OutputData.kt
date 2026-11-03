@@ -414,7 +414,7 @@ class OutputData(
         /** Share of the pour that lands in the open pans at once; the rest waits in the hopper. */
         val usePct get() = if (canFill > 0) min(100.0, pattern.openPerLine / canFill * 100) else 0.0
     }
-    val feedOptions: List<FeedOption> = (2..3).map { n ->
+    val feedOptions: List<FeedOption> = (2..4).map { n ->
         val perLine = dayBags / (feederLines * n)
         val can = perLine * pansPerBag
         val fits = patterns.filter { safe(it) && it.openPerLine <= can * 1.03 }
@@ -729,6 +729,48 @@ class OutputData(
         val fcr = if (cum > 0 && weight > 0 && day >= 1) cum / (liveNow * weight / 1000.0) else null
         return NowView(String.format("%02d:%02d", now.hour, now.minute), weight, since?.times(24), eaten, eaten / bagKg, eatShare,
             waterL * (0.9 * eatShare + 0.1 * dayShare), deaths, liveNow, fcr, envAt(now.hour))
+    }
+
+    // ------------------------------- lifting: where the flock's meat is -------------------------------
+    /** The meat balance for every day: lifted, live, dead; FCR on what was produced; both cFCRs. */
+    val massByDay: Map<Int, com.example.flock.data.FlockCalc.Mass> by lazy {
+        if (flock == null) emptyMap() else com.example.flock.data.FlockCalc.mass(flock, farm,
+            com.example.flock.data.ConfigEntity(spreadsheetId = farm.spreadsheetId), sortedRows, kgMap).associateBy { it.day }
+    }
+    val mass: com.example.flock.data.FlockCalc.Mass? get() = massByDay[day]
+    /** The flock's average for the birds in the house now: after any lifting today. */
+    val bwNow: Double get() = mass?.avgAfterKg?.let { it * 1000 } ?: bw
+    /** Reception (transit) deaths as a share of the birds placed; and all deaths with them. */
+    val receptionPct: Double? = if (placed > 0) reception * 100.0 / placed else null
+    val mortWithReceptionPct: Double? = if (placed > 0) (mortTD + reception) * 100.0 / placed else null
+
+    // ------------------------------- the floor: density, walking, barricade or pans -------------------------------
+    val hotC: Double = outsideHours.maxOf { it.second }
+    val coolC: Double = outsideHours.minOf { it.second }
+    val space: com.example.flock.domain.SpacePlan.Out by lazy {
+        com.example.flock.domain.SpacePlan.plan(com.example.flock.domain.SpacePlan.In(
+            live = live, avgKg = bwNow / 1000.0, day = day, houseLenFt = farm.usableLengthFt, widthFt = farm.usableWidthFt,
+            areaFt2 = areaInUseFt2, penFt = e.broodingLength?.takeIf { it > 0 && it < farm.usableLengthFt }
+                ?: rows.filter { it.dayNumber <= day }.lastOrNull { it.broodingLength != null }?.broodingLength?.takeIf { it > 0 && it < farm.usableLengthFt },
+            feederLines = feederLines, pansPerLine = pansPerLine, panSpacingFt = panSpacingFt, lineStartFt = lineStartFt,
+            feederGapFt = feederGapFt, drinkerGapFt = farm.usableWidthFt / max(1, drinkerLinesN),
+            capKgM2 = farm.densityCapDefault, hotC = hotC, coolC = coolC, lifted = liftTD > 0))
+    }
+
+    /**
+     * How much the birds roam against the usual: the floor a bird has ÷ the floor it needs, square-rooted (walks grow with
+     * the distance across a bird's share of floor), 0.6 – 1.6. Roomy floors after lifting make for more, longer walks —
+     * feed spent on walking; tight floors for fewer.
+     */
+    val roam: Double get() = if (space.young) 1.0 else Math.sqrt(space.roomRatio).coerceIn(0.6, 1.6)
+
+    // ------------------------------- the last 3 and 7 days: what they say -------------------------------
+    val suggest: com.example.flock.domain.Suggest.Out by lazy {
+        com.example.flock.domain.Suggest.advise(sortedRows.filter { it.dayNumber <= day }.map { r ->
+            com.example.flock.domain.Suggest.Day(r.dayNumber, eatenOn(r.dayNumber), CompanyStandard.feedPerDay(r.dayNumber + 1),
+                r.avgWeight, CompanyStandard.bw(r.dayNumber),
+                if (r.avgWeight != null) r.cv ?: com.example.flock.data.FlockCalc.cvEstimate(rows, r.dayNumber) else null)
+        }, day)
     }
 
     /** Growth stage name for the day. */

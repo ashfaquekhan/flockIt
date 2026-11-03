@@ -66,6 +66,8 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
     val deletedFarms by viewModel.deletedFarms.collectAsState()
     val deletedFlocks by viewModel.deletedFlocks.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
+    // back in the app: load the open farm (or the farm list) again when the last load is a minute old or more
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { viewModel.refreshIfStale() }
 
     var showSettings by remember { mutableStateOf(false) }
     var sharingFarm by remember { mutableStateOf<FarmRegistryEntity?>(null) }

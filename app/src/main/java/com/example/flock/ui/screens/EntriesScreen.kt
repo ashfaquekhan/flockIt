@@ -8,6 +8,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material3.AssistChip
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -113,19 +114,16 @@ fun EntriesScreen(
     yesterdayDate: String,
     feedTypes: List<FeedTypeEntity>,
     lockStatus: LockStatus,
-    cutoffLockEnabled: Boolean,
     draftKey: String,
     previousCounts: List<Int?>,
     recentNotes: List<String> = emptyList(),
     onSave: (DailyInputs) -> Unit,
-    onToggleLockTimer: () -> Unit,
-    onRevertDay: () -> Unit,
     onClearDay: () -> Unit = {},
     modifier: Modifier = Modifier,
     /** the house, for the sampling map (null: no map) */
     farm: com.example.flock.data.FarmEntity? = null,
-    /** the short view: only what is entered every day (the rest shows once it holds a value) */
-    basic: Boolean = false,
+    /** the day shown is today (the time of the entries starts at "now"; on a past day at that day's morning) */
+    isToday: Boolean = true,
     /** the feed variety entered last on an earlier day: a new day's feed row starts with it */
     lastFeedType: String? = null
 ) {
@@ -143,6 +141,10 @@ fun EntriesScreen(
     var birdsLifted by remember { mutableStateOf("") }
     var weightLifted by remember { mutableStateOf("") }
     var lameSeparated by remember { mutableStateOf("") }
+    // where the barricade stands today, ft from the front wall (empty: the whole house, or the brooding plan)
+    var penFt by remember { mutableStateOf("") }
+    // when what is entered happened: null = now (today) / the time already saved (a past day)
+    var pickedAt by remember(draftKey) { mutableStateOf<String?>(null) }
 
     var feedRecB1 by remember { mutableStateOf("") }
     var feedTypeB1 by remember { mutableStateOf("") }
@@ -171,7 +173,7 @@ fun EntriesScreen(
         "locs" to locs.size.toString(), "indiv" to singles,
         "mort" to mortality,
         "feed" to feedUse.joinToString(";") { "${it.type}=${it.bags}" },
-        "lift" to birdsLifted, "liftKg" to weightLifted, "lame" to lameSeparated,
+        "lift" to birdsLifted, "liftKg" to weightLifted, "lame" to lameSeparated, "pen" to penFt,
         "rec1" to feedRecB1, "rt1" to feedTypeB1, "rec2" to feedRecB2, "rt2" to feedTypeB2,
         "rec3" to feedRecB3, "rt3" to feedTypeB3, "notes" to noteItems.joinToString("\n"), "noteNew" to newNote,
         "diesel" to dieselCansUsed
@@ -206,6 +208,7 @@ fun EntriesScreen(
         birdsLifted = entry?.birdsLifted?.let { if (it > 0) it.toString() else "" } ?: ""
         weightLifted = entry?.weightLifted?.let { if (it > 0) it.toString() else "" } ?: ""
         lameSeparated = entry?.lameSeparated?.let { if (it > 0) it.toString() else "" } ?: ""
+        penFt = entry?.broodingLength?.takeIf { it > 0 }?.fmt() ?: ""
 
         feedRecB1 = entry?.feedRecB1?.let { if (it > 0) it.toString() else "" } ?: ""
         feedTypeB1 = entry?.feedTypeB1?.ifEmpty { "B1" } ?: (feedTypes.getOrNull(0)?.code ?: "B1")
@@ -217,20 +220,21 @@ fun EntriesScreen(
         setNotes(entry?.notes ?: ""); newNote = ""; noteMsg = null
         dieselCansUsed = entry?.dieselCansUsed?.let { if (it > 0) it.toString() else "" } ?: ""
 
-        // Unsaved draft typed earlier (only for fields that are still open).
+        // what is saved, before any draft: a draft keeps only what was typed over it, so a newer value loaded from
+        // the sheet (another phone's) is never put back to an old one by a stale draft
+        val loaded = currentValues()
+        // Unsaved draft typed earlier.
         val d = EntryDrafts.load(context, draftKey)
-        if ("W" !in saved) {
-            locs.forEachIndexed { i, l -> d["w${i + 1}"]?.let { l.w = it }; d["n${i + 1}"]?.let { l.n = it } }
-            d["indiv"]?.let { singles = it }
-            // Bird counts per location rarely change: carry the last weighing's counts forward.
-            locs.forEachIndexed { i, l -> if (l.n.isBlank()) previousCounts.getOrNull(i)?.let { l.n = it.toString() } }
-        }
-        if ("M" !in saved) d["mort"]?.let { mortality = it }
-        if ("F" !in saved) d["feed"]?.takeIf { it.isNotBlank() }?.let { f ->
+        locs.forEachIndexed { i, l -> d["w${i + 1}"]?.let { l.w = it }; d["n${i + 1}"]?.let { l.n = it } }
+        d["indiv"]?.let { singles = it }
+        // Bird counts per location rarely change: carry the last weighing's counts forward.
+        if ("W" !in saved) locs.forEachIndexed { i, l -> if (l.n.isBlank()) previousCounts.getOrNull(i)?.let { l.n = it.toString() } }
+        d["mort"]?.let { mortality = it }
+        d["feed"]?.takeIf { it.isNotBlank() }?.let { f ->
             val rows = f.split(";").mapNotNull { part -> part.split("=").takeIf { it.size == 2 }?.let { FeedUseRow(it[0], it[1]) } }
             if (rows.isNotEmpty()) { feedUse.clear(); feedUse.addAll(rows) }
         }
-        d["lift"]?.let { birdsLifted = it }; d["liftKg"]?.let { weightLifted = it }; d["lame"]?.let { lameSeparated = it }
+        d["lift"]?.let { birdsLifted = it }; d["liftKg"]?.let { weightLifted = it }; d["lame"]?.let { lameSeparated = it }; d["pen"]?.let { penFt = it }
         d["rec1"]?.let { feedRecB1 = it }; d["rt1"]?.let { feedTypeB1 = it }
         d["rec2"]?.let { feedRecB2 = it }; d["rt2"]?.let { feedTypeB2 = it }
         d["rec3"]?.let { feedRecB3 = it }; d["rt3"]?.let { feedTypeB3 = it }
@@ -238,17 +242,35 @@ fun EntriesScreen(
 
         snapshotFlow { currentValues() }.drop(1).collectLatest { values ->
             delay(300)
-            EntryDrafts.save(context, draftKey, values)
+            EntryDrafts.save(context, draftKey, values.filter { (k, v) -> loaded[k] != v })
         }
     }
 
-    val isHardLocked = lockStatus.isHardLocked
-    // Important fields lock one by one, only once each has been entered and saved. Fields not yet
-    // entered stay open (even past the cut-off) so a late figure can still be added.
+    // nothing locks with the clock or once saved (v47): today and every past day can be changed; a day to come cannot
+    val isHardLocked = lockStatus.isFuture
     val openDay = !lockStatus.isFuture
-    val weightsEnabled = openDay && "W" !in saved
-    val mortEnabled = openDay && "M" !in saved
-    val feedEnabled = openDay && "F" !in saved
+    val weightsEnabled = openDay
+    val mortEnabled = openDay
+    val feedEnabled = openDay
+    val zone = remember(farm?.timeZone) { try { java.time.ZoneId.of(farm?.timeZone ?: "Asia/Kolkata") } catch (e: Exception) { java.time.ZoneId.systemDefault() } }
+    val dayIso = entry?.date.orEmpty()
+    // the time already saved for this day (its weighing, else its lifting), else 08:00 — the default on a past day
+    val savedHHmm = listOf(entry?.weighedAt ?: 0L, entry?.liftedAt ?: 0L).firstOrNull { it > 0 }?.let { ms ->
+        java.time.Instant.ofEpochMilli(ms).atZone(zone).toLocalTime().let { String.format("%02d:%02d", it.hour, it.minute) }
+    }
+    var nowTick by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { delay(30_000); nowTick = System.currentTimeMillis() } }
+    val nowHHmm = java.time.Instant.ofEpochMilli(nowTick).atZone(zone).toLocalTime().let { String.format("%02d:%02d", it.hour, it.minute) }
+    val shownHHmm = pickedAt ?: if (isToday) nowHHmm else (savedHHmm ?: "08:00")
+    /** the moment the entries are about, epoch ms (null: now) */
+    fun entryAt(): Long? {
+        if (pickedAt == null && isToday) return null
+        val date = try { java.time.LocalDate.parse(dayIso) } catch (e: Exception) { return null }
+        val h = shownHHmm.substringBefore(":").toIntOrNull() ?: return null
+        val m = shownHHmm.substringAfter(":").toIntOrNull() ?: return null
+        val t = date.atTime(h, m).atZone(zone).toInstant().toEpochMilli()
+        return t.coerceAtMost(System.currentTimeMillis())
+    }
     val scrollState = rememberScrollState()
 
     val liveSamples = locs.map { PhysiologicalEngine.LocationSample(it.w.toDoubleOrNull() ?: 0.0, it.n.toIntOrNull() ?: 0) }
@@ -262,31 +284,40 @@ fun EntriesScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Banners
-        if (saved.isNotEmpty()) {
+        // what is already saved (nothing locks: change any value and hold Update)
+        if (saved.isNotEmpty() && (entry?.updatedAt ?: 0L) > 0) {
             val names = mapOf("W" to "weights", "M" to "mortality", "F" to "feed used")
-            val open = listOf("W", "M", "F").filter { it !in saved && !(it == "F" && dayNumber == 0) }
+            val at = java.time.Instant.ofEpochMilli(entry!!.updatedAt).atZone(zone)
             InfoBanner(
-                icon = Icons.Default.Lock, tint = StatusGood, wash = StatusGoodWash,
-                text = "Saved & locked: " + listOf("W", "M", "F").filter { it in saved }.mapNotNull { names[it] }.joinToString(", ") +
-                    (if (open.isNotEmpty()) ". Still open: " + open.mapNotNull { names[it] }.joinToString(", ") + " — enter it and hold Update."
-                     else ". Use Revert day to change them.")
+                icon = Icons.Default.Check, tint = StatusGood, wash = StatusGoodWash,
+                text = "Saved: " + listOf("W", "M", "F").filter { it in saved }.mapNotNull { names[it] }.joinToString(", ") +
+                    " · last change ${at.toLocalDate().let { if (it.toString() == dayIso) "" else "${it.dayOfMonth} ${it.month.name.take(3).lowercase().replaceFirstChar { c -> c.uppercase() }} " }}" +
+                    String.format("%02d:%02d", at.hour, at.minute) + (entry.updatedBy.substringBefore("@").takeIf { it.isNotBlank() }?.let { " by $it" } ?: "") +
+                    ". Change any value and hold Update."
             )
         }
         if (isHardLocked) {
             InfoBanner(
-                icon = Icons.Default.Lock, tint = StatusCrit, wash = StatusCritWash,
-                text = lockStatus.lockReason.ifEmpty { "Inputs locked. Edit directly in the Google Sheet." }
-            )
-        } else if (lockStatus.isCutoffApproaching) {
-            InfoBanner(
-                icon = Icons.Default.Warning, tint = StatusWarn, wash = StatusWarnWash,
-                text = "Cutoff approaching! Today's samples and mortality lock at ${lockStatus.cutoffTime}."
+                icon = Icons.Default.Lock, tint = StatusWarn, wash = StatusWarnWash,
+                text = lockStatus.lockReason.ifEmpty { "This day has not come yet." }
             )
         }
 
+        // when what is entered happened: now, or an earlier time picked (the weighing at 08:15, the lifting at 21:00)
+        if (openDay) Section(title = "Time of these entries", subtitle = if (isToday) "Now, unless they were done earlier today — the weighing time starts the weight's projection" else "On $dayDate — the weighing or lifting time") {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                com.example.flock.ui.components.TimePickerField(
+                    label = if (pickedAt == null && isToday) "At (now)" else "At", valueHHmm = shownHHmm,
+                    onPick = { picked -> pickedAt = if (isToday && picked > nowHHmm) nowHHmm else picked },
+                    modifier = Modifier.weight(1f).testTag("entry_time"))
+                if (pickedAt != null) OutlinedButton(onClick = { pickedAt = null }, shape = RoundedCornerShape(10.dp)) {
+                    Text(if (isToday) "Use now" else "Reset", maxLines = 1, softWrap = false)
+                }
+            }
+        }
+
         // SECTION 1: 5 Location Weight Samples
-        Section(title = "1. Weight samples (${locs.size} locations)", subtitle = "Zig-zag across ${locs.size} house spots before the ${lockStatus.cutoffTime} cutoff") {
+        Section(title = "1. Weight samples (${locs.size} locations)", subtitle = "Zig-zag across ${locs.size} spots of the house") {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -314,9 +345,9 @@ fun EntriesScreen(
                     Icon(Icons.Default.Add, contentDescription = "One more location", modifier = Modifier.size(18.dp))
                 }
             }
-            if (farm != null && !basic) SampleMap(locs.size, farm, entry?.occupiedFt2 ?: 0.0)
+            if (farm != null) SampleMap(locs.size, farm, entry?.occupiedFt2 ?: 0.0)
 
-            if (!basic || singles.isNotBlank()) OutlinedTextField(
+            OutlinedTextField(
                 colors = entryFieldColors(),
                 value = singles, onValueChange = { singles = it },
                 label = { Text("Birds weighed one by one (g)") },
@@ -440,7 +471,7 @@ fun EntriesScreen(
         }
 
         // SECTION 4: Lifting & culls
-        if (!basic || listOf(birdsLifted, weightLifted, lameSeparated).any { (it.replace(",", ".").toDoubleOrNull() ?: 0.0) > 0 }) Section(title = "4. Harvest lifting & culls") {
+        Section(title = "4. Lifting, culls & barricade", subtitle = "Birds lifted and the truck's kg: FCR counts them, and the birds left get their own average") {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     colors = entryFieldColors(),
@@ -457,6 +488,10 @@ fun EntriesScreen(
                     enabled = !isHardLocked, modifier = Modifier.weight(1f).testTag("weight_lifted_input")
                 )
             }
+            val liftN = birdsLifted.toIntOrNull() ?: 0
+            val liftKg = weightLifted.replace(",", ".").toDoubleOrNull() ?: 0.0
+            if (liftN > 0 && liftKg > 0) Text("Lifted average ${String.format("%.3f", liftKg / liftN)} kg a bird",
+                style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont), color = com.example.ui.theme.ValuePresent)
             OutlinedTextField(
                 colors = entryFieldColors(),
                 value = lameSeparated, onValueChange = { lameSeparated = it },
@@ -464,11 +499,20 @@ fun EntriesScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 enabled = !isHardLocked, modifier = Modifier.fillMaxWidth().testTag("lame_separated_input")
             )
+            OutlinedTextField(
+                colors = entryFieldColors(),
+                value = penFt, onValueChange = { penFt = it.filter { c -> c.isDigit() || c == '.' } },
+                label = { Text("Barricade at (ft from the front)") },
+                supportingText = { Text("Where the birds' floor ends today; it holds until changed. Empty or ${farm?.usableLengthFt?.fmt() ?: "the house length"}: the whole house") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                enabled = !isHardLocked, modifier = Modifier.fillMaxWidth().testTag("pen_input")
+            )
         }
 
         // SECTION 5: Notes & diesel (only miscellaneous section kept)
-        Section(title = if (basic) "Notes" else "5. Notes & diesel") {
-            if (!basic || (dieselCansUsed.replace(",", ".").toDoubleOrNull() ?: 0.0) > 0) OutlinedTextField(
+        Section(title = "5. Notes & diesel") {
+            OutlinedTextField(
                 colors = entryFieldColors(),
                 value = dieselCansUsed, onValueChange = { dieselCansUsed = it },
                 label = { Text("Diesel cans used") },
@@ -513,9 +557,9 @@ fun EntriesScreen(
             }
         }
 
-        // SAVE — press & hold ~1s so it can't be tapped by accident (it locks after saving)
+        // SAVE — press & hold ~1 s so it can't be tapped by accident; nothing locks after saving
         HoldButton(
-            label = if (saved.isNotEmpty()) "Hold to update · Day $dayNumber" else "Hold to save · Day $dayNumber",
+            label = (if (saved.isNotEmpty()) "Hold to update day $dayNumber" else "Hold to save day $dayNumber") + " · at $shownHHmm",
             enabled = openDay,
             onComplete = {
                 val rows = feedUse.filter { (it.bags.toDoubleOrNull() ?: 0.0) > 0.0 }
@@ -542,50 +586,34 @@ fun EntriesScreen(
                         feedRecB1 = feedRecB1.toDoubleOrNull() ?: 0.0, feedTypeB1 = feedTypeB1,
                         feedRecB2 = feedRecB2.toDoubleOrNull() ?: 0.0, feedTypeB2 = feedTypeB2,
                         feedRecB3 = feedRecB3.toDoubleOrNull() ?: 0.0, feedTypeB3 = feedTypeB3,
-                        broodingLength = null, actualFans = null, actualFanTime = null,
+                        broodingLength = penFt.toDoubleOrNull() ?: entry?.broodingLength?.let { 0.0 }, actualFans = null, actualFanTime = null,
                         outTemp = null, outRH = null,
-                        notes = (noteItems + listOfNotNull(cleanNote(newNote).takeIf { v -> v.isNotEmpty() && noteItems.none { noteKey(it) == noteKey(v) } }))
-                            .joinToString("\n") { "- $it" },
+                        // the notes as saved when nothing in them was changed (an untouched note is not re-sent over another phone's)
+                        notes = (noteItems + listOfNotNull(cleanNote(newNote).takeIf { v -> v.isNotEmpty() && noteItems.none { noteKey(it) == noteKey(v) } })).let { items ->
+                            if (entry != null && items == parseNoteItems(entry.notes)) entry.notes else items.joinToString("\n") { "- $it" }
+                        },
                         dieselCansUsed = dieselCansUsed.toDoubleOrNull() ?: 0.0,
                         entered = buildSet {
                             if (mortEnabled && mortality.trim().toIntOrNull() != null) add("M")
                             if (feedEnabled && feedUse.any { it.bags.trim().toDoubleOrNull() != null }) add("F")
-                        }
+                        },
+                        at = entryAt()
                     )
                 )
+                pickedAt = null
             }
         )
 
-        // Cut-off timer toggle + safe revert (both hold-to-confirm)
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            HoldButton(
-                label = if (cutoffLockEnabled) "Disable cut-off lock" else "Enable cut-off lock",
-                onComplete = onToggleLockTimer,
-                container = Color(0xFF3E6E86),
-                icon = if (cutoffLockEnabled) Icons.Default.LockOpen else Icons.Default.Lock,
-                height = 46,
-                modifier = Modifier.weight(1f)
-            )
-            HoldButton(
-                label = "Unlock day",
-                onComplete = onRevertDay,
-                container = StatusCrit,
-                icon = Icons.Default.Restore,
-                height = 46,
-                modifier = Modifier.weight(1f)
-            )
-        }
         HoldButton(
-            label = "Clear all entries · Day $dayNumber",
+            label = "Hold to clear every entry of day $dayNumber",
             onComplete = onClearDay,
             container = StatusCrit,
             icon = Icons.Default.Close,
-            height = 46,
-            enabled = !isHardLocked
+            enabled = !isHardLocked && saved.isNotEmpty()
         )
         Text(
-            text = "Unlock day keeps every value so you can change only the wrong ones, then hold Update. Clear all empties the whole day.",
-            style = MaterialTheme.typography.labelSmall,
+            text = "Nothing locks: change any value of any day so far and hold Update. Only what you change is sent, so what another phone entered stays. Clear empties the whole day.",
+            style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
@@ -694,8 +722,10 @@ fun HoldButton(
     holdSeconds: Float = 1.0f,
     container: Color = BrandEmerald,
     icon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Default.Check,
-    height: Int = 52
+    height: Int = 56
 ) {
+    // the edge and icon carry the button's colour when it is a risky one (clear); the save button stays white on black
+    val accent = if (container == BrandEmerald) Color.White else container
     val holdMs = holdSeconds * 1000f
     var progress by remember { mutableStateOf(0f) }
     var pressed by remember { mutableStateOf(false) }
@@ -707,10 +737,10 @@ fun HoldButton(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(height.dp)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .heightIn(min = height.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (enabled) 1f else 0.45f }
             .clip(RoundedCornerShape(12.dp))
-            .border(if (pressed || doneFlash) 2.dp else 1.dp, if (!enabled) com.example.ui.theme.GlassLine.copy(alpha = 0.2f) else if (pressed || doneFlash) Color.White else com.example.ui.theme.GlassLine, RoundedCornerShape(12.dp))
+            .border(if (pressed || doneFlash) 2.dp else 1.5.dp, if (!enabled) com.example.ui.theme.GlassLine.copy(alpha = 0.3f) else if (pressed || doneFlash) Color.White else accent.copy(alpha = 0.85f), RoundedCornerShape(12.dp))
             .then(
                 if (!enabled) Modifier
                 else Modifier.pointerInput(Unit) {
@@ -754,13 +784,15 @@ fun HoldButton(
                 Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(3.dp).background(Color.White))
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(if (doneFlash) Icons.Default.Check else icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Icon(if (doneFlash) Icons.Default.Check else icon, contentDescription = null, tint = accent, modifier = Modifier.size(22.dp))
+            Spacer(modifier = Modifier.width(10.dp))
             Text(
-                text = when { doneFlash -> "Done"; progress in 0.001f..0.999f -> "Keep holding… ${(progress * 100).toInt()}%"; else -> label },
+                text = when { doneFlash -> "Done"; progress in 0.001f..0.999f -> "Keep holding… ${(progress * 100).toInt()} %"; else -> label },
                 color = Color.White,
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                maxLines = 3
             )
         }
     }

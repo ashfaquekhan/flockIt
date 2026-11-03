@@ -348,9 +348,15 @@ class SheetsSyncManager(
      * Upserts a single day's inputs into the DailyData tab (find row by FlockId+Day, else append), then
      * brings the report tabs up to date ([updateReports] false when several days are sent in a row).
      */
-    suspend fun pushDayEntry(spreadsheetId: String, day: DailyDataEntity, updateReports: Boolean = true): Result<Unit> =
+    /**
+     * Writes a day row to DailyData. With [columns] (normalised column names this phone changed) only those cells —
+     * and the row's own bookkeeping (who, when, which groups) — are written: what another phone entered in the
+     * other columns meanwhile stays. Without, every column the app knows is written (a row saved by an older app).
+     * Returns the row as it now stands on the sheet (the sheet's values with this phone's changes in).
+     */
+    suspend fun pushDayEntry(spreadsheetId: String, day: DailyDataEntity, updateReports: Boolean = true, columns: Set<String>? = null): Result<DailyDataEntity> =
         withContext(Dispatchers.IO) {
-            val authHeader = authManager.getAuthHeader() ?: return@withContext Result.success(Unit)
+            val authHeader = authManager.getAuthHeader() ?: return@withContext Result.failure(Exception("Not signed in to Google"))
             ensureLayout(authHeader, spreadsheetId)
             try {
                 val res = GoogleApiClientProvider.sheetsApi.batchGet(
@@ -365,24 +371,34 @@ class SheetsSyncManager(
                 for ((idx, r) in rows.withIndex()) if (r.s(0) == day.flockId && r.i(1) == day.dayNumber) { rowNum = idx + 2; break }
                 val values = SheetSchema.dayValues(day)
                 val writes = mutableListOf<ValueRange>()
-                // a feed variety or an extra sample location with no column yet gets one at the end of the header
-                // (the next layout check moves it beside its neighbours)
-                val missing = (SheetSchema.usedSplit(day).keys.map { SheetSchema.usedHeader(it) } + SheetSchema.sampleColumns(day).keys)
+                // a feed variety, an extra sample location or a newer column with no column yet gets one at the end of
+                // the header (the next layout check moves it beside its neighbours)
+                val missing = (SheetSchema.usedSplit(day).keys.map { SheetSchema.usedHeader(it) } + SheetSchema.sampleColumns(day).keys +
+                        listOf("LiftedAt", "Feedings").filter { k -> values[SheetSchema.norm(k)].let { it != null && it.toString().isNotBlank() } })
                     .filter { name -> header.none { SheetSchema.norm(it) == SheetSchema.norm(name) } }
                 if (missing.isNotEmpty()) {
                     growColumns(authHeader, spreadsheetId, "DailyData", header.size + missing.size)
                     writes += ValueRange(range = a1("DailyData", "${SheetSchema.colLetter(header.size + 1)}1"), values = listOf(missing))
                     header = header + missing
                 }
+                var stored = day
                 val ok = if (rowNum > 0) {
-                    // only the columns the app knows, in runs, so the farm's own columns keep their values
-                    val known = header.indices.filter { SheetSchema.norm(header[it]) in values.keys || SheetSchema.isDynamicColumn(header[it]) }
+                    // the row as the sheet has it now: another phone may have entered something since this one read it
+                    val cur = GoogleApiClientProvider.sheetsApi.batchGet(authHeader, spreadsheetId,
+                        listOf(a1("DailyData", "A$rowNum:${SheetSchema.colLetter(header.size)}$rowNum")))
+                    if (!cur.isSuccessful) return@withContext Result.failure(Exception("DailyData row read failed (${cur.code()})"))
+                    val sheetCells: List<Any?> = cur.body()?.valueRanges?.firstOrNull()?.values?.firstOrNull() ?: emptyList()
+                    val cols: Set<String> = columns?.let { it + missing.map { m -> SheetSchema.norm(m) } }
+                        ?: (values.keys + header.filter { SheetSchema.isDynamicColumn(it) }.map { SheetSchema.norm(it) })
+                    val (cells, merged) = SheetSchema.mergeDay(spreadsheetId, header, sheetCells, day, cols)
+                    stored = merged.copy(dirty = false, dirtyFields = "")
+                    // only the changed columns and the row's bookkeeping, in runs, so everything else keeps its value
+                    val known = header.indices.filter { SheetSchema.norm(header[it]).let { k -> k in cols || k in SheetSchema.DAY_META } }
                     var i = 0
                     while (i < known.size) {
                         var j = i
                         while (j + 1 < known.size && known[j + 1] == known[j] + 1) j++
-                        val cells = (known[i]..known[j]).map { values[SheetSchema.norm(header[it])] ?: "" }
-                        writes += ValueRange(range = a1("DailyData", "${SheetSchema.colLetter(known[i] + 1)}$rowNum"), values = listOf(cells))
+                        writes += ValueRange(range = a1("DailyData", "${SheetSchema.colLetter(known[i] + 1)}$rowNum"), values = listOf((known[i]..known[j]).map { cells[it] ?: "" }))
                         i = j + 1
                     }
                     GoogleApiClientProvider.sheetsApi.batchUpdateValues(authHeader, spreadsheetId,
@@ -394,7 +410,7 @@ class SheetsSyncManager(
                 }
                 if (missing.isNotEmpty()) { layoutOk -= spreadsheetId; upgradeTried -= spreadsheetId }   // columns were added at the end: tidy the layout next time
                 if (ok && updateReports) pushReports(spreadsheetId)
-                if (ok) Result.success(Unit) else Result.failure(Exception("DailyData write failed"))
+                if (ok) Result.success(stored) else Result.failure(Exception("DailyData write failed"))
             } catch (e: Exception) { Result.failure(e) }
         }
 
@@ -1209,11 +1225,15 @@ class SheetsSyncManager(
      * Derived values are recomputed by the caller afterwards.
      */
     suspend fun pullFarmData(spreadsheetId: String): Result<Boolean> = withContext(Dispatchers.IO) {
-        val authHeader = authManager.getAuthHeader() ?: return@withContext Result.success(true)
+        var authHeader = authManager.getAuthHeader() ?: return@withContext Result.failure(Exception("Not signed in to Google"))
         try {
             // Read by header name from whatever tabs the file has, so sheets from older app versions load correctly.
-            val raw = readRaw(authHeader, spreadsheetId)
-                ?: return@withContext Result.failure(Exception("Unable to read the farm sheet"))
+            // A refused read is tried once more with a fresh token (an expired one is the usual reason).
+            val raw = readRaw(authHeader, spreadsheetId) ?: run {
+                authManager.invalidate()
+                authHeader = authManager.getAuthHeader() ?: return@withContext Result.failure(Exception("Not signed in to Google"))
+                readRaw(authHeader, spreadsheetId)
+            } ?: return@withContext Result.failure(Exception("Unable to read the farm sheet"))
             val base = db.farmDao().getFarm(spreadsheetId) ?: FarmEntity(spreadsheetId = spreadsheetId)
             val c = SheetSchema.parse(spreadsheetId, raw, base, db.configDao().getConfig(spreadsheetId))
 

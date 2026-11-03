@@ -100,23 +100,6 @@ fun StatTile(label: String, value: V, sub: String?, modifier: Modifier = Modifie
 // =================================== TABS ===================================
 
 /** Birds: how many, deaths, growth, uniformity, comfort and the curves — everything about the birds in one place. */
-/** The few numbers that decide the batch, right under the clock. */
-@Composable
-fun KeyKpis(d: OutputData, feeder: FeederState, now: OutputData.NowView? = null) {
-    val e = d.e
-    val live = d.live.toDouble()
-    val bag = d.bagKg
-    OutputCard(title = "Against the standards", info = "kpis") {
-        KpiLine(Kpi("Body weight", "g", d.weightShown(now), d.vk, d.bwCom, d.bwIdeal, Better.HIGHER, 1, totalFactor = live / 1000, totalUnit = "kg"))
-        KpiLine(Kpi("FCR", "", d.fcrShown(now), d.fcrKind, d.fcrCom, d.fcrIdeal, Better.LOWER, 3, settling = d.day < 7))
-        KpiLine(Kpi("Mortality till date", "%", d.mortTDPct, d.mk, d.comCumPct, d.ceilingPct, Better.LOWER, 2,
-            totalFactor = d.entryBirds / 100.0, totalUnit = "birds", totalDec = 0))
-        KpiLine(Kpi("Feed plan today", "bags", d.giveBags, PR, d.comPerBird?.let { it * live / 1000 / bag }, d.idealPerBird * live / 1000 / bag, Better.CLOSER, 2), plan = true)
-        ValueRow(listOf(v(d.dayBags, 2, PR, "Pour bags"), v(d.waterL, 1, PR, "Water L"), vi(d.waterRefills, PR, "Refills")), "plan")
-    }
-}
-
-/** Birds: how many, deaths, growth, uniformity, comfort and the curves — everything about the birds in one place. */
 @Composable
 fun BirdsTab(d: OutputData, onFlockPlan: ((Double, Int) -> Unit)? = null, now: OutputData.NowView? = null) {
     val e = d.e
@@ -130,9 +113,10 @@ fun BirdsTab(d: OutputData, onFlockPlan: ((Double, Int) -> Unit)? = null, now: O
             totalFactor = d.entryBirds / 100.0, totalUnit = "birds", totalDec = 0),
         Kpi("Livability", "%", e.livability, d.mk, 100 - d.comCumPct, 100 - d.ceilingPct, Better.HIGHER, 2)
     ), info = "flock")
-    OutputCard(title = "Start and removals") {
-        Param("Start", "", vi(d.placed, P, "Placed"), vi(d.reception, P, "Reception"), vi(d.entryBirds, P, "Entry"))
-        Param("Removed", "", vi(d.lameTD, P, "Culls"), vi(d.liftTD, P, "Lifted"), v(d.liftKgTD, 1, P, "Lifted kg"))
+    OutputCard(title = "Start and removals", info = "reception") {
+        Param("Placed", "", vi(d.placed, P, "Chicks placed"), vi(d.reception, P, "Reception deaths"), v(d.receptionPct, 2, P, "% of placed"))
+        Param("Started", "", vi(d.entryBirds, P, "Birds"), v(d.mortTDPct, 2, d.mk, "Mortality %"), v(d.mortWithReceptionPct, 2, d.mk, "With reception %"))
+        Param("Removed", "", vi(d.mortTD, d.mk, "Deaths"), vi(d.lameTD, P, "Culls"), vi(d.liftTD, P, "Lifted"))
     }
     KpiCard("Growth", listOf(
         Kpi("Body weight", "g", d.weightShown(now), d.vk, d.bwCom, d.bwIdeal, Better.HIGHER, 1, totalFactor = live / 1000, totalUnit = "kg"),
@@ -141,15 +125,12 @@ fun BirdsTab(d: OutputData, onFlockPlan: ((Double, Int) -> Unit)? = null, now: O
         Kpi("cFCR", "2 kg", e.cFcr, d.fcrKind, d.cfcrCom, d.cfcrIdeal, Better.LOWER, 3, settling = d.day < 7),
         Kpi("EPEF", "", d.epef, d.fcrKind, d.epefCom, d.epefIdeal, Better.HIGHER, 1, settling = d.day < 7)
     ), info = "growth")
-    TrendsCard(d)
     ForecastCard(d, onFlockPlan)
     AccuracyCard(d)
     UniformityCard(d)
     OutputCard(title = "Comfort", info = "comfort") {
         RangeParam("Body temp", "°C", d.bodyTemp.first, d.bodyTemp.second, d.bodyTemp.third, null, projected = d.envAt(d.hour)?.r?.bodyTempC)
         RangeParam("Feet", "°C", d.footTemp.first, d.footTemp.second, d.footTemp.third, null)
-        RangeParam("Density", "kg/ft²", null, null, kgPerFt2(d.farm.densityCapDefault), e.densityKgM2?.let { kgPerFt2(it) }, 3, d.vk)
-        RangeParam("Floor", "ft²/bird", e.minFtPerBird.takeIf { it > 0 }, null, null, e.ftPerBird.takeIf { it > 0 }, 3, d.vk)
         Param("Light", "h", v(e.lightHours, 1, I, "Light"), v(24.0 - e.lightHours, 1, I, "Dark"))
         RangeParam("Light intensity", "lux", d.lightLux.first, null, d.lightLux.second, e.luxPerFt2, idealBand = d.lightLux)
     }
@@ -158,7 +139,7 @@ fun BirdsTab(d: OutputData, onFlockPlan: ((Double, Int) -> Unit)? = null, now: O
 
 /** Trends worked out from the flock's own weights, feed and deaths. */
 @Composable
-private fun TrendsCard(d: OutputData) {
+internal fun TrendsCard(d: OutputData) {
     val k = d.kpis
     OutputCard(title = "Flock trends", info = "trends") {
         KpiLine(Kpi("Average daily gain", "g/day", k.adg, d.vk, d.adgCom, d.adgIdeal, Better.HIGHER, 1))
@@ -357,18 +338,6 @@ fun VentTab(d: OutputData, hour: Int = d.hour) {
     VentSection(d, hour)
 }
 
-/** Feed and water: log a feeding, today's plan, what was eaten, and water. */
-@Composable
-fun FeedTab(d: OutputData, pick: Int, onPick: (Int) -> Unit, onFarmChange: ((com.example.flock.data.FarmEntity) -> Unit)? = null,
-            feedLog: @Composable () -> Unit = {}) {
-    feedLog()
-    FeedingPlanCard(d, pick, onPick)
-    if (d.day <= 7) FirstWeekCard(d)
-    EatenCard(d)
-    FeedCharts(d)
-    WaterCard(d, onFarmChange)
-}
-
 /** Boxes joined by arrows, two to a row: the plan read left to right. */
 @Composable
 fun PlanFlow(steps: List<Triple<String, V, String?>>) {
@@ -391,74 +360,26 @@ fun PlanFlow(steps: List<Triple<String, V, String?>>) {
     }
 }
 
-@Composable
-private fun FeedingPlanCard(d: OutputData, pick: Int, onPick: (Int) -> Unit) {
-    val live = d.live.toDouble()
-    val bag = d.bagKg
-    val o = d.feedOptions[pick.coerceIn(0, d.feedOptions.size - 1)]
-    val pat = if (o.safe) o.pattern else d.patterns.first()
-    val hopper = max(0.0, o.bagsPerFeeding - d.feederLines * pat.openPerLine / d.pansPerBag)
-    val lines = d.feederLines
-    OutputCard(title = "Feeding plan", info = "plan") {
-        // total bags → times a day → each time and per line → the pans on and off
-        PlanFlow(listOf(
-            Triple("Pour today, bags", v(d.dayBags, 2, PR), "chart ${Fmt.n(d.giveBags, 2)}"),
-            Triple("Times a day", vi(o.feedings, if (o.safe) PR else MX), if (pick == d.recommendedOption) "best" else "chosen"),
-            Triple("Each time", v(o.bagsPerFeeding, 2, PR), "${Fmt.n(o.bagsPerLine, 2)} / line"),
-            Triple("Pans", vt(pat.label, if (o.safe) PR else MX), "${pat.openPerLine} of ${d.pansInArea} on")
-        ))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            LeadLabel("times")
-            d.feedOptions.forEachIndexed { i, opt ->
-                val tag = when { !opt.safe -> "Not safe"; i == d.recommendedOption -> "Best"; else -> "Also OK" }
-                val kind = when { !opt.safe -> MX; i == d.recommendedOption -> P; else -> PR }
-                ValueChip(vi(opt.feedings, kind, tag), Modifier.weight(1f)
-                    .border(if (i == pick) 2.dp else 0.dp, if (i == pick) Color.White else Color.Transparent, RoundedCornerShape(8.dp))
-                    .clickable { onPick(i) })
-            }
-        }
-        BagsWorkedOut(d)
-        FarmTopView(d, pat)
-        KeyLine(kindColor(PR) to "on", Color.White.copy(alpha = 0.6f) to "off", Color.White to "sensor", kindColor(MN) to "drinker")
-        More("Each feeding in detail", "feeding") {
-            KpiLine(Kpi("Feed per bird", "g", d.givePerBird, PR, d.comPerBird, d.idealPerBird, Better.CLOSER, 1), plan = true)
-            ValueRow(listOf(v(o.fillPct, 1, PR, "Pans filled %"), v(hopper, 2, PR, "Hopper bags")), "fill")
-            // macro and micro: the whole house next to one line and one pan, per feeding
-            Text("Each feeding: house, one line, one pan", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.65f))
-            MacroMicroTable(listOf(
-                MMRow("Bags", v(o.bagsPerFeeding, 2, PR), v(o.bagsPerLine, 2, PR), null),
-                MMRow("kg", v(o.bagsPerFeeding * bag, 1, PR), v(o.kgPerLine, 1, PR), v(if (pat.openPerLine > 0) o.kgPerLine / pat.openPerLine else null, 2, PR)),
-                MMRow("Pans on", vi(pat.openPerLine * lines, PR), vi(pat.openPerLine, PR), null),
-                MMRow("Birds", vi(d.live, d.mk), v(live / lines, 1, d.mk), v(pat.birdsPerPan, 1, if (pat.birdsPerPan <= d.birdsPerPanMax) PR else MX)),
-                MMRow("Floor ft²", v(d.areaInUseFt2, 1, P), v(d.areaInUseFt2 / lines, 1, P), v(pat.cellFt2, 1, PR)),
-                MMRow("Travel m", null, null, v(pat.travelM, 2, if (pat.travelM <= ALLOWED_TRAVEL_M) PR else MX))
-            ))
-            ValueRow(listOf(v(d.birdsPerPanMax, 1, MX, "Max birds / pan"), v(ALLOWED_TRAVEL_M, 2, MX, "Max travel m")), "limits")
-            PanCellView(d, pat)
-        }
-    }
-}
-
 /**
  * How today's bags were worked out, left to right: the chart's ration for birds of this weight → what this
  * flock eats of it → what it will likely eat → less the feed still in the lines → bags to pour.
  */
 @Composable
-private fun BagsWorkedOut(d: OutputData) {
+internal fun BagsWorkedOut(d: OutputData) {
     val f = d.intake
     val a = d.intakeAdvice
     Text("How the bags were worked out", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
     if (f.learning) {
         // not enough entries yet: the chart's ration, in whole bags
         PlanFlow(listOf(
-            Triple("Chart ration", v(d.giveBags, 2, C), "for ${Fmt.n(d.bw, 0)} g birds"),
+            Triple("Company ration", v(d.giveBags, 2, C), "for ${Fmt.n(d.bw, 0)} g birds"),
             Triple("Pour, whole bags", v(d.dayBags, 2, PR), "learning: ${f.days} of ${com.example.flock.domain.IntakeForecast.MIN_DAYS} days")
         ))
         return
     }
     PlanFlow(listOfNotNull(
-        Triple("Chart ration", v(d.giveBags, 2, C), if (d.envFeedF != 1.0) "weather ${Fmt.signed((d.envFeedF - 1) * 100, 1)} %" else "for ${Fmt.n(d.bw, 0)} g birds"),
-        Triple("Flock eats", vt(Fmt.n(f.ratio * 100, 1) + " %", P, null), "of the chart"),
+        Triple("Company ration", v(d.giveBags, 2, C), if (d.envFeedF != 1.0) "weather ${Fmt.signed((d.envFeedF - 1) * 100, 1)} %" else "for ${Fmt.n(d.bw, 0)} g birds"),
+        Triple("Flock eats", vt(Fmt.n(f.ratio * 100, 1) + " %", P, null), "of the company's"),
         Triple("Likely eaten", v(a.likelyBags, 2, PR), "${Fmt.n(a.lowBags, 1)} – ${Fmt.n(a.highBags, 1)}"),
         Triple("In the lines", vt(Fmt.signed(a.inLinesBags, 1), PR, null), if (a.inLinesBags >= 0) "left over" else "run low")
     ))
@@ -484,7 +405,7 @@ private fun BagsWorkedOut(d: OutputData) {
 fun farmZone(f: com.example.flock.data.FarmEntity): java.time.ZoneId = try { java.time.ZoneId.of(f.timeZone) } catch (e: Exception) { java.time.ZoneId.systemDefault() }
 
 @Composable
-private fun FirstWeekCard(d: OutputData) {
+internal fun FirstWeekCard(d: OutputData) {
     val f = d.farm
     OutputCard(title = "First week") {
         Param("Feeder trays", "", listOf(
@@ -502,7 +423,7 @@ private fun FirstWeekCard(d: OutputData) {
 
 /** Feed used: per bird (yesterday and till date, against the standards) and bags till date by type. */
 @Composable
-private fun EatenCard(d: OutputData) {
+internal fun EatenCard(d: OutputData) {
     val yLive = (d.byDay[d.day - 1]?.liveBirds ?: d.live).toDouble()
     val order = d.feedTypes.sortedBy { it.sortOrder }.map { it.code }
     val codes = (order + d.usedByCode.keys.sorted()).distinct().filter { (d.usedByCode[it] ?: 0.0) > 0 }
@@ -548,7 +469,7 @@ private fun TankPicture(tankL: Double, refills: Int, needL: Double) {
 }
 
 @Composable
-private fun WaterCard(d: OutputData, onFarmChange: ((com.example.flock.data.FarmEntity) -> Unit)? = null) {
+internal fun WaterCard(d: OutputData, onFarmChange: ((com.example.flock.data.FarmEntity) -> Unit)? = null) {
     val e = d.e
     val live = d.liveSafe.toDouble()
     val factor = if (d.refillF > 0) d.refillF else 1.0

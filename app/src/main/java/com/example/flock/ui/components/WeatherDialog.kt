@@ -118,6 +118,7 @@ private fun ForecastRow(d: ForecastDay) {
         else -> ValuePredicted
     }
     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(d.emoji, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(end = 6.dp))
         Text(label, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold), modifier = Modifier.weight(1.6f))
         Text(
             text = "${d.tMinC?.let { String.format("%.0f", it) } ?: "–"}–${d.tMaxC?.let { String.format("%.0f", it) } ?: "–"}",

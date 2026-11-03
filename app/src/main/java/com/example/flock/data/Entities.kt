@@ -290,7 +290,14 @@ data class DailyDataEntity(
     // How many sample locations the day's entry shows (0 = not set: as the last weighing, else 5)
     val locCount: Int = 0,
     // When the day's weights were saved (epoch ms; 0 = not known): the starting point of the time-based projections (v43)
-    val weighedAt: Long = 0
+    val weighedAt: Long = 0,
+    // When the day's birds were lifted (epoch ms; 0 = not known): whether the day's weighing was before or after the lifting (v47)
+    val liftedAt: Long = 0,
+    // Feedings poured that day, "HH:mm=bags;HH:mm=bags" — on the sheet, so every phone sees them (v47)
+    val feedings: String = "",
+    // The sheet columns (normalised names) this phone changed and has not sent yet: only these are written,
+    // so a value another phone entered meanwhile is not overwritten (v47). Never on the sheet.
+    val dirtyFields: String = ""
 )
 
 @Entity(
@@ -378,6 +385,29 @@ fun DailyDataEntity.locationsShown(): Int {
  * Days saved by older versions have no record, so infer it from what they actually contain —
  * an empty field stays open.
  */
+/** A day's feedings, "HH:mm=bags;HH:mm=bags" -> (time, bags), in time order. */
+fun parseFeedings(s: String): List<Pair<String, Double>> = s.split(";").mapNotNull { part ->
+    val kv = part.split("="); if (kv.size != 2) return@mapNotNull null
+    val t = kv[0].trim(); val b = kv[1].trim().replace(",", ".").toDoubleOrNull()
+    if (Regex("^\\d{1,2}:\\d{2}$").matches(t) && b != null && b > 0) t.padStart(5, '0') to b else null
+}.sortedBy { it.first }
+
+fun formatFeedings(list: List<Pair<String, Double>>): String =
+    list.sortedBy { it.first }.joinToString(";") { (t, b) -> "$t=" + (if (b == Math.floor(b)) b.toLong().toString() else b.toString()) }
+
+/** Sheet columns to send for a row not yet on the sheet: null = all of them (a row saved before v47), empty = only its bookkeeping. */
+fun DailyDataEntity.dirtyColumns(): Set<String>? = when {
+    dirtyFields.isBlank() -> null
+    else -> dirtyFields.split(",").map { it.trim() }.filter { it.isNotEmpty() && it != "-" }.toSet()
+}
+
+/** [old] dirty columns with [add] put in ("-": nothing but the bookkeeping; blank stays blank = everything). */
+fun mergeDirtyFields(oldDirty: Boolean, old: String, add: Set<String>): String {
+    if (oldDirty && old.isBlank()) return ""
+    val all = (old.split(",") + add).map { it.trim() }.filter { it.isNotEmpty() && it != "-" }.toSortedSet()
+    return if (all.isEmpty()) "-" else all.joinToString(",")
+}
+
 fun DailyDataEntity.savedGroups(): Set<String> =
     if (savedFields.isNotBlank()) savedFields.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
     else if (committed) buildSet {

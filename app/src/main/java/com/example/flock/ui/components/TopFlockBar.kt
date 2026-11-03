@@ -85,10 +85,7 @@ fun TopFlockBar(
     onFlockClick: () -> Unit,
     onWeatherClick: () -> Unit = {},
     /** the last day the day bar reaches: the planned harvest age, or further once the flock has run past it */
-    lastDay: Int? = null,
-    /** the short view (the day in brief) or the full one; null hides the switch */
-    basicView: Boolean? = null,
-    onBasicView: (Boolean) -> Unit = {}
+    lastDay: Int? = null
 ) {
     val harvestAge = lastDay ?: flock?.harvestAge ?: 42
     Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
@@ -173,12 +170,9 @@ fun TopFlockBar(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.WbSunny,
-                            contentDescription = "Weather",
-                            modifier = Modifier.size(16.dp),
-                            tint = Color(0xFFE5A93C)
-                        )
+                        // the sky now as an emoji (sun, cloud, rain, storm, moon at night)
+                        Text(weather?.emoji ?: "🌡️", style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.semantics { contentDescription = "Weather " + com.example.flock.network.WeatherEmoji.words(weather?.code) })
                         Spacer(modifier = Modifier.width(4.dp))
                         // Outside temperature and humidity side by side (humidity changes how hot birds feel).
                         val tempStr = weather?.let { String.format("%.1f°C · %.0f%%", it.tempC, it.rhPercent) } ?: "—"
@@ -226,9 +220,6 @@ fun TopFlockBar(
                     }
                 }
             }
-
-            // the view switch, above the day slider: the day in brief, or everything
-            if (basicView != null) ViewSwitch(basicView, onBasicView)
 
             // Row 2: Day Stepper (cannot exceed current real flock day) + Date + Cutoff / Lock Chip
             Row(
@@ -284,22 +275,13 @@ fun TopFlockBar(
                     )
                 )
 
-                // Cutoff / Lock Chip
-                val chipColor = when {
-                    lockStatus.isHardLocked -> StatusCritWash
-                    lockStatus.isCutoffApproaching -> StatusWarnWash
-                    else -> MaterialTheme.colorScheme.surfaceVariant
-                }
-                val textColor = when {
-                    lockStatus.isHardLocked -> StatusCrit
-                    lockStatus.isCutoffApproaching -> StatusWarn
-                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                }
+                // what the day is: nothing locks with the clock any more (v47) — a past day can be changed, a day to come cannot be entered yet
+                val chipColor = if (lockStatus.isFuture) StatusWarnWash else MaterialTheme.colorScheme.surfaceVariant
+                val textColor = if (lockStatus.isFuture) StatusWarn else MaterialTheme.colorScheme.onSurfaceVariant
                 val labelText = when {
-                    lockStatus.isPastDay -> "Locked (Past)"
-                    lockStatus.isFuture -> "Locked (Future)"
-                    lockStatus.isHardLocked -> "Locked (11:00 cutoff)"
-                    else -> "Inputs lock at ${lockStatus.cutoffTime}"
+                    lockStatus.isFuture -> "Day to come"
+                    lockStatus.isPastDay -> "Past day"
+                    else -> "Today"
                 }
 
                 Surface(
@@ -334,28 +316,6 @@ fun TopFlockBar(
     }
 }
 
-/** Two halves, one chosen: Basic (the day in brief) or Advanced (every number). */
-@Composable
-private fun ViewSwitch(basic: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().testTag("view_switch"), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        listOf(true to "Basic", false to "Advanced").forEach { (isBasic, label) ->
-            val on = basic == isBasic
-            Box(
-                Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
-                    .border(if (on) 1.5.dp else 1.dp, if (on) Color.White else Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp))
-                    .background(if (on) Color.White.copy(alpha = 0.10f) else Color.Transparent)
-                    .clickable { onChange(isBasic) }
-                    .padding(vertical = 5.dp)
-                    .testTag(if (isBasic) "view_basic" else "view_advanced"),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(label, maxLines = 1, softWrap = false,
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (on) FontWeight.Bold else FontWeight.Medium),
-                    color = Color.White.copy(alpha = if (on) 1f else 0.6f))
-            }
-        }
-    }
-}
 
 /** One stretch of the flock's life on the day slider. */
 data class DayPeriod(val name: String, val from: Int, val to: Int, val color: Color)
