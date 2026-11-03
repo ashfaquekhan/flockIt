@@ -41,7 +41,6 @@ import com.example.flock.ui.screens.OutputScreen
 import com.example.flock.ui.screens.StockScreen
 import com.example.flock.ui.screens.TasksScreen
 import com.example.ui.theme.BrandEmerald
-import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -66,10 +65,7 @@ fun MainFlockScreen(
     onNavFlocks: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // the four pages side by side: swipe between them, or tap the bar
-    val pager = androidx.compose.foundation.pager.rememberPagerState(initialPage = 0) { FlockNavTab.values().size }
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
-    val currentTab = FlockNavTab.values()[pager.targetPage]
+    var currentTab by remember { mutableStateOf(FlockNavTab.ENTRY) }
     // whether the weather acts on the house and birds (one view for everything since v47)
     val ctx = androidx.compose.ui.platform.LocalContext.current
     var weatherOn by remember { mutableStateOf(com.example.flock.network.ViewPrefs.weatherOn(ctx)) }
@@ -171,7 +167,7 @@ fun MainFlockScreen(
                     val selected = currentTab == tab
                     NavigationBarItem(
                         selected = selected,
-                        onClick = { scope.launch { pager.animateScrollToPage(tab.ordinal) } },
+                        onClick = { currentTab = tab },
                         icon = {
                             // the chosen tab is marked with a small bar in the beak's colour
                             androidx.compose.foundation.layout.Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
@@ -214,9 +210,7 @@ fun MainFlockScreen(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            androidx.compose.foundation.pager.HorizontalPager(state = pager, modifier = Modifier.fillMaxSize().testTag("tab_pager"),
-                beyondViewportPageCount = 0, key = { it }) { page ->
-            when (FlockNavTab.values()[page]) {
+            when (currentTab) {
                 FlockNavTab.ENTRY -> EntriesScreen(
                     entry = currentDayEntry,
                     dayNumber = selectedDay,
@@ -277,7 +271,6 @@ fun MainFlockScreen(
                             selectedDay == currentFlockDay, weatherOn)
                     }
                 )
-            }
             }
         }
         }

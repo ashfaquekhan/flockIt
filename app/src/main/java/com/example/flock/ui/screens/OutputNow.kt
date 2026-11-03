@@ -76,143 +76,6 @@ private val NE = ValueKind.NEUTRAL
 
 fun hhmmOf(minutes: Int): String = String.format("%02d:%02d", (minutes / 60).coerceIn(0, 23), (minutes % 60).coerceIn(0, 59))
 
-/**
- * The time the page shows: a slider over the day (like the day slider), the time the day's entries were made, and
- * at that time the weather → the house → what the birds feel, and how likely they are hungry, thirsty or panting.
- * [live] = the clock running (today, not moved).
- */
-@Composable
-fun TimeCard(
-    d: OutputData, minutes: Int, live: Boolean, entryHHmm: String?, onMinutes: (Int) -> Unit, onNow: (() -> Unit)?,
-    weatherOn: Boolean, onWeatherOn: (Boolean) -> Unit, needs: com.example.flock.domain.FlockNeeds.State, fedKnown: Boolean
-) {
-    val hour = minutes / 60
-    val light = LightProgram(d.e.lightHours)
-    GlassBox(Modifier.fillMaxWidth().testTag("time_card")) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val sky = d.hourly.firstOrNull { it.date == d.e.date && it.hour == hour }
-                Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text(hhmmOf(minutes), style = MaterialTheme.typography.headlineSmall.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold),
-                            color = Color.White, modifier = Modifier.testTag("time_shown"))
-                        Spacer(Modifier.width(8.dp))
-                        Text((sky?.emoji?.let { "$it " } ?: "") + if (live) "now" else "day ${d.day}", style = MaterialTheme.typography.titleSmall,
-                            color = Color.White.copy(alpha = 0.75f), modifier = Modifier.padding(bottom = 3.dp))
-                    }
-                    Text("Entered " + (entryHHmm ?: "— nothing yet") + " · projections at the time on the slider",
-                        style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f))
-                }
-                if (onNow != null) Text("Now", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = Color.White,
-                    modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).clickable { onNow() }
-                        .padding(horizontal = 12.dp, vertical = 6.dp).testTag("time_now"))
-                Spacer(Modifier.width(6.dp))
-                InfoButton("time")
-            }
-            // the day under the slider: dark hours shaded, the entry time and the time shown marked
-            Canvas(Modifier.fillMaxWidth().height(14.dp).padding(horizontal = 10.dp)) {
-                val w = size.width; val h = size.height
-                for (m in 0 until 24 * 4) {
-                    val hr = m / 4.0
-                    if (!light.isLight(hr)) drawRect(Color.White.copy(alpha = 0.10f), Offset((m / 96f) * w, 0f), Size(w / 96f + 0.5f, h))
-                }
-                entryHHmm?.let { t ->
-                    val em = (t.substringBefore(":").toIntOrNull() ?: 0) * 60 + (t.substringAfter(":").toIntOrNull() ?: 0)
-                    val x = em / 1440f * w
-                    drawLine(kindColor(P), Offset(x, 0f), Offset(x, h), 3.dp.toPx(), cap = StrokeCap.Round)
-                }
-                listOf(0, 6, 12, 18, 24).forEach { hh -> drawLine(Color.White.copy(alpha = 0.35f), Offset(hh / 24f * w, h * 0.6f), Offset(hh / 24f * w, h), 1f) }
-            }
-            Slider(value = minutes.toFloat(), onValueChange = { onMinutes((it / 5).toInt() * 5) }, valueRange = 0f..1435f,
-                colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White.copy(alpha = 0.7f), inactiveTrackColor = Color.White.copy(alpha = 0.2f)),
-                modifier = Modifier.fillMaxWidth().height(28.dp).testTag("time_slider"))
-            Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp)) {
-                listOf("00", "06", "12", "18", "24").forEachIndexed { i, t ->
-                    Text(t, style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont), color = Color.White.copy(alpha = 0.55f),
-                        modifier = Modifier.weight(1f), textAlign = when (i) { 0 -> TextAlign.Start; 4 -> TextAlign.End; else -> TextAlign.Center })
-                }
-            }
-            // the weather at that hour: on, it acts on the house and the birds; off, the ideal house
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Weather acts on the house", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
-                Switch(checked = weatherOn, onCheckedChange = onWeatherOn, modifier = Modifier.testTag("weather_switch"),
-                    colors = SwitchDefaults.colors(checkedThumbColor = Color.Black, checkedTrackColor = Color.White,
-                        uncheckedThumbColor = Color.White.copy(alpha = 0.7f), uncheckedTrackColor = Color.Black, uncheckedBorderColor = Color.White.copy(alpha = 0.5f)))
-            }
-            val h = d.env?.at(hour)
-            if (weatherOn && h != null) {
-                val outKind = if (d.outsideSource == com.example.flock.domain.BirdEnvironment.Source.WEATHER) NE else PR
-                ValueRow(listOf(v(h.outC, 1, outKind, "Outside"), v(h.air.tempC, 1, PR, "House"), v(h.r.feltC, 1, stateKind(h.r.state), "Birds feel")), "°C")
-                ValueRow(listOf(v(h.outRh, 1, outKind, "Outside"), v(h.air.rhPct, 1, PR, "House"), vt(h.r.state.short, stateKind(h.r.state), "Birds are")), "RH %")
-            } else Text(if (!weatherOn) "Off: the house is taken at its ideal" else "No forecast for this day: the season's typical day",
-                style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f))
-            // no sensors in the house: likelihoods at that time, from the feedings, the lights and the weather
-            fun pct(x: Double, tag: String) = vt(Fmt.n(x * 100, 1) + " %", PR, if (x >= 0.5) "$tag — likely" else tag)
-            ValueRow(listOf(pct(needs.hungry, "Hungry"), pct(needs.thirsty, "Thirsty"), pct(needs.panting, "Panting")), "birds")
-            Text(if (fedKnown) "From the feedings logged, the lights and the weather" else "No feeding logged: the plan's feedings are assumed",
-                style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.55f))
-        }
-    }
-}
-
-/**
- * The flock at a glance, each number once on the page: what was entered (and when) against what is projected for the
- * time on the slider, with the company's figure; the ideal (Ross) under the name.
- */
-@Composable
-fun FlockNowCard(d: OutputData, now: OutputData.NowView, entryHHmm: String?) {
-    val e = d.e
-    data class Row4(val label: String, val unit: String, val entered: V, val projected: V, val company: V, val ideal: String?)
-    fun none() = vt("—", NE)
-    // deaths till yesterday (today's, when entered, are in the entered column only)
-    val beforeToday = (d.mortTD - d.mortToday).coerceAtLeast(0).toDouble()
-    val rows = listOf(
-        Row4("Weight", "g", if (e.avgWeight != null) v(e.avgWeight, 1, P) else none(), v(now.weightG, 1, PR), v(d.bwCom, 1, C), Fmt.n(d.bwIdeal, 1)),
-        Row4("Daily gain", "g", if (d.gainMeasured != null) v(d.gainMeasured, 1, P) else none(), v(d.gain.takeIf { d.gainMeasured == null }, 1, PR),
-            v(d.gainCom, 1, C), Fmt.n(d.gainIdeal, 1)),
-        Row4("Live birds", "", if (d.mortEntered) vi(d.live, P) else none(), vi(Math.round(now.live).toInt(), PR),
-            vi(Math.round(d.entryBirds - d.comCumPct * d.entryBirds / 100.0 - d.liftTD).toInt(), C), null),
-        Row4("Deaths today", "birds", if (d.mortEntered) vi(d.mortToday, P) else none(), v(now.deaths, 1, PR), v(d.comMortBirdsToday, 1, C), null),
-        Row4("Mortality till date", "%", if (d.mk == P) v(d.mortTDPct, 2, P) else none(),
-            v((beforeToday + now.deaths) * 100.0 / d.entryBirds, 2, PR), v(d.comCumPct, 2, C), Fmt.n(d.ceilingPct, 2)),
-        Row4("Eaten by ${now.hhmm}", "bags", none(), v(now.eatenBags, 2, PR), v(d.giveBags * now.eatShare, 2, C), null),
-        Row4("Drunk by ${now.hhmm}", "L", none(), v(now.drunkL, 1, PR), none(), null)
-    )
-    val grey = Color.White.copy(alpha = 0.6f)
-    OutputCard(title = "Flock at ${now.hhmm}", info = "now") {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-            Spacer(Modifier.weight(1.3f))
-            listOf(Triple("Entered", entryHHmm ?: "—", P), Triple("Projected", now.hhmm, PR), Triple("Company", "day ${d.day}", C)).forEach { (t, sub, k) ->
-                Column(Modifier.weight(1f).padding(start = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(t, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = kindColor(k), maxLines = 1, softWrap = false)
-                    Text(sub, style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont), color = grey, maxLines = 1, softWrap = false)
-                }
-            }
-        }
-        rows.forEach { r ->
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1.3f).padding(end = 4.dp)) {
-                    Text(r.label, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), maxLines = 2)
-                    if (r.unit.isNotEmpty()) Text(r.unit, style = MaterialTheme.typography.labelSmall, color = grey, maxLines = 1, softWrap = false)
-                    if (r.ideal != null) Text("ideal ${r.ideal}", style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont, letterSpacing = (-0.3).sp),
-                        color = kindColor(I), maxLines = 1, softWrap = false)
-                }
-                listOf(r.entered, r.projected, r.company).forEach { x -> NowCell(x, Modifier.weight(1f).padding(start = 4.dp)) }
-            }
-        }
-        if (now.sinceWeighingH != null && d.weighedDay != null)
-            Text("Weight grown from the weighing of day ${d.weighedDay}, ${Fmt.n(now.sinceWeighingH, 1)} h before ${now.hhmm}" +
-                if (d.envOn && d.envGainF < 0.995) " (slowed by the weather)" else "", style = MaterialTheme.typography.labelSmall, color = grey)
-    }
-}
-
-@Composable
-private fun NowCell(x: V, modifier: Modifier) {
-    Text(x.text, modifier.border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)).padding(horizontal = 4.dp, vertical = 5.dp),
-        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold, fontSize = 14.sp, letterSpacing = (-0.4).sp),
-        color = kindColor(if (x.text == "—") NE else x.kind), textAlign = TextAlign.Center, maxLines = 1, softWrap = false)
-}
-
 // =================================== litter ===================================
 
 /** The litter for the hour shown: worked out (no sensors), against what it should be. */
@@ -227,7 +90,7 @@ fun litterOf(d: OutputData, hour: Int): Litter.Out {
 fun LitterCard(d: OutputData, hour: Int) {
     val l = remember(d, hour) { litterOf(d, hour) }
     OutputCard(title = "Litter", info = "litter") {
-        LitterSideView(l, d.bw, d.litterTemp.second)
+        LitterSideView(l, d.litterTemp.second)
         Param("Depth", "cm", v(l.depthCm, 1, PR, "Projected"), vt("${Fmt.n(Litter.IDEAL_DEPTH_LO, 1)}–${Fmt.n(Litter.IDEAL_DEPTH_HI, 1)}", I, "Ideal bedding"),
             v(l.beddingCm, 1, NE, "Bedding, assumed"))
         Param("Moisture", "%", v(l.moisturePct, 1, PR, "House"), v(l.underDrinkersPct, 1, PR, "Under drinkers"),
@@ -240,11 +103,11 @@ fun LitterCard(d: OutputData, hour: Int) {
 
 /**
  * The litter cut open from the side: the concrete, the bed of litter (coloured by how wet it is, darker and caked
- * under the drinker line), the ideal bedding depth as dashed lines, a bird and a pan for scale, a drop falling from a
- * nipple, and ammonia rising off the top — more dots the more there is.
+ * under the drinker line), the ideal bedding depth as dashed lines, a pan, a drop falling from a nipple, and ammonia
+ * rising off the top — more dots the more there is.
  */
 @Composable
-fun LitterSideView(l: Litter.Out, weightG: Double, idealC: Double) {
+fun LitterSideView(l: Litter.Out, idealC: Double) {
     val t = rememberInfiniteTransition(label = "litter")
     val phase by t.animateFloat(0f, 1f, infiniteRepeatable(tween(3200, easing = LinearEasing), RepeatMode.Restart), label = "gas")
     Canvas(Modifier.fillMaxWidth().height(190.dp).border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(10.dp)).testTag("litter_view")) {
@@ -305,14 +168,6 @@ fun LitterSideView(l: Litter.Out, weightG: Double, idealC: Double) {
         val panX = padL + w * 0.80f
         drawArc(Color.White.copy(alpha = 0.7f), 0f, 180f, false, Offset(panX - 16f * px, top - 8f * px), Size(32f * px, 14f * px), style = Stroke(2f * px))
         drawLine(Color.White.copy(alpha = 0.5f), Offset(panX, top - 1f * px), Offset(panX, top - 46f * px), 1.5f * px)
-        // a bird for scale (the bigger the bird, the taller)
-        val bh = (18f + 20f * cbrt(max(40.0, weightG) / 3000.0).toFloat()) * px
-        val bx = padL + w * 0.55f
-        drawLine(Color(0xFFF2C046), Offset(bx - 4f * px, top), Offset(bx - 2f * px, top - bh * 0.35f), 2f * px)
-        drawLine(Color(0xFFF2C046), Offset(bx + 4f * px, top), Offset(bx + 2f * px, top - bh * 0.35f), 2f * px)
-        drawOval(Color(0xFFF2EEE6), Offset(bx - bh * 0.5f, top - bh * 0.85f), Size(bh, bh * 0.55f))
-        drawCircle(Color(0xFFF2EEE6), bh * 0.16f, Offset(bx + bh * 0.42f, top - bh * 0.92f))
-        drawCircle(Color(0xFFD8443A), bh * 0.06f, Offset(bx + bh * 0.42f, top - bh * 1.08f))
         // ammonia off the top: more dots the more there is; the colour of where it stands
         val gasCol = when { l.nh3Ppm > Litter.NH3_MAX -> kindColor(MX); l.nh3Ppm > Litter.NH3_IDEAL -> kindColor(PR); else -> kindColor(I) }
         val n = (l.nh3Ppm / 1.5).toInt().coerceIn(2, 32)
@@ -337,10 +192,10 @@ fun LitterSideView(l: Litter.Out, weightG: Double, idealC: Double) {
 /**
  * A nipple drinker line from the side: the regulator at the head of the line with its sight tube (the water column
  * is the line's pressure, inches of water) and a dial reading the same, the line at its height over the litter, a
- * bird of today's size drinking at a nipple, a drop at the cup.
+ * drop at a nipple.
  */
 @Composable
-fun NippleLineView(heightIn: Double, pressureIn: Double?, weightG: Double) {
+fun NippleLineView(heightIn: Double, pressureIn: Double?) {
     val t = rememberInfiniteTransition(label = "nipple")
     val phase by t.animateFloat(0f, 1f, infiniteRepeatable(tween(1600, easing = LinearEasing), RepeatMode.Restart), label = "drop")
     Canvas(Modifier.fillMaxWidth().height(200.dp).border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(10.dp)).testTag("nipple_view")) {
@@ -390,27 +245,15 @@ fun NippleLineView(heightIn: Double, pressureIn: Double?, weightG: Double) {
         text(if (pressureIn != null && pressureIn > 0) "${Fmt.n(pressureIn, 1)} in water" else "—", gc.x + gr + 6f * px, gc.y + 4f * px, water, bold = true)
         text("line pressure", gc.x + gr + 6f * px, gc.y + 16f * px, Color.White.copy(alpha = 0.6f))
         // nipples along the line; the bird drinks at one of them
-        val bird = size.width * 0.66f
         var nx = regX + 40f * px
         while (nx < size.width - 6f * px) {
             drawLine(Color.White.copy(alpha = 0.75f), Offset(nx, lineY), Offset(nx, lineY + 7f * px), 2f * px)
             drawArc(Color.White.copy(alpha = 0.4f), 0f, 180f, false, Offset(nx - 5f * px, lineY + 3f * px), Size(10f * px, 6f * px), style = Stroke(1f))
             nx += 34f * px
         }
-        val drink = regX + 40f * px + Math.round((bird - regX - 40f * px) / (34f * px)) * 34f * px
-        val tip = Offset(drink, lineY + 7f * px)
+        // a drop at one nipple
+        val tip = Offset(regX + 40f * px + 4 * 34f * px, lineY + 7f * px)
         drawCircle(water.copy(alpha = 1 - phase), 2.4f * px, Offset(tip.x, tip.y + phase * 6f * px))
-        // the bird of today's size: its head up to the nipple
-        val bh = (30f + 46f * cbrt(max(40.0, weightG) / 3000.0).toFloat()) * px
-        val bodyC = Offset(drink - bh * 0.30f, litterTop - bh * 0.42f)
-        drawLine(Color(0xFFF2C046), Offset(bodyC.x - 4f * px, litterTop), Offset(bodyC.x - 2f * px, bodyC.y + bh * 0.2f), 2f * px)
-        drawLine(Color(0xFFF2C046), Offset(bodyC.x + 5f * px, litterTop), Offset(bodyC.x + 3f * px, bodyC.y + bh * 0.2f), 2f * px)
-        drawOval(Color(0xFFF2EEE6), Offset(bodyC.x - bh * 0.42f, bodyC.y - bh * 0.22f), Size(bh * 0.84f, bh * 0.46f))
-        val head = Offset(tip.x - 2f * px, max(tip.y + bh * 0.12f, bodyC.y - bh * 0.55f))
-        drawLine(Color(0xFFF2EEE6), Offset(bodyC.x + bh * 0.25f, bodyC.y - bh * 0.1f), head, bh * 0.14f, cap = StrokeCap.Round)
-        drawCircle(Color(0xFFF2EEE6), bh * 0.12f, head)
-        drawPath(Path().apply { moveTo(head.x + bh * 0.04f, head.y - bh * 0.08f); lineTo(tip.x + 1f * px, tip.y + 1f * px); lineTo(head.x + bh * 0.1f, head.y); close() }, Color(0xFFF3B23C))
-        drawCircle(Color(0xFFD8443A), bh * 0.05f, Offset(head.x - bh * 0.02f, head.y - bh * 0.13f))
         // the height, litter to the nipple line
         val hx = size.width - 22f * px
         drawLine(Color.White.copy(alpha = 0.8f), Offset(hx, litterTop), Offset(hx, lineY), 1.2f * px)
@@ -452,7 +295,7 @@ fun FlockBookCard(d: OutputData, onSelectDay: ((Int) -> Unit)?) {
     OutputCard(title = "Flock book", info = "book") {
         FlockBookGrid(d, Modifier.fillMaxWidth().heightIn(max = 380.dp), onSelectDay)
         OutlinedButton(onClick = { full = true }, border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine), modifier = Modifier.fillMaxWidth().testTag("book_full")) {
-            Text("Open the flock book full screen", color = Color.White)
+            Text("Full screen", color = Color.White)
         }
     }
     if (full) androidx.compose.ui.window.Dialog(onDismissRequest = { full = false },
@@ -503,6 +346,5 @@ private fun FlockBookGrid(d: OutputData, modifier: Modifier, onSelectDay: ((Int)
             }
         }
     }
-    Text("Entered numbers green, projected yellow, the company's violet. L = a lifting day. Bags = used that day (entered the next morning).",
-        style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.55f))
+    Text("green entered · yellow projected · L lifting", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.55f))
 }

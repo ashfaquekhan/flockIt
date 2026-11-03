@@ -156,19 +156,16 @@ object SpacePlan {
 
         val idx = { k: String -> opts.indexOfFirst { it.key == k }.takeIf { it >= 0 } }
         val (best, why) = when {
-            room == Room.TIGHT && i.penFt != null -> (idx("house") ?: 0) to "Too tight: open the barricade (to the whole house)."
-            room == Room.TIGHT -> (idx("house") ?: 0) to "Too tight: the birds need more floor than the house gives — lift or thin soon."
-            brooding -> (idx("house") ?: 0) to "Brooding: open the floor day by day as planned."
-            young -> (idx("house") ?: 0) to "Growing birds: they grow into the floor — nothing to change."
-            i.hotC >= 30 && few && idx("pans") != null -> idx("pans")!! to
-                "Warm day: keep the whole house (space sheds heat) and shut some pans, so the feed stays fresh and the pans empty between feedings."
-            i.hotC >= 30 -> (idx("house") ?: 0) to "Warm day: keep the whole house — space sheds heat."
-            room == Room.ROOMY && i.coolC < 20 && idx("pen") != null -> idx("pen")!! to
-                "Cool and roomy: pen the birds — a smaller floor keeps warm, the birds stay near feed, water and heat."
-            room == Room.ROOMY && few && idx("pans") != null -> idx("pans")!! to
-                "Roomy: keep the floor, shut some pans so each open one has birds enough to empty it."
-            few && idx("pans") != null -> idx("pans")!! to "Few birds a pan: shut some pans so each open one is emptied."
-            else -> (idx("house") ?: 0) to "The floor is right for the birds: nothing to change."
+            room == Room.TIGHT && i.penFt != null -> (idx("house") ?: 0) to "Too tight: open the barricade"
+            room == Room.TIGHT -> (idx("house") ?: 0) to "Too tight: lift or thin soon"
+            brooding -> (idx("house") ?: 0) to "Brooding: open the floor as planned"
+            young -> (idx("house") ?: 0) to "Growing birds: nothing to change"
+            i.hotC >= 30 && few && idx("pans") != null -> idx("pans")!! to "Warm day: whole house, shut some pans"
+            i.hotC >= 30 -> (idx("house") ?: 0) to "Warm day: keep the whole house"
+            room == Room.ROOMY && i.coolC < 20 && idx("pen") != null -> idx("pen")!! to "Cool and roomy: pen the birds"
+            room == Room.ROOMY && few && idx("pans") != null -> idx("pans")!! to "Roomy: shut some pans"
+            few && idx("pans") != null -> idx("pans")!! to "Few birds a pan: shut some pans"
+            else -> (idx("house") ?: 0) to "The floor is right: nothing to change"
         }
         return Out(kgM2, live / (area / FT2_PER_M2), ft2PerBird, target, need, ratio, room, opts[0].walkM, opts, best, why, young,
             if (young) emptyList() else steps(opts[best], i))
@@ -177,17 +174,15 @@ object SpacePlan {
     private fun n1(x: Double) = String.format(java.util.Locale.US, "%.1f", x)
     private fun n2(x: Double) = String.format(java.util.Locale.US, "%.2f", x)
 
-    /** The chosen way, in three steps the farm can follow: floor, pans, feed. */
+    /** The chosen way, in three short steps the farm can follow: floor, pans, feed. */
     private fun steps(o: Option, i: In): List<String> {
         val pen = o.penFt < i.houseLenFt - 0.5
-        val floor = if (pen) "Floor: barricade at ${o.penFt.toInt()} ft from the front — ${n1(o.kgM2)} kg/m², ${n2(o.ft2PerBird)} ft² a bird."
-            else "Floor: the whole house — ${n1(o.kgM2)} kg/m², ${n2(o.ft2PerBird)} ft² a bird."
-        val pans = (if (pen) "Pans: shut the ${o.shutPastPen} past the barricade on every line; in the pen " else "Pans: ") +
-            "${o.series} — ${o.openPerLine} open a line, ${n1(o.birdsPerPan)} birds a pan, the furthest walk ${n2(o.walkM)} m."
-        val feed = if (i.dayBags <= 0) "Feed: nothing planned today."
-            else if (!o.feedReaches) "Feed: ${n1(i.dayBags)} bags can't fill these ${o.openPans} pans even once (${n1(o.fillBags)} bags a fill) — shut more pans."
-            else "Feed: ${o.feedings} feeding${if (o.feedings > 1) "s" else ""} of ${n1(o.bagsPerFeeding)} bags (${n2(o.bagsPerLine)} a line) — each reaches the last open pan " +
-                "(${n1(o.fillBags)} bags fill them)" + if (o.bagsPerFeeding > o.fillBags * 1.15) "; the rest waits in the hoppers and tops the pans up." else "; the birds clear the pans between feedings."
+        val floor = (if (pen) "Barricade at ${o.penFt.toInt()} ft" else "Whole house") + " · ${n1(o.kgM2)} kg/m²"
+        val pans = "${o.series} · ${o.openPerLine} a line" + (if (pen) " · shut ${o.shutPastPen} past it" else "") +
+            " · ${n1(o.birdsPerPan)} birds a pan · walk ${n2(o.walkM)} m"
+        val feed = if (i.dayBags <= 0) "nothing planned"
+            else if (!o.feedReaches) "${n1(i.dayBags)} bags can't fill ${o.openPans} pans · shut more"
+            else "${o.feedings} × ${n1(o.bagsPerFeeding)} bags · ${n2(o.bagsPerLine)} a line · ${n1(o.fillBags)} fill the pans"
         return listOf(floor, pans, feed)
     }
 }

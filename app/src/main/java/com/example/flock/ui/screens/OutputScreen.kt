@@ -52,6 +52,7 @@ import com.example.flock.network.HourPoint
 import com.example.flock.network.WeatherResult
 import com.example.flock.ui.Fmt
 import com.example.flock.data.savedGroups
+import kotlinx.coroutines.launch
 import com.example.ui.theme.BrandEmerald
 import com.example.ui.theme.StatusCrit
 import com.example.ui.theme.StatusWarn
@@ -216,26 +217,31 @@ fun OutputScreen(
     )
     var confirmClose by remember { mutableStateOf(false) }
 
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    fun minutesOf(ms: Long) = java.time.Instant.ofEpochMilli(ms).atZone(zone).let { it.hour * 60 + it.minute }
+    val entryMin = listOf(entry.weighedAt, entry.liftedAt).firstOrNull { it > 0 }?.let { minutesOf(it) }
+
     androidx.compose.runtime.CompositionLocalProvider(LocalScrollAnchors provides anchors) {
     Box(modifier.fillMaxSize().onGloballyPositioned { anchors.viewportTop = it.positionInRoot().y }) {
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal = 14.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // the house and the birds in it, at the time on the slider
+        // the house and the birds in it, at the time on the rail
         Anchored("coop") { GlassBox(Modifier.fillMaxWidth()) { Coop3D(coop) } }
-        Anchored("time") {
-            TimeCard(d, minutes, live, entryHHmm, { pinned = it }, if (isToday && pinned != null) ({ pinned = null }) else null,
-                weatherOn, onWeatherOn, needsNow, fedKnown)
+        // the day at a glance: the radar, the numbers that matter, the air and the birds now
+        Anchored("glance") {
+            GlanceCard(d, view, entryHHmm, live, { pinned = null }, weatherOn, onWeatherOn, needsNow, hour)
+            JumpBar(listOf("feed" to "Feed", "floor" to "Floor and FCR", "birds" to "Birds", "house" to "House", "graphs" to "Graphs", "book" to "Book")) { key ->
+                anchors.topOf(key)?.let { y -> scope.launch { scroll.animateScrollTo(y) } }
+            }
         }
-        // each number once: the flock at that time, entered against projected and the company
-        Anchored("now") { FlockNowCard(d, view, entryHHmm) }
         Anchored("alerts") { AlertList(d.allAlerts) }
 
-        SectionLabel("Feed")
         // how many times to feed today: chosen in the feed card
         var feedPick by rememberSaveable(d.day, d.recommendedOption) { androidx.compose.runtime.mutableIntStateOf(d.recommendedOption) }
         Anchored("feed") {
+            SectionLabel("Feed")
             FeedTodayCard(d, feedPick, { feedPick = it }) {
                 FeedEntryRow(d, feeder, zone, onFeed = { bags, at -> onLogFeeding(bags, at); now = System.currentTimeMillis() },
                     onUndo = { onUndoFeeding(); now = System.currentTimeMillis() })
@@ -243,24 +249,25 @@ fun OutputScreen(
             if (d.day <= 7) FirstWeekCard(d)
             EatenCard(d)
         }
-
-        SectionLabel("Floor and FCR")
-        Anchored("space") { SpaceCard(d) }
-        Anchored("lifting") { LiftingCard(d) }
-
-        SectionLabel("Birds")
-        Anchored("birds") { BirdsTab(d, onFlockPlan, hour) }
-        Anchored("trends") { SuggestCard(d) }
-
-        SectionLabel("House")
-        Anchored("litter") { LitterCard(d, hour) }
-        Anchored("water") { WaterCard(d, onFarmChange) }
-        Anchored("vent") { VentTab(d, hour) }
-        Anchored("weather") { WeatherEffects(d) }
-
-        SectionLabel("Records")
-        Anchored("book") { FlockBookCard(d, onSelectDay) }
-        Anchored("charts") { BirdCharts(d); FeedCharts(d) }
+        Anchored("floor") {
+            SectionLabel("Floor and FCR")
+            SpaceCard(d)
+            LiftingCard(d)
+        }
+        Anchored("birds") {
+            SectionLabel("Birds")
+            BirdsTab(d, onFlockPlan, hour)
+            SuggestCard(d)
+        }
+        Anchored("house") {
+            SectionLabel("House")
+            LitterCard(d, hour)
+            WaterCard(d, onFarmChange)
+            VentTab(d, hour)
+            WeatherEffects(d)
+        }
+        Anchored("graphs") { SectionLabel("Graphs"); GraphsCard(d) }
+        Anchored("book") { SectionLabel("Flock book"); FlockBookCard(d, onSelectDay) }
         if (onCloseBatch != null && flock?.status != "closed") {
             OutlinedButton(onClick = { confirmClose = true }, modifier = Modifier.fillMaxWidth(),
                 border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine)) {
@@ -269,6 +276,9 @@ fun OutputScreen(
         }
         Spacer(modifier = Modifier.height(32.dp))
     }
+    // the time of the day: a rail down the right edge, opened by touching it
+    TimeRail(minutes, if (isToday) nowZ.hour * 60 + nowZ.minute else null, entryMin, light, { pinned = it }, { pinned = null },
+        Modifier.align(Alignment.CenterEnd))
     }
     }
     if (confirmClose) {
@@ -558,6 +568,8 @@ class ScrollAnchors(private val scroll: androidx.compose.foundation.ScrollState)
     private var settledDay = Int.MIN_VALUE + 2
     private var stack: List<Pair<String, Float>> = emptyList()   // cards at/above the top, nearest first, with the offset into each
     fun report(key: String, rootY: Float) { tops[key] = rootY - viewportTop + scroll.value; seen[key] = gen }
+    /** where the block [key] starts on the page (scroll position), when it has been laid out */
+    fun topOf(key: String): Int? = tops[key]?.toInt()?.coerceAtLeast(0)
     fun dayShown(day: Int) { if (day != shown) { shown = day; gen++ } }
     fun settled(day: Int) { settledDay = day }
     fun capture() {

@@ -55,14 +55,12 @@ fun FeedTodayCard(d: OutputData, pick: Int, onPick: (Int) -> Unit, feedLog: @Com
     val plan = d.floorPlan
     val fillBags = d.feederLines * pat.openPerLine / d.pansPerBag
     OutputCard(title = "Feed today", info = "plan") {
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(Fmt.n(d.dayBags, 1), style = MaterialTheme.typography.headlineMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold),
+        Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.testTag("feed_conclusion")) {
+            Text("${o.feedings} × ${Fmt.n(o.bagsPerFeeding, 1)}", style = MaterialTheme.typography.headlineSmall.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold),
                 color = kindColor(PR))
             Spacer(Modifier.width(6.dp))
-            Text("bags today", style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = 0.8f), modifier = Modifier.padding(bottom = 4.dp))
+            Text("bags · ${Fmt.n(o.bagsPerLine, 2)} a line", style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = 0.8f), modifier = Modifier.padding(bottom = 3.dp))
         }
-        Text("${o.feedings} feeding${if (o.feedings > 1) "s" else ""} of ${Fmt.n(o.bagsPerFeeding, 1)} bags · ${Fmt.n(o.bagsPerLine, 2)} a line",
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.testTag("feed_conclusion"))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             LeadLabel("feedings")
             d.feedOptions.forEachIndexed { i, opt ->
@@ -92,20 +90,14 @@ fun LiftingCard(d: OutputData) {
     val m = d.mass
     OutputCard(title = "FCR and lifting", info = "lifting") {
         if (m == null) { Text("No data for this day.", style = MaterialTheme.typography.bodySmall); return@OutputCard }
-        if (m.liftedBirds == 0) Text("No birds lifted yet. Enter the birds lifted and the truck's kg on the Entry page: FCR then counts them, and the birds left get their own average.",
-            style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.75f))
-        else {
-            Param("Lifted till date", "", vi(m.liftedBirds, P, "Birds"), v(m.liftedKg, 1, P, "kg"), v(m.liftedKg / m.liftedBirds, 3, P, "kg a bird"))
+        if (m.liftedBirds > 0) {
+            Param("Lifted", "kg a bird", v(m.liftedKg / m.liftedBirds, 3, P, "Average"))
             if (m.liftedToday > 0) Param("Lifted today", "", vi(m.liftedToday, P, "Birds"), v(m.liftAvgKg, 3, P, "kg a bird"),
                 v(m.avgAtLiftKg * 1000, 0, PR, "Flock then g"), v(m.avgAfterKg * 1000, 0, PR, "Birds left g"))
         }
         Param("The flock's meat", "kg", v(m.liveKg, 0, PR, "In the house"), v(m.liftedKg, 0, P, "Lifted"), v(m.deadKg, 0, PR, "Dead, est."))
         Param("Produced", "", v(m.producedKg, 0, PR, "kg"), v(m.cumBwKg, 3, PR, "kg a bird"))
-        KpiLine(Kpi("FCR", "", m.fcr, d.fcrKind, d.fcrCom, d.fcrIdeal, Better.LOWER, 3, settling = d.day < 7))
-        Param("FCR with the dead", "", v(m.fcrAll, 3, PR, "Feed a kg grown"))
-        KpiLine(Kpi("cFCR, company", "at 2 kg", m.cFcrCompany, d.fcrKind, d.cfcrCom, d.cfcrIdeal, Better.LOWER, 3, settling = d.day < 7))
-        Param("cFCR, breed curve", "at 2 kg", v(m.cFcrBreed, 3, d.fcrKind, "Ross table"))
-        KpiLine(Kpi("EPEF", "", d.epef, d.fcrKind, d.epefCom, d.epefIdeal, Better.HIGHER, 1, settling = d.day < 7))
+        Param("FCR", "", v(m.fcrAll, 3, PR, "With the dead"), v(d.fcrIdeal, 3, I, "Ideal"), v(m.cFcrBreed, 3, d.fcrKind, "cFCR breed"), v(d.cfcrIdeal, 3, I, "cFCR ideal"))
         if (m.fcr != null) {
             val adj = (2 - m.cumBwKg) * 0.25
             Text("cFCR company = FCR + (2 − ${Fmt.n(m.cumBwKg, 3)} kg) × 0.25 = ${Fmt.n(m.fcr, 3)} ${if (adj >= 0) "+" else "−"} ${Fmt.n(kotlin.math.abs(adj), 3)} = ${Fmt.n(m.cFcrCompany, 3)}",
@@ -144,21 +136,19 @@ private fun RoomGauge(ratio: Double) {
 fun SpaceCard(d: OutputData) {
     val s = d.space
     OutputCard(title = "Floor, pans and feedings", info = "space") {
-        Param("Density", "kg/m²", v(s.kgM2, 1, d.vk, "Now"), v(s.targetKgM2, 1, I, "Comfortable"), v(d.farm.densityCapDefault, 1, MX, "Most"))
+        Param("Density", "kg/m²", v(s.targetKgM2, 1, I, "Comfortable"), v(d.farm.densityCapDefault, 1, MX, "Most"))
         Param("Floor a bird", "ft²", v(s.ft2PerBird, 2, d.vk, "Has"), v(s.needFt2, 2, I, "Needs"), v(s.roomRatio, 2, PR, "Has ÷ needs"), v(s.birdsM2, 1, d.vk, "Birds a m²"))
         RoomGauge(s.roomRatio)
         Param("Walk to feed and water", "m", v(s.walkM, 2, PR, "Furthest"), v(SpacePlan.MAX_WALK_M, 1, MX, "Most"), v(d.roam, 2, PR, "Roaming ×"))
         Text(s.why, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.testTag("space_why"))
-        s.steps.forEachIndexed { k, step ->
+        listOf("Floor", "Pans", "Feed").zip(s.steps).forEachIndexed { k, (name, step) ->
             Row(Modifier.fillMaxWidth().border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 7.dp)
-                .testTag("plan_step_$k"), verticalAlignment = Alignment.Top) {
-                Text("${k + 1}", style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold),
-                    color = kindColor(PR), modifier = Modifier.width(22.dp))
-                Text(step, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.9f))
+                .testTag("plan_step_$k"), verticalAlignment = Alignment.CenterVertically) {
+                Text("${k + 1} $name", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = kindColor(PR), modifier = Modifier.width(72.dp))
+                Text(step, style = MaterialTheme.typography.bodySmall.copy(fontFamily = com.example.ui.theme.NumberFont), color = Color.White.copy(alpha = 0.9f))
             }
         }
         if (s.options.size > 1) {
-            Text("The ways to set the floor today", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.65f))
             s.options.forEachIndexed { i, o ->
                 val best = i == s.best
                 Column(Modifier.fillMaxWidth().border(if (best) 2.dp else 1.dp, Color.White.copy(alpha = if (best) 0.9f else 0.25f), RoundedCornerShape(8.dp))

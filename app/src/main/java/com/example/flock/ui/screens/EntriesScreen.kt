@@ -305,16 +305,14 @@ fun EntriesScreen(
                 String.format("%02d:%02d", at.hour, at.minute)
             if (dayLocked) {
                 InfoBanner(icon = Icons.Default.Lock, tint = StatusGood, wash = StatusGoodWash,
-                    text = "Saved: $what" + (savedHHmm?.let { " · entries at $it" } ?: "") + " · last change $change$by. " +
-                        "Locked so it is not saved twice. Notes and feed received can still be added.")
+                    text = "Saved and locked · $what" + (savedHHmm?.let { " at $it" } ?: "") + " · changed $change$by")
                 OutlinedButton(onClick = { askUnlock = true }, shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("unlock_day")) {
                     Icon(Icons.Default.LockOpen, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Unlock day $dayNumber to change an entry")
+                    Text("Unlock day $dayNumber")
                 }
             } else InfoBanner(icon = Icons.Default.LockOpen, tint = StatusWarn, wash = StatusWarnWash,
-                text = "Unlocked: change what is wrong and hold Update" + (savedHHmm?.let { " — the time stays $it unless you pick another" } ?: "") +
-                    ". It locks again once saved.")
+                text = "Unlocked" + (savedHHmm?.let { " · time stays $it" } ?: "") + " · locks again once saved")
         }
         if (isHardLocked) {
             InfoBanner(
@@ -324,8 +322,7 @@ fun EntriesScreen(
         }
 
         // when what is entered happened: now, or an earlier time picked (the weighing at 08:15, the lifting at 21:00)
-        if (openDay) Section(title = "Time of these entries", subtitle = if (savedHHmm != null) "As saved; pick another only if the weighing or lifting was at another time"
-            else if (isToday) "Now, unless they were done earlier today — the weighing time starts the weight's projection" else "On $dayDate — the weighing or lifting time") {
+        if (openDay) Section(title = "Time of these entries") {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 com.example.flock.ui.components.TimePickerField(
                     label = if (pickedAt == null && savedHHmm != null) "At (as saved)" else if (pickedAt == null && isToday) "At (now)" else "At", valueHHmm = shownHHmm,
@@ -634,19 +631,13 @@ fun EntriesScreen(
             icon = Icons.Default.Close,
             enabled = !isHardLocked && saved.isNotEmpty() && !dayLocked
         )
-        Text(
-            text = "A saved day locks, so it is not saved twice by mistake; notes and feed received can still be added. Unlock it to change an entry: only what you change is sent, so what another phone entered stays. Clear empties the whole day (unlock a saved day first).",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
 
         Spacer(modifier = Modifier.height(96.dp).navigationBarsPadding())
     }
     if (askUnlock) androidx.compose.material3.AlertDialog(
         onDismissRequest = { askUnlock = false },
         title = { Text("Unlock day $dayNumber?") },
-        text = { Text("Its saved entries can then be changed. Hold Update to save: only what you change is sent" +
-            (savedHHmm?.let { ", and the time stays $it unless you pick another" } ?: "") + ". It locks again once saved.") },
+        text = { Text("Change the saved entries, then hold Update." + (savedHHmm?.let { " The time stays $it." } ?: "")) },
         confirmButton = { androidx.compose.material3.TextButton(onClick = { unlocked = true; askUnlock = false }, modifier = Modifier.testTag("unlock_confirm")) { Text("Unlock") } },
         dismissButton = { androidx.compose.material3.TextButton(onClick = { askUnlock = false }) { Text("Keep locked") } }
     )

@@ -234,7 +234,7 @@ class ScreensRenderTest {
             androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(dens.density, 1.3f)) { output() }
         } }
         rule.mainClock.advanceTimeBy(1200)
-        listOf("time_card", "time_slider", "feed_conclusion", "feed_log", "space_why", "litter_view", "nipple_view", "flock_book").forEach { rule.onNodeWithTag(it).assertExists() }
+        listOf("glance", "radar", "time_rail", "jump_bar", "feed_conclusion", "feed_log", "space_why", "litter_view", "nipple_view", "flock_book").forEach { rule.onNodeWithTag(it).assertExists() }
         assertTrue(rule.onAllNodesWithText("Choose what shows", substring = true).fetchSemanticsNodes().isEmpty())
         assertTrue(rule.onAllNodesWithText("At a glance").fetchSemanticsNodes().isEmpty())
         assertTrue(rule.onAllNodesWithText("Half", substring = true).fetchSemanticsNodes().isEmpty())
@@ -256,29 +256,37 @@ class ScreensRenderTest {
         rule.onNodeWithTag("plan_step_2").assertExists()
         rule.onRoot().captureRoboImage("src/test/screenshots/screen_new_cards.png")
     }
-    /** The time slider moves the page to another time of the day; Now brings the clock back. */
+    /** The time rail (down the right edge) moves the page to another time of the day; touched it opens out; Now brings the clock back. */
     @Config(qualifiers = "w360dp-h2400dp-xhdpi") @Test fun timeSliderPicksATime() {
         rule.mainClock.autoAdvance = false
         rule.setContent { MyApplicationTheme { output() } }
         rule.mainClock.advanceTimeBy(1000)
-        rule.onNodeWithTag("time_slider").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.SetProgress) { it(18 * 60f) }
+        rule.onNodeWithTag("time_rail").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.SetProgress) { it(18 * 60f) }
         rule.mainClock.advanceTimeBy(600)
         rule.onNodeWithTag("time_shown").assertTextEquals("18:00")
-        rule.onAllNodesWithText("Flock at 18:00")[0].assertExists()
+        // touched, the rail opens out with the hours and the time on its handle
+        rule.onNodeWithTag("time_rail").performTouchInput { down(Offset(width / 2f, height * 0.25f)) }
+        rule.mainClock.advanceTimeBy(300)
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_time_rail_open.png")
+        rule.onNodeWithTag("time_rail").performTouchInput { up() }
+        rule.mainClock.advanceTimeBy(300)
+        rule.onNodeWithTag("time_shown").assertTextEquals("06:00")
         rule.onNodeWithTag("time_now").performClick()
         rule.mainClock.advanceTimeBy(600)
         assertTrue(rule.onAllNodesWithTag("time_now").fetchSemanticsNodes().isEmpty())
-        rule.onRoot().captureRoboImage("src/test/screenshots/screen_time_card.png")
     }
-    /** A full-screen chart: opened from its corner, it reads the lifting days and closes again. */
+    /** The graphs: one chart picked from the row, lifting days marked; opened full screen from its corner. */
     @Config(qualifiers = "w360dp-h780dp-xhdpi") @Test fun chartOpensFullScreen() {
         val r = KgfFlock.computed(44)
         val d = com.example.flock.ui.screens.OutputData(KgfFlock.flock, KgfFlock.farm, r.last(), r, KgfFlock.feedTypes, null, emptyList(), false, false)
         rule.mainClock.autoAdvance = false
         rule.setContent { MyApplicationTheme { Box(Modifier.fillMaxSize().background(Color.Black).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
-            com.example.flock.ui.screens.BirdCharts(d) } } }
+            com.example.flock.ui.screens.GraphsCard(d) } } }
         rule.mainClock.advanceTimeBy(800)
-        rule.onNodeWithTag("zoom_birds_in_the_house").performClick()
+        rule.onNodeWithTag("chart_pick_birds").performClick()
+        rule.mainClock.advanceTimeBy(400)
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_graphs.png")
+        rule.onNodeWithTag("chart_zoom").performClick()
         rule.mainClock.advanceTimeBy(800)
         rule.onNodeWithTag("chart_zoomed").assertExists()
         com.github.takahirom.roborazzi.captureScreenRoboImage("src/test/screenshots/screen_chart_zoomed.png")
@@ -304,7 +312,7 @@ class ScreensRenderTest {
         rule.setContent { MyApplicationTheme { if (showTasks) tasks() else output() } }
         rule.mainClock.advanceTimeBy(1000)
         assertTrue(rule.onAllNodesWithText("Day clock").fetchSemanticsNodes().isEmpty())
-        rule.onNodeWithTag("time_card").assertExists()
+        rule.onNodeWithTag("glance").assertExists()
         assertTrue(rule.onAllNodesWithText("Hungry", substring = true).fetchSemanticsNodes().isNotEmpty())
         showTasks = true
         rule.mainClock.advanceTimeBy(1000)
@@ -368,7 +376,7 @@ class ScreensRenderTest {
         rule.mainClock.autoAdvance = false
         rule.setContent { MyApplicationTheme { Dash(0) { EntriesScreen(saved, 11, "30 Sep", "29 Sep", feedTypes, lock, "k3", listOf(50), emptyList(), { got = it }, {}, farm = farm) } } }
         rule.mainClock.advanceTimeBy(1000)
-        rule.onAllNodesWithText("Locked so it is not saved twice", substring = true)[0].assertExists()
+        rule.onAllNodesWithText("Saved and locked", substring = true)[0].assertExists()
         rule.onNodeWithTag("mortality_input").assertIsNotEnabled()
         rule.onNodeWithTag("notes_input").assertIsEnabled()
         rule.onAllNodesWithText("Hold to save notes and feed received")[0].assertExists()
@@ -411,9 +419,9 @@ class ScreensRenderTest {
         rule.mainClock.autoAdvance = false
         rule.setContent { MyApplicationTheme { output() } }
         rule.mainClock.advanceTimeBy(800)
-        rule.onNodeWithTag("info_time").performClick()
+        rule.onNodeWithTag("info_glance").performClick()
         rule.mainClock.advanceTimeBy(800)
         rule.onAllNodesWithText("How it is worked out")[0].assertExists()
-        com.github.takahirom.roborazzi.captureScreenRoboImage("src/test/screenshots/screen_info_time.png")
+        com.github.takahirom.roborazzi.captureScreenRoboImage("src/test/screenshots/screen_info_glance.png")
     }
 }

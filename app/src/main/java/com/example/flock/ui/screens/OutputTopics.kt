@@ -215,8 +215,6 @@ private fun AccuracyCard(d: OutputData) {
                 }
             }
         }
-        Text("Projected the day before, against the entry. Off %: + too high, − too low. Avg %: the average miss over ${lines.maxOf { it.acc.checks.size }} checks. One day's feed entry swings: feed stays in the lines.",
-            style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.55f))
     }
 }
 
@@ -245,17 +243,12 @@ private fun UniformityCard(d: OutputData) {
     val heavy = if (measured) singles.count { it > mean * 1.1 } * 100.0 / singles.size else (1 - normCdf(0.1 / cvFrac)) * 100
     val even = 100 - light - heavy
     OutputCard(title = "Uniformity", info = "uniformity") {
-        RangeParam("CV", "%", null, 8.0, 10.0, e.cv, 2, projected = d.cvEst.takeIf { !d.cvMeasured })
         RangeParam("Even birds", "%", 80.0, null, null, e.uniformityPct ?: (if (measured) even else null), 1)
-        Text(if (measured) "Weight spread of the ${singles.size} birds weighed one by one, share of birds in each 5 % step"
-             else if (d.cvEst != null) "Weight spread at the CV estimated from the group weighings (${Fmt.n(cvFrac * 100, 1)} %) — weigh 10 or more birds one by one for the real one"
-             else "Expected weight spread at CV ${Fmt.n(cvFrac * 100, 1)} % — weigh 10 or more birds one by one to see the real one",
+        Text(if (measured) "${singles.size} birds weighed one by one" else "Expected at CV ${Fmt.n(cvFrac * 100, 1)} % · weigh 10 birds one by one",
             style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.65f))
         WeightHistogram(bins, mean, measured)
         ValueRow(listOf(v(light, 1, if (measured) P else PR, "Light"), v(even, 1, if (measured) P else PR, "Even"),
             v(heavy, 1, if (measured) P else PR, "Heavy")), "birds %")
-        Text("Light: more than 10 % under the average · Even: within ±10 % · Heavy: more than 10 % over",
-            style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.55f))
         if (measured) ValueRow(listOf(v(singles.min(), 1, P, "Lightest"), v(mean, 1, P, "Average"), v(singles.max(), 1, P, "Heaviest")), "weight g")
         else ValueRow(listOf(vi(singles.size, P, "Weighed"), vi(PhysiologicalEngine.MIN_BIRDS_FOR_CV, MN, "Needed")), "singles")
         if (e.locSpreadPct != null) Param("Spread between locations", "%", v(e.locSpreadPct, 2, P, "Bulk weighing"))
@@ -458,11 +451,8 @@ internal fun WaterCard(d: OutputData, onFarmChange: ((com.example.flock.data.Far
                     .clickable(enabled = onFarmChange != null) { onFarmChange?.invoke(d.farm.copy(waterRefillFactor = m)) })
             }
         }
-        Param("Water", "", listOf(
-            "mL/bird" to listOf(v(d.waterPerBird, 1, PR, "Today")),
-            "farm L" to listOf(v(d.waterL, 1, PR, "Today"), v(d.waterL / max(0.5, e.lightHours), 1, PR, "L an hour, lit"))
-        ), strong = true)
-        NippleLineView(d.drinkerHtIn, e.drinkerPressureIn.takeIf { it > 0 }, d.bw)
+        Param("Water", "", v(d.waterPerBird, 1, PR, "mL a bird"), v(d.waterL / max(0.5, e.lightHours), 1, PR, "L an hour, lit"))
+        NippleLineView(d.drinkerHtIn, e.drinkerPressureIn.takeIf { it > 0 })
         Param("Nipple line", "", v(e.drinkerPressureIn.takeIf { it > 0 }, 2, I, "Pressure in"), v(d.drinkerHtIn, 1, I, "Height in"),
             v(e.drinkerFlowLHrLine.takeIf { it > 0 }, 1, I, "L/h per line"))
         if (d.birdsPerNipple != null) RangeParam("Birds / nipple", "", null, null, d.birdsPerNippleMax, d.birdsPerNipple, 1, PR)

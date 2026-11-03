@@ -145,13 +145,13 @@ class LiftingSpaceTest {
         assertEquals(2, w.feedings)
         assertTrue("one fill ${w.fillBags} under a feeding ${w.bagsPerFeeding}", w.fillBags <= w.bagsPerFeeding)
         assertEquals(3, warm.steps.size)
-        assertTrue(warm.steps[1].startsWith("Pans: "))
+        assertTrue(warm.steps[1].startsWith("1 on · 2 off"))
         val cool = plan(24.0, 15.0)
         val c = cool.options[cool.best]
         cool.steps.forEach { println("cool: $it") }
         assertEquals("pen", c.key)
         assertTrue(c.shutPastPen > 0)
-        assertTrue(cool.steps[1].contains("past the barricade"))
+        assertTrue(cool.steps[1].contains("past it") && cool.steps[0].startsWith("Barricade at"))
         // too few bags to fill the open pans even once: the plan says so
         val short = SpacePlan.plan(spaceIn(7222, 3.1, 31.0, 24.0).copy(dayBags = 3.0, bagsFullLine = 3.0, birdsPerPanMax = 71.0))
         assertTrue(short.options.first().let { !it.feedReaches })

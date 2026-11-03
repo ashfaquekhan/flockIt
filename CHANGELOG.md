@@ -8,6 +8,24 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v49 — 2026-11-04 · The day at a glance with the radar, a time rail, one graph card, less text, no swipe · no DB or sheet change
+- **The day at a glance** (top of Output, under the farm window): the performance radar — growth, FCR, livability,
+  evenness, appetite, EPEF, each 100 = the company, the breed's ideal drawn thin beside it — and the twelve numbers that
+  matter in three columns (weight, gain, FCR, cFCR, mortality, live, lifted, feed, water, kg/m², CV, EPEF), entered green
+  and projected amber with the company's under each and an up/down mark; under them the air and hungry / thirsty /
+  panting at the time shown. These numbers are only here; the cards below show how they come about.
+- **Jump buttons** under it: Feed · Floor and FCR · Birds · House · Graphs · Book — one tap scrolls there.
+- **The time rail**: the time slider is now a thin rail down the right edge (00:00 at the top). Touch it and it opens out
+  — hours, dark hours shaded, the entries' time (green), now (white dot: tap it to go back to the clock) — and the time
+  follows the finger; it folds away again on its own. The time card is gone.
+- **Graphs in one card**: pick Weight · Birds · FCR · cFCR · Mortality · Feed a day · Feed total; one larger chart; drag
+  along it to read any day (every line's value in a box); lifting days are rose bands with an L badge; Zoom opens it full
+  screen (one finger reads, two fingers zoom).
+- **Less text**: the floor plan is three short lines (Floor · Pans · Feed), the entry page's banners are one line, the
+  long notes under cards are gone (the ⓘ keeps the explanations).
+- **No swipe between pages** (by request): the bottom bar changes the page.
+- **No bird in the litter and nipple-line drawings.**
+
 ## v48 — 2026-11-04 · One page with every number once, a saved day locks again, the plan for a half-empty house, swipe between pages, the litter and the nipple line drawn, a flock book, charts to zoom · no DB or sheet change
 - **No folds, no "choose what shows".** The Output page shows everything, grouped under Feed · Floor and FCR · Birds ·
   House · Records, and each number has one place: the "At a glance" grid and the grid under the farm window (which

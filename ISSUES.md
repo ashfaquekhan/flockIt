@@ -56,12 +56,15 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O52 | Two phones changing the same value at the same time: the later save wins | Different values on the same day are merged; the same value is not. |
 | O53 | The litter is a model, and the bedding depth is assumed | 7.5 cm of bedding at placement unless known; droppings from the feed entered; moisture, warmth and ammonia from age, crowding, the house air and air speed. Not fitted to this house — a squeeze test and the nose decide. A farm setting for the bedding depth (and material) would firm it up. |
 | O54 | The nipple line drawing shows the age curve, not a reading | Pressure and height are the ideal for the age (there is no entry for them). Readings could be added to the entry page. |
-| O55 | The performance radar is in the design options, not in the app | Six axes against the company (growth, FCR, livability, evenness, appetite, EPEF). Add it once a design is chosen. |
+| O55 | The radar's scale is a choice | 100 = the company; evenness against an 8 % CV; appetite loses 2 points per % off the company's feed; drawn up to 150. Say if other weights suit the farm better. |
 | O56 | The floor plan's pan figures are rules of thumb | About 45 birds a pan aimed for, under 25 counted as too few (feed goes stale), 2 m the longest walk (Ross). Say if the company uses others. |
 
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v49 | Too much scrolling, no overview | v48 put every card open in one long page and dropped the glance | The day at a glance (radar + 12 numbers) on top, jump buttons to each group, one graph card |
+| v49 | The time slider sat in a card and took room | A horizontal slider in its own card | A rail down the right edge that opens when touched; tap the white dot for now |
+| v49 | Graphs hard to read, lifting marks not visible | Thin dashed lines for lifting, values in boxes above each chart | One chart at a time, a value box on the cursor, lifting days as rose bands with an L badge |
 | v48 | Livability 46 % and EPEF 220 after lifting (company 468) | Livability = live ÷ started: the lifted birds counted as lost | (live + lifted) ÷ started; EPEF on the average of every bird produced |
 | v48 | Holding Save again re-saved the morning's entry with the time moved to now | v47 removed the lock, and an empty time picker meant "now" | A saved day locks (notes and feed received stay open) until unlocked; a save keeps the saved time unless another is picked |
 | v48 | No hold animation on the Save button | The fill was a child box sized to the button's height, which is unbounded inside the scrolling Entry page: 0 px tall | Drawn behind the button; a ring and a count too; timed by frames |
