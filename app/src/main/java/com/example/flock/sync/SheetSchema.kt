@@ -299,7 +299,81 @@ object SheetSchema {
 
     /** Columns about the row itself (who saved it, when, which groups are in): written with every change. */
     val DAY_META = setOf("updatedat", "updatedby", "savedfields", "committed", "sampleentered")
-    private fun cellText(v: Any?): String = when (v) {
+
+    // ------------------------------------------------------------------ two phones, one value (v55)
+
+    /** column → text, kept in one string (the separators never occur in what is typed). */
+    fun encodeCells(m: Map<String, String>): String = m.entries.joinToString("\u001E") { it.key + "\u001F" + it.value }
+    fun decodeCells(s: String): Map<String, String> = if (s.isBlank()) emptyMap() else
+        s.split('\u001E').mapNotNull { e -> val i = e.indexOf('\u001F'); if (i <= 0) null else e.substring(0, i) to e.substring(i + 1) }.toMap()
+
+    /**
+     * What the sheet held (as this phone last loaded it) in [columns] of [existing], added to [old] for the columns not in
+     * it yet — the first value is the one that counts until the row is sent. A row not yet changed starts afresh; a row
+     * from before v47 (every column unsent) keeps none (no check, as before).
+     */
+    fun addBase(existing: DailyDataEntity, columns: Set<String>): String {
+        if (existing.dirty && existing.dirtyFields.isBlank()) return ""
+        val old = if (existing.dirty) decodeCells(existing.dirtyBase) else emptyMap()
+        val v = dayValues(existing)
+        return encodeCells(old + columns.filter { it !in old && it !in DAY_META && it !in NO_CLASH }.associateWith { cellText(v[it]) })
+    }
+
+    /** Columns worked out from others or stamped at saving (their source columns are checked instead). */
+    private val NO_CLASH = setOf("feedusedbreakdown", "feedusedtype", "locations", "weighedat", "liftedat")
+
+    /** The same value however it was written: equal text, or numbers equal to a millionth (9.5 and 9.500000001). */
+    fun sameCell(a: String, b: String): Boolean {
+        if (a == b) return true
+        val x = a.toDoubleOrNull() ?: return false; val y = b.toDoubleOrNull() ?: return false
+        return kotlin.math.abs(x - y) <= 1e-6 * maxOf(1.0, kotlin.math.abs(x), kotlin.math.abs(y))
+    }
+
+    /**
+     * The columns another phone changed since this one loaded the row: the sheet's cell is now neither what this phone
+     * started from ([base]) nor what it wants to write. Returns column → the sheet's value. Columns with no base (the
+     * day's kept weather, rows from before v55) are not checked.
+     */
+    fun findConflicts(header: List<String>, sheet: List<Any?>, mine: DailyDataEntity, columns: Set<String>, base: Map<String, String>): Map<String, String> {
+        val mineVals = dayValues(mine)
+        val out = LinkedHashMap<String, String>()
+        header.forEachIndexed { i, name ->
+            val k = norm(name)
+            if (k !in columns || k in DAY_META || k in NO_CLASH || k in out) return@forEachIndexed
+            val b = base[k] ?: return@forEachIndexed
+            val theirs = cellText(sheet.getOrNull(i))
+            if (!sameCell(theirs, b) && !sameCell(theirs, cellText(mineVals[k]))) out[k] = theirs
+        }
+        return out
+    }
+
+    /** [row] with some of its sheet cells set to [cells] (column → text), every other value and the phone's own bookkeeping kept. */
+    fun withCells(sid: String, row: DailyDataEntity, cells: Map<String, String>): DailyDataEntity {
+        val v = dayValues(row)
+        val header = (v.keys + cells.keys).distinct()
+        val parsed = day(sid, Row(header.map { k -> cells[k] ?: v[k] ?: "" }, Header(header))) ?: return row
+        return parsed.copy(dirty = row.dirty, dirtyFields = row.dirtyFields, dirtyBase = row.dirtyBase, conflicts = row.conflicts,
+            updatedAt = row.updatedAt, updatedBy = row.updatedBy)
+    }
+
+    /** A column's name for people. */
+    fun columnLabel(col: String): String {
+        val k = norm(col)
+        Regex("^w(\\d{1,2})$").find(k)?.let { return "Weight, location ${it.groupValues[1]}" }
+        Regex("^n(\\d{1,2})$").find(k)?.let { return "Birds weighed, location ${it.groupValues[1]}" }
+        if (k.startsWith("used")) return "Feed used, " + k.removePrefix("used").uppercase()
+        return when (k) {
+            "mortality" -> "Deaths"; "feedbagsused" -> "Feed used, bags"; "feedusedbreakdown" -> "Feed used by type"
+            "birdslifted" -> "Birds lifted"; "weightlifted" -> "Kg lifted"; "lameseparated" -> "Culls"; "notes" -> "Notes"
+            "penstartft" -> "First barricade"; "broodinglength" -> "Last barricade"; "feedings" -> "Feedings"
+            "individualweights" -> "Birds weighed one by one"; "dieselcansused" -> "Diesel cans"; "weighedat" -> "Time of the weighing"
+            "liftedat" -> "Time of the lifting"; "locations" -> "Sample locations"
+            "feedrecb1", "feedrecb2", "feedrecb3" -> "Feed received " + k.last(); "feedtypeb1", "feedtypeb2", "feedtypeb3" -> "Feed type received " + k.last()
+            else -> col
+        }
+    }
+
+    internal fun cellText(v: Any?): String = when (v) {
         null -> ""
         is Number -> v.toDouble().let { if (it == kotlin.math.floor(it) && kotlin.math.abs(it) < 1e15) it.toLong().toString() else it.toString() }
         else -> v.toString().trim()

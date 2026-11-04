@@ -285,4 +285,10 @@ fun MainFlockScreen(
     if (showForecast) {
         WeatherForecastDialog(forecast = forecast, onDismiss = { viewModel.closeWeatherForecast() })
     }
+    // values two phones changed differently: the farm keeps one (v55); "Later" hides these until another clash comes
+    val clashes by viewModel.clashes.collectAsState()
+    var later by remember { mutableStateOf(emptySet<String>()) }
+    val waiting = clashes.filter { "${it.day}|${it.column}|${it.theirs}" !in later }
+    if (waiting.isNotEmpty()) com.example.flock.ui.components.ClashDialog(waiting, { c, mine -> viewModel.resolveClash(c, mine) },
+        { later = later + waiting.map { "${it.day}|${it.column}|${it.theirs}" } })
 }

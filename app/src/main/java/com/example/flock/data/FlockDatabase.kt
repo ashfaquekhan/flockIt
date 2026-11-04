@@ -62,6 +62,14 @@ val MIGRATION_19_20 = object : androidx.room.migration.Migration(19, 20) {
     }
 }
 
+/** v21: what the sheet held when this phone changed a value, and clashes with another phone waiting for a choice. */
+val MIGRATION_20_21 = object : androidx.room.migration.Migration(20, 21) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE daily_data ADD COLUMN dirtyBase TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE daily_data ADD COLUMN conflicts TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 val MIGRATION_17_18 = object : androidx.room.migration.Migration(17, 18) {
     override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE daily_data ADD COLUMN liftedAt INTEGER NOT NULL DEFAULT 0")
@@ -94,7 +102,7 @@ val MIGRATION_15_16 = object : androidx.room.migration.Migration(15, 16) {
         DailyDataEntity::class,
         TaskEntity::class
     ],
-    version = 20,
+    version = 21,
     exportSchema = false
 )
 abstract class FlockDatabase : RoomDatabase() {
@@ -119,7 +127,7 @@ abstract class FlockDatabase : RoomDatabase() {
                     FlockDatabase::class.java,
                     "flockit_database"
                 )
-                    .addMigrations(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20)
+                    .addMigrations(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21)
                     .fallbackToDestructiveMigration()
                     .addCallback(FlockDatabaseCallback(scope))
                     .build()

@@ -156,6 +156,10 @@ interface DailyDataDao {
     @Query("DELETE FROM daily_data WHERE spreadsheetId = :spreadsheetId AND flockId = :flockId")
     suspend fun deleteDailyDataForFlock(spreadsheetId: String, flockId: String)
 
+    /** Every day row saved on this phone and not yet on the sheet, whichever farm (sent in the background, v55). */
+    @Query("SELECT * FROM daily_data WHERE dirty = 1")
+    suspend fun getDirtyDays(): List<DailyDataEntity>
+
     @Query("DELETE FROM daily_data WHERE spreadsheetId = :spreadsheetId")
     suspend fun deleteAllDailyData(spreadsheetId: String)
 }

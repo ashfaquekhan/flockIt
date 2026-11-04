@@ -8,6 +8,24 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v55 — 2026-11-05 · Safer sync for two phones: asked again when Google is busy, sent in the background, no silent overwrite · **DB 20 → 21**, no sheet change
+- **When Google is busy or has a passing fault** (too many requests, unavailable, a server error, a timeout) the request is
+  asked again after 1, 2 and 4 seconds (or as long as Google asks) instead of failing to the next load. Only requests that
+  do the same thing however often they run are repeated after a fault or a timeout (reads, cell writes); adding rows,
+  creating or copying a file and changing tabs are not, so nothing is ever done twice. With no network at all nothing
+  waits.
+- **Entries saved without a network are sent by themselves** as soon as the phone is online again — also with FlockIt
+  closed (Android's WorkManager; tried again later while something is unsent, nothing ever pops up). The note says
+  "saved on the phone — it will be sent when the network is back".
+- **Two phones changing the same entry**: each phone remembers what the sheet held when it changed a value. If the other
+  phone changed that value in the meantime, it is no longer overwritten: a window shows both ("This phone 14 · The sheet
+  12" for Day 12 · Deaths) and a tap keeps one. Until then that value waits on the phone; everything else on the day is
+  sent. Different values on the same day still merge by themselves, as before. Numbers written another way (9.5 and
+  9.500000001) count as the same; values worked out from others (feed by type, times stamped at saving) are not compared.
+- The app's reads and writes of the sheet and the background sender take turns (one lock for the whole app).
+- **DB 20 → 21** (`MIGRATION_20_21`): two columns on the phone only (what the sheet held, clashes waiting); the sheet is
+  unchanged.
+
 ## v54 — 2026-11-05 · No boxes, the v46 line for every number, barricades set on the feed plan, a straight house, lighter type · no DB or sheet change
 - **No boundaries in the page**: no outlined cards or tiles on Output, Entry and Stock — every section and number sits
   straight on the black, set apart by space; the top bar keeps its look. The page uses more of the width.

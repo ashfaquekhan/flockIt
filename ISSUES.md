@@ -12,7 +12,7 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O3 | Task alarms are not re-scheduled after the phone restarts | Alarms refresh only when the app is opened. |
 | O4 | Engine alert text (stored with each day) still says "exceeds ceiling" | Output topics use their own alerts; the stored text is not shown on Output. |
 | O5 | Water use is not logged | All water figures are projected. |
-| O6 | Real Google Sheets sync needs a proper OAuth access token and a two-account test | See README "Google OAuth". |
+| O6 | The Google sign-in app is in testing mode | Sync is in real use (farm, 5 Nov 2026): three test accounts on two phones, added as test users in the Google Cloud project. Anyone else needs adding as a test user; opening it to all needs Google's review of the sheet and app-data permissions. See README "Google OAuth". |
 | O7 | Humidity-compensation coefficients on the IB controller not verified | A test was given; confirm on the controller. |
 | O8 | No Entry fields for house readings (house temp/RH, litter, NH₃, CO₂, body/foot temperature…) | Removed from Entry in v16. Readings typed into the sheet's Measured* columns now show as Present. Add an optional readings section if wanted. |
 | O9 | Foot temperature has no official target | Range shown is from the cheek test and thermal-camera studies; treat as a guide. |
@@ -52,7 +52,8 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O47 | Sheet schema 8 upgrade is tested on data, not yet run on the live sheet | It runs once on the first load after installing v47 and keeps a snapshot of the old sheet (same path as 6 → 7, which ran on this sheet on 9 Oct). A copy of the sheet as it stood on 3 Nov is also saved beside the APK. |
 | O48 | Lifting time is not known for the four liftings already entered | They are taken as 20:00 (the trucks loaded in the evening; the entries were saved 20:28–23:04). Pick the time when entering the next lifting. |
 | O51 | "Comfortable" density on hot days (30 / 34 kg/m²) is a rule of thumb | From heat-stress guidance; the farm's cap (39 kg/m²) stays the most. Say if the company uses other figures. |
-| O52 | Two phones changing the same value at the same time: the later save wins | Different values on the same day are merged; the same value is not. |
+| O68 | Clashes are found for day entries only | Farm settings, flocks, tasks and feed types still go by the later save, and are not sent in the background (they are sent with the next save). |
+| O69 | The background sender needs Google sign-in to renew by itself | It uses the account signed in on the phone; if Google wants the sign-in confirmed again, it waits until FlockIt is opened. |
 | O53 | The litter is a model, and the bedding depth is assumed | 7.5 cm of bedding at placement unless known; droppings from the feed entered; moisture, warmth and ammonia from age, crowding, the house air and air speed. Not fitted to this house — a squeeze test and the nose decide. A farm setting for the bedding depth (and material) would firm it up. |
 | O54 | The nipple line drawing shows the age curve, not a reading | Pressure and height are the ideal for the age (there is no entry for them). Readings could be added to the entry page. |
 | O55 | The radars' scales are a choice | Birds: 100 = the company, evenness against an 8 % CV, drawn up to 150. The other three: 100 inside the ideal band, 50 at the limit, 0 as far again past it; eaten loses 2 points per % off the company's feed. Say if other weights suit the farm better. |
@@ -72,6 +73,9 @@ is not made twice. Newest first. Open items at the top. Update together with
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v55 | Two phones changing the same value: the later save silently replaced the other (was O52) | A save wrote this phone's value without knowing the sheet had changed since this phone loaded it | Each phone keeps what the sheet held when it changed a value; a different value on the sheet is a clash, shown with both values for the farm to choose |
+| v55 | Entries saved without a network reached the sheet only when FlockIt was opened again | Unsent rows were re-sent on the next load only | Sent in the background once the network is back (WorkManager) |
+| v55 | A busy moment at Google left a save unsent until the next load | One try per request (a refused token was the only retry) | Asked again after 1, 2, 4 s on busy / passing faults / timeouts; never for requests that could happen twice |
 | v54 | Could not scroll the page over the graphs | The chart's cursor took the drag on any sideways movement (> 0 px), and the time rail holds the right edge | The cursor moves only on a sideways drag past the touch slop (or a tap); up and down scroll the page |
 | v54 | Too many signs, boxes everywhere, text too bold and big, the page cramped | v53 put a sign on every number, tab and chip, a box round every card and tile, +1 sp type with medium weight | One small sign per section; no outlines or panels in the content; Material sizes, regular weight; numbers one a line |
 | v54 | The v53 number tiles' little line was worse than v46's | A 10 dp line with ticks only | The v46 line: company ±5 % band and tick, ideal tick, the flock's dot, full width; range bars for safe ranges |
@@ -245,5 +249,9 @@ is not made twice. Newest first. Open items at the top. Update together with
 - Python edit scripts with `'''` strings break the Bash heredoc: write them to a file with the Write tool and run that.
 - In a two-to-a-row tile grid the rows use `IntrinsicSize.Max`: never put a `BoxWithConstraints` / `ValueRow` inside such a
   tile (sub-composition has no intrinsic size and crashes); wide tiles sit alone in their row.
+- Retrying Google requests: never repeat one that may have gone through and adds something (append, file create / copy,
+  tab changes) after a fault or a timeout; "busy" (429 / 503) is always safe. No network at all: fail at once (the
+  background sender takes it), never keep a busy overlay waiting.
+- Two repositories (the app's and the background sender's) share one lock (`IO_LOCK` in FlockRepository.kt).
 - The PC went to sleep in the middle of a test run (v52: 21 minutes, the build took 1 h 19 min): keep the machine awake
   for long builds.

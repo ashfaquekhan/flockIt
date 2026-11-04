@@ -150,6 +150,8 @@ object GoogleApiClientProvider {
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
+            // Google busy or a passing fault: asked again after a moment (v55)
+            .addInterceptor(RetryInterceptor())
             .addInterceptor(HttpLoggingInterceptor().apply {
                 level = HttpLoggingInterceptor.Level.BASIC
             })

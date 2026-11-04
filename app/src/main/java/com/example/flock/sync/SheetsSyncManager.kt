@@ -353,8 +353,13 @@ class SheetsSyncManager(
      * and the row's own bookkeeping (who, when, which groups) — are written: what another phone entered in the
      * other columns meanwhile stays. Without, every column the app knows is written (a row saved by an older app).
      * Returns the row as it now stands on the sheet (the sheet's values with this phone's changes in).
+     *
+     * v55: [base] is what the sheet held in each changed column when this phone changed it. A column the sheet now holds
+     * something else in (another phone changed it meanwhile) is not written: the row comes back with this phone's value
+     * still in it, still unsent, and the clash (column → the sheet's value) for the farm to choose.
      */
-    suspend fun pushDayEntry(spreadsheetId: String, day: DailyDataEntity, updateReports: Boolean = true, columns: Set<String>? = null): Result<DailyDataEntity> =
+    suspend fun pushDayEntry(spreadsheetId: String, day: DailyDataEntity, updateReports: Boolean = true, columns: Set<String>? = null,
+                             base: Map<String, String> = emptyMap()): Result<PushedDay> =
         withContext(Dispatchers.IO) {
             val authHeader = authManager.getAuthHeader() ?: return@withContext Result.failure(Exception("Not signed in to Google"))
             ensureLayout(authHeader, spreadsheetId)
@@ -382,16 +387,23 @@ class SheetsSyncManager(
                     header = header + missing
                 }
                 var stored = day
+                var clash: Map<String, String> = emptyMap()
                 val ok = if (rowNum > 0) {
                     // the row as the sheet has it now: another phone may have entered something since this one read it
                     val cur = GoogleApiClientProvider.sheetsApi.batchGet(authHeader, spreadsheetId,
                         listOf(a1("DailyData", "A$rowNum:${SheetSchema.colLetter(header.size)}$rowNum")))
                     if (!cur.isSuccessful) return@withContext Result.failure(Exception("DailyData row read failed (${cur.code()})"))
                     val sheetCells: List<Any?> = cur.body()?.valueRanges?.firstOrNull()?.values?.firstOrNull() ?: emptyList()
-                    val cols: Set<String> = columns?.let { it + missing.map { m -> SheetSchema.norm(m) } }
+                    val all: Set<String> = columns?.let { it + missing.map { m -> SheetSchema.norm(m) } }
                         ?: (values.keys + header.filter { SheetSchema.isDynamicColumn(it) }.map { SheetSchema.norm(it) })
+                    // a value another phone changed since this one loaded it is not overwritten: the farm chooses
+                    clash = SheetSchema.findConflicts(header, sheetCells, day, all, base)
+                    val cols = all - clash.keys
                     val (cells, merged) = SheetSchema.mergeDay(spreadsheetId, header, sheetCells, day, cols)
-                    stored = merged.copy(dirty = false, dirtyFields = "")
+                    stored = if (clash.isEmpty()) merged.copy(dirty = false, dirtyFields = "", dirtyBase = "", conflicts = "")
+                        else SheetSchema.mergeDay(spreadsheetId, header, cells, day, clash.keys).second.copy(
+                            dirty = true, dirtyFields = clash.keys.joinToString(","),
+                            dirtyBase = SheetSchema.encodeCells(base.filterKeys { it in clash }), conflicts = SheetSchema.encodeCells(clash))
                     // only the changed columns and the row's bookkeeping, in runs, so everything else keeps its value
                     val known = header.indices.filter { SheetSchema.norm(header[it]).let { k -> k in cols || k in SheetSchema.DAY_META } }
                     var i = 0
@@ -410,9 +422,12 @@ class SheetsSyncManager(
                 }
                 if (missing.isNotEmpty()) { layoutOk -= spreadsheetId; upgradeTried -= spreadsheetId }   // columns were added at the end: tidy the layout next time
                 if (ok && updateReports) pushReports(spreadsheetId)
-                if (ok) Result.success(stored) else Result.failure(Exception("DailyData write failed"))
+                if (ok) Result.success(PushedDay(stored, clash)) else Result.failure(Exception("DailyData write failed"))
             } catch (e: Exception) { Result.failure(e) }
         }
+
+    /** A day row after it was sent: as the sheet now has it (with this phone's value kept in a clashing column) and the clashes. */
+    data class PushedDay(val row: DailyDataEntity, val conflicts: Map<String, String>)
 
     /** Grows a tab to at least [cols] columns. */
     private suspend fun growColumns(authHeader: String, fileId: String, tab: String, cols: Int) {

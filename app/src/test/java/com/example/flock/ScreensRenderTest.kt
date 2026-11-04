@@ -275,6 +275,17 @@ class ScreensRenderTest {
         rule.onNodeWithTag("farm_iso_litter").assertExists()
         rule.onRoot().captureRoboImage("src/test/screenshots/screen_new_cards.png")
     }
+    /** Two phones changed the same entries: both values side by side, a tap keeps one (v55). */
+    @Config(qualifiers = "w360dp-h780dp-xhdpi") @Test fun clashWindow() {
+        val clashes = listOf(com.example.flock.ui.Clash(12, "mortality", "Deaths", "14", "12"),
+            com.example.flock.ui.Clash(12, "w1", "Weight, location 1", "612.5", "598"))
+        var kept: Pair<String, Boolean>? = null
+        rule.setContent { MyApplicationTheme { com.example.flock.ui.components.ClashDialog(clashes, { c, mine -> kept = c.column to mine }, {}) } }
+        rule.onAllNodesWithText("Day 12 · Deaths")[0].assertExists()
+        com.github.takahirom.roborazzi.captureScreenRoboImage("src/test/screenshots/screen_clash.png")
+        rule.onNodeWithTag("clash_theirs_12_mortality").performClick()
+        assertEquals("mortality" to false, kept)
+    }
     /** Every symbol in one sheet, with its name: the set to look at together. */
     @Config(qualifiers = "w360dp-h1400dp-xhdpi") @Test fun gameIconSheet() {
         rule.setContent { MyApplicationTheme { androidx.compose.foundation.layout.Column(Modifier.fillMaxSize().background(Color.Black).padding(10.dp),

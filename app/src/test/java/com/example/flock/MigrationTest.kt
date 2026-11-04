@@ -13,6 +13,7 @@ import com.example.flock.data.MIGRATION_16_17
 import com.example.flock.data.MIGRATION_17_18
 import com.example.flock.data.MIGRATION_18_19
 import com.example.flock.data.MIGRATION_19_20
+import com.example.flock.data.MIGRATION_20_21
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -54,7 +55,7 @@ class MigrationTest {
         val raw = SQLiteDatabase.openOrCreateDatabase(file, null)
         creates.forEach { sql ->
             var s = sql
-            (newFarmCols + listOf("dirty", "indivWeights", "locSpreadPct", "uniformityPct", "moreSamples", "locCount", "weighedAt", "liftedAt", "feedings", "dirtyFields", "penStartFt", "outTempMin", "outTempAvg", "outTempMax", "outRhMin", "outRhAvg", "outRhMax")).forEach { col -> s = s.replace(Regex(",\\s*`$col`\\s+\\w+(\\s+NOT NULL)?"), "") }
+            (newFarmCols + listOf("dirty", "indivWeights", "locSpreadPct", "uniformityPct", "moreSamples", "locCount", "weighedAt", "liftedAt", "feedings", "dirtyFields", "penStartFt", "outTempMin", "outTempAvg", "outTempMax", "outRhMin", "outRhAvg", "outRhMax", "dirtyBase", "conflicts")).forEach { col -> s = s.replace(Regex(",\\s*`$col`\\s+\\w+(\\s+NOT NULL)?"), "") }
             raw.execSQL(s)
         }
         raw.execSQL("CREATE TABLE room_master_table (id INTEGER PRIMARY KEY, identity_hash TEXT)")
@@ -77,7 +78,7 @@ class MigrationTest {
 
         // 3. Upgrade with the real migration (no destructive fallback: a bad migration fails here).
         val db = Room.databaseBuilder(ctx, FlockDatabase::class.java, oldName)
-            .addMigrations(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20).allowMainThreadQueries().build()
+            .addMigrations(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21).allowMainThreadQueries().build()
         val farm = db.farmDao().getFarm("S1")
         assertNotNull("farm kept", farm)
         assertEquals("My Farm", farm!!.farmName)
@@ -101,6 +102,7 @@ class MigrationTest {
         assertEquals(null, day.penStartFt); assertEquals(0.0, farm.lineFillBagsShut, 0.0)                   // v19: front barricade, tube fill
         assertEquals(2, farm.barricades); assertEquals("auto", farm.spaceBy); assertEquals("side", farm.padLayout)   // v20: barricades, floor, pads
         assertEquals(null, day.outTempMin); assertEquals(null, day.outRhMax)                                 // v20: the day's weather, not kept yet
+        assertEquals("", day.dirtyBase); assertEquals("", day.conflicts)                                      // v21: no clash records yet
         db.close()
     }
 }

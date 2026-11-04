@@ -312,7 +312,13 @@ data class DailyDataEntity(
     // The day's outside weather at the farm — lowest, average and highest °C and % RH — kept once the day is over, for the
     // house and bird models (v53)
     val outTempMin: Double? = null, val outTempAvg: Double? = null, val outTempMax: Double? = null,
-    val outRhMin: Double? = null, val outRhAvg: Double? = null, val outRhMax: Double? = null
+    val outRhMin: Double? = null, val outRhAvg: Double? = null, val outRhMax: Double? = null,
+    // What the sheet held in each column this phone changed, when it changed it ("colvalue" joined by ): a
+    // sheet cell that has since become something else was changed by another phone — a clash, not overwritten (v55).
+    // Never on the sheet.
+    val dirtyBase: String = "",
+    // Clashes waiting for the farm's choice: column → the other phone's value (same encoding). Never on the sheet. (v55)
+    val conflicts: String = ""
 )
 
 @Entity(

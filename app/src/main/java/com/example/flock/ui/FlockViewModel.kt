@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalTime
@@ -114,6 +115,10 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     private val _dailyRows = MutableStateFlow<List<DailyDataEntity>>(emptyList())
     val dailyRows: StateFlow<List<DailyDataEntity>> = _dailyRows.asStateFlow()
 
+    /** Values of the open flock that two phones changed differently, waiting for the farm's choice (v55). */
+    val clashes: StateFlow<List<Clash>> = _dailyRows.map { rows -> clashesOf(rows) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
     private val _currentDayEntry = MutableStateFlow<DailyDataEntity?>(null)
     val currentDayEntry: StateFlow<DailyDataEntity?> = _currentDayEntry.asStateFlow()
 
@@ -190,6 +195,9 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         // The repository is the workspace gateway; give it the cloud layer so every
         // mutation persists to Google Sheets and surfaces a verified sync note.
         repository.sync = syncManager
+        // a day row that could not be sent goes in the background once the network is back (v55); and any left from before
+        repository.whenUnsent = { com.example.flock.sync.SyncWork.schedule(getApplication()) }
+        com.example.flock.sync.SyncWork.schedule(getApplication())
         viewModelScope.launch {
             repository.syncNote.collect { note -> if (note != null) _userMessage.value = note }
         }
@@ -639,6 +647,14 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** The farm's choice for a value two phones changed: this phone's ([keepMine]) or the sheet's (the other phone's). */
+    fun resolveClash(c: Clash, keepMine: Boolean) {
+        val flock = _activeFlock.value ?: return
+        busy(if (keepMine) "Keeping this phone's value" else "Taking the other phone's value") {
+            repository.resolveConflict(_selectedSpreadsheetId.value, flock.flockId, c.day, c.column, keepMine)
+        }
+    }
+
     /** The barricades set on the day shown (Output, feed and floor): first and last, ft from the front wall. */
     fun setBarricades(startFt: Double, endFt: Double) {
         val flock = _activeFlock.value ?: return
@@ -1044,4 +1060,15 @@ fun dayWeatherOf(hours: List<HourPoint>, startDate: String, today: String): Map<
             FlockRepository.DayWeather(r1(byHour.minOf { it.tempC }), r1(byHour.map { it.tempC }.average()), r1(byHour.maxOf { it.tempC }),
                 r1(byHour.minOf { it.rhPct }), r1(byHour.map { it.rhPct }.average()), r1(byHour.maxOf { it.rhPct }))
         }
+}
+
+/** One value two phones changed differently: the day, the column, its name, this phone's value and the sheet's. */
+data class Clash(val day: Int, val column: String, val label: String, val mine: String, val theirs: String)
+
+/** The clashes in a flock's rows, day by day. */
+fun clashesOf(rows: List<DailyDataEntity>): List<Clash> = rows.filter { it.conflicts.isNotBlank() }.sortedBy { it.dayNumber }.flatMap { r ->
+    val mine = com.example.flock.sync.SheetSchema.dayValues(r)
+    com.example.flock.sync.SheetSchema.decodeCells(r.conflicts).map { (col, theirs) ->
+        Clash(r.dayNumber, col, com.example.flock.sync.SheetSchema.columnLabel(col), com.example.flock.sync.SheetSchema.cellText(mine[col]), theirs)
+    }
 }

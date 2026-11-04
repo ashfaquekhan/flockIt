@@ -92,21 +92,28 @@ class FlockRepository(
         }
     }
 
-    /** Every read from and write to the sheet goes one at a time (see [refreshFromCloud], [saveDayEntry]). */
-    private val ioLock = Mutex()
+    /** Every read from and write to the sheet goes one at a time (see [refreshFromCloud], [saveDayEntry]) — shared by
+     *  every repository in the app, so the background sender ([com.example.flock.sync.SyncWork]) waits its turn too. */
+    private val ioLock get() = IO_LOCK
+
+    /** Called when a day row could not be sent (no network, Google refused): the app has it sent in the background. */
+    var whenUnsent: (() -> Unit)? = null
     /** When each farm was last loaded from its sheet (epoch ms). */
     val lastLoadedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     /** Runs a verified cloud write and records a user-visible note. No-op when offline. */
-    private suspend fun cloudPush(label: String, block: suspend (SheetsSyncManager) -> Result<Unit>): Boolean {
+    private suspend fun cloudPush(label: String, resent: Boolean = false, block: suspend (SheetsSyncManager) -> Result<Unit>): Boolean {
         val s = sync ?: return false
         if (!s.isOnline()) {
             _syncNote.value = "$label saved on the phone — it will be sent to the Google Sheet when online"
             return false
         }
         val r = try { block(s) } catch (e: Exception) { Result.failure(e) }
+        // a day row is sent again by itself (in the background once the network is back, v55); other things on the next save
         _syncNote.value = if (r.isSuccess) "$label synced to Google Sheet"
+            else if (resent) "$label saved on the phone — it will be sent when the network is back"
             else "$label saved locally but not synced: ${r.exceptionOrNull()?.message ?: "error"}"
+        if (r.isFailure && resent) whenUnsent?.invoke()
         return r.isSuccess
     }
 
@@ -120,21 +127,70 @@ class FlockRepository(
         pushDirtyDay(label, spreadsheetId, row.flockId, row.dayNumber, updateReports = true)
     }
 
-    /** Sends one unsent day row; true once the sheet has it. */
+    /**
+     * Sends one unsent day row; true once the sheet has it. A value another phone changed meanwhile is not overwritten
+     * (v55): the row stays unsent for it, with the clash kept for the farm's choice ([resolveConflict]); a row waiting
+     * for that choice is not sent again until it is made.
+     */
     private suspend fun pushDirtyDay(label: String?, spreadsheetId: String, flockId: String, day: Int, updateReports: Boolean): Boolean {
         val row = dailyDataDao.getDayEntry(spreadsheetId, flockId, day)?.takeIf { it.dirty } ?: return true
-        var merged: DailyDataEntity? = null
-        val push: suspend (SheetsSyncManager) -> Result<Unit> = { s -> s.pushDayEntry(spreadsheetId, row, updateReports, row.dirtyColumns()).map { merged = it } }
-        val ok = if (label != null) cloudPush(label, push) else (sync?.let { push(it).isSuccess } ?: false)
-        merged?.let { m ->
+        if (row.conflicts.isNotBlank()) return false
+        var pushed: SheetsSyncManager.PushedDay? = null
+        val push: suspend (SheetsSyncManager) -> Result<Unit> = { s ->
+            s.pushDayEntry(spreadsheetId, row, updateReports, row.dirtyColumns(), SheetSchema.decodeCells(row.dirtyBase)).map { pushed = it } }
+        val ok = if (label != null) cloudPush(label, resent = true, block = push) else (sync?.let { s -> push(s).isSuccess.also { if (!it && s.isOnline()) whenUnsent?.invoke() } } ?: false)
+        pushed?.let { p ->
             // the sheet's row with this phone's changes in; an edit made here meanwhile (newer) stays unsent
             val now = dailyDataDao.getDayEntry(spreadsheetId, flockId, day)
             if (now == null || now.updatedAt <= row.updatedAt) {
-                dailyDataDao.insertOrUpdateDay(m.copy(spreadsheetId = spreadsheetId, dirty = false, dirtyFields = ""))
+                dailyDataDao.insertOrUpdateDay(p.row.copy(spreadsheetId = spreadsheetId))
                 recomputeFlock(spreadsheetId, flockId)
+                if (p.conflicts.isNotEmpty()) _syncNote.value = "Day $day: the other phone changed the same entry — choose which to keep"
             }
         }
-        return ok
+        return ok && (pushed?.conflicts?.isEmpty() ?: true)
+    }
+
+    /**
+     * Sends every unsent day row on the phone, whichever farm (the background sender, [com.example.flock.sync.SyncWork]),
+     * then each farm's report tabs once. Returns how many are still unsent (rows waiting for a choice between two phones'
+     * values not counted: they wait for the farm, not the network).
+     */
+    suspend fun sendUnsent(): Int = withContext(Dispatchers.IO) {
+        val s = sync ?: return@withContext 0
+        if (!s.isOnline()) return@withContext 0
+        ioLock.withLock {
+            dailyDataDao.getDirtyDays().filter { it.conflicts.isBlank() }.groupBy { it.spreadsheetId }.forEach { (sid, rows) ->
+                var sent = 0
+                rows.forEach { r -> if (pushDirtyDay(null, sid, r.flockId, r.dayNumber, updateReports = false)) sent++ }
+                if (sent > 0) try { s.pushReports(sid) } catch (e: Exception) { }
+            }
+            dailyDataDao.getDirtyDays().count { it.conflicts.isBlank() }
+        }
+    }
+
+    /**
+     * The farm's choice for a value two phones changed: [keepMine] writes this phone's value over the other's (the sheet's
+     * value becomes the one it started from, so the next send writes it); otherwise the sheet's value is taken and this
+     * phone's change to that column is dropped.
+     */
+    suspend fun resolveConflict(spreadsheetId: String, flockId: String, dayNumber: Int, column: String, keepMine: Boolean) = withContext(Dispatchers.IO) {
+        ioLock.withLock {
+            val row = dailyDataDao.getDayEntry(spreadsheetId, flockId, dayNumber) ?: return@withLock
+            val clashes = SheetSchema.decodeCells(row.conflicts)
+            val theirs = clashes[column] ?: return@withLock
+            val rest = clashes - column
+            val base = SheetSchema.decodeCells(row.dirtyBase)
+            val next = if (keepMine) row.copy(conflicts = SheetSchema.encodeCells(rest), dirtyBase = SheetSchema.encodeCells(base + (column to theirs)), dirty = true)
+            else {
+                val fields = row.dirtyFields.split(",").map { it.trim() }.filter { it.isNotEmpty() && it != "-" && it != column }
+                SheetSchema.withCells(spreadsheetId, row, mapOf(column to theirs)).copy(conflicts = SheetSchema.encodeCells(rest),
+                    dirtyBase = SheetSchema.encodeCells(base - column), dirtyFields = fields.joinToString(","), dirty = fields.isNotEmpty())
+            }
+            dailyDataDao.insertOrUpdateDay(next)
+            recomputeFlock(spreadsheetId, flockId)
+            if (rest.isEmpty() && next.dirty) pushDirtyDay("Day $dayNumber", spreadsheetId, flockId, dayNumber, updateReports = true)
+        }
     }
 
     /** Re-sends day rows saved while offline (or whose push failed). */
@@ -342,8 +398,9 @@ class FlockRepository(
                 updatedAt = System.currentTimeMillis(), updatedBy = userEmail
             )
             ioLock.withLock {
+                val changed = SheetSchema.changedColumns(existing, cleared)
                 saveAndPushDay("Day $dayNumber cleared", spreadsheetId,
-                    cleared.copy(dirtyFields = mergeDirtyFields(existing.dirty, existing.dirtyFields, SheetSchema.changedColumns(existing, cleared))))
+                    cleared.copy(dirtyFields = mergeDirtyFields(existing.dirty, existing.dirtyFields, changed), dirtyBase = SheetSchema.addBase(existing, changed)))
             }
             Result.success(Unit)
         }
@@ -509,7 +566,8 @@ class FlockRepository(
                 updatedAt = now,
                 updatedBy = userEmail
             )
-            val toSave = stamped.copy(dirtyFields = mergeDirtyFields(existing.dirty, existing.dirtyFields, SheetSchema.changedColumns(existing, stamped)))
+            val sheetCols = SheetSchema.changedColumns(existing, stamped)
+            val toSave = stamped.copy(dirtyFields = mergeDirtyFields(existing.dirty, existing.dirtyFields, sheetCols), dirtyBase = SheetSchema.addBase(existing, sheetCols))
             saveAndPushDay("Day $dayNumber", spreadsheetId, toSave)
             Result.success(Unit)
         }
@@ -523,7 +581,8 @@ class FlockRepository(
                     ?: return@withLock Result.failure(Exception("Day entry not found"))
                 if (existing.feedings == feedings) return@withLock Result.success(Unit)
                 val row = existing.copy(feedings = feedings, updatedAt = System.currentTimeMillis(), updatedBy = userEmail)
-                saveAndPushDay("Feeding", spreadsheetId, row.copy(dirtyFields = mergeDirtyFields(existing.dirty, existing.dirtyFields, setOf("feedings"))))
+                saveAndPushDay("Feeding", spreadsheetId, row.copy(dirtyFields = mergeDirtyFields(existing.dirty, existing.dirtyFields, setOf("feedings")),
+                    dirtyBase = SheetSchema.addBase(existing, setOf("feedings"))))
                 Result.success(Unit)
             }
         }
@@ -541,7 +600,8 @@ class FlockRepository(
                 val end = if (endFt >= houseLenFt - 0.5) 0.0 else endFt.coerceIn(start + 10, houseLenFt)
                 if (existing.penStartFt == start && existing.broodingLength == end) return@withLock Result.success(Unit)
                 val row = existing.copy(penStartFt = start, broodingLength = end, updatedAt = System.currentTimeMillis(), updatedBy = userEmail)
-                saveAndPushDay("Barricades", spreadsheetId, row.copy(dirtyFields = mergeDirtyFields(existing.dirty, existing.dirtyFields, setOf("penstartft", "broodinglength"))))
+                saveAndPushDay("Barricades", spreadsheetId, row.copy(dirtyFields = mergeDirtyFields(existing.dirty, existing.dirtyFields, setOf("penstartft", "broodinglength")),
+                    dirtyBase = SheetSchema.addBase(existing, setOf("penstartft", "broodinglength"))))
                 Result.success(Unit)
             }
         }
@@ -644,3 +704,6 @@ class FlockRepository(
         )
     }
 }
+
+/** The one lock for every read from and write to the sheet in the app (screens and the background sender). */
+private val IO_LOCK = Mutex()
