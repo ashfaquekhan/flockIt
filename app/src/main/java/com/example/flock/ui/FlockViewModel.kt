@@ -639,6 +639,15 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** The barricades set on the day shown (Output, feed and floor): first and last, ft from the front wall. */
+    fun setBarricades(startFt: Double, endFt: Double) {
+        val flock = _activeFlock.value ?: return
+        val day = _selectedDay.value
+        busy("Setting the barricades") {
+            repository.setBarricades(_selectedSpreadsheetId.value, flock.flockId, day, startFt, endFt, _farm.value.usableLengthFt, authState.value.email)
+        }
+    }
+
     /** Takes back the last feeding logged (the latest day that has one). */
     fun undoLastFeeding() {
         val flock = _activeFlock.value ?: return

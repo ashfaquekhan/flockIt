@@ -76,7 +76,7 @@ class LiftingSpaceTest {
     private fun spaceIn(live: Int, kg: Double, hot: Double, cool: Double, day: Int = 44, area: Double = 299.0 * 39, lifted: Boolean = true) = SpacePlan.In(
         live = live, avgKg = kg, day = day, houseLenFt = 299.0, widthFt = 39.0, areaFt2 = area, penFt = null,
         feederLines = 4, pansPerLine = 114, panSpacingFt = 2.5, lineStartFt = 5.0, feederGapFt = 39.0 / 4, drinkerGapFt = 39.0 / 5,
-        capKgM2 = 38.97, hotC = hot, coolC = cool, lifted = lifted, barricades = 1)
+        capKgM2 = 38.97, hotC = hot, coolC = cool, lifted = lifted)
 
     @Test fun afterLiftingPansOrBarricadeFollowTheWeather() {
         // day 44: 7,222 birds of about 3.1 kg in the whole house — 16 birds a pan
@@ -85,15 +85,13 @@ class LiftingSpaceTest {
         warm.options.forEach { println("  ${it.title}: ${"%.1f".format(it.kgM2)} kg/m², ${it.openPans} pans ${"%.1f".format(it.birdsPerPan)} a pan, walk ${"%.2f".format(it.walkM)} m") }
         assertEquals(20.7, warm.kgM2, 0.3)
         assertEquals(SpacePlan.Room.ROOMY, warm.room)
-        assertEquals("pans", warm.options[warm.best].key)                       // warm: keep the floor, shut pans
+        assertEquals("pans", warm.options[warm.best].key)                       // keep the floor, shut pans
         assertTrue(warm.options[warm.best].birdsPerPan in 30.0..60.0)
         assertTrue(warm.options.all { it.walkM <= SpacePlan.MAX_WALK_M })
-        // a cool day: pen the birds — the barricade where they have the floor they need
+        // v54: a cool day too — the app never suggests a barricade of its own (the farm sets them)
         val cool = SpacePlan.plan(spaceIn(7222, 3.1, hot = 24.0, cool = 15.0))
-        val pen = cool.options[cool.best]
-        assertEquals("pen", pen.key)
-        assertTrue("pen at ${pen.penFt}", pen.penFt in 120.0..250.0 && pen.penFt % 5.0 == 0.0)
-        assertTrue(pen.kgM2 <= 38.97 + 0.5)
+        assertEquals("pans", cool.options[cool.best].key)
+        assertTrue(cool.options.none { it.key == "pen" })
         // before lifting, a full house on a hot day is tight
         val full = SpacePlan.plan(spaceIn(14200, 2.7, hot = 34.0, cool = 26.0, day = 39, lifted = false))
         assertEquals(SpacePlan.Room.TIGHT, full.room)
@@ -148,39 +146,43 @@ class LiftingSpaceTest {
         assertTrue("one fill ${w.fillBags} under a feeding ${w.bagsPerFeeding}", w.fillBags <= w.bagsPerFeeding)
         assertEquals(3, warm.steps.size)
         assertTrue(warm.steps[1].startsWith("1 on · 2 off"))
-        val cool = plan(24.0, 15.0)
+        // the farm pens the birds itself (a barricade at 185 ft): the pans and feedings follow that floor
+        val cool = SpacePlan.plan(spaceIn(7222, 3.1, 24.0, 15.0, area = 185.0 * 39).copy(penFt = 185.0, dayBags = 26.0, bagsFullLine = 3.0,
+            birdsPerPanMax = 71.0, feedingsWanted = 2))
         val c = cool.options[cool.best]
-        cool.steps.forEach { println("cool: $it") }
-        assertEquals("pen", c.key)
+        cool.steps.forEach { println("set: $it") }
+        assertEquals("set", c.key)
         assertTrue(c.shutPastPen > 0)
-        assertTrue(cool.steps[1].contains("outside") && cool.steps[0].startsWith("Barricade at"))
+        assertTrue(cool.steps[1].contains("outside") && cool.steps[0].startsWith("Barricade at 185"))
         // too few bags to fill the open pans even once: the plan says so
         val short = SpacePlan.plan(spaceIn(7222, 3.1, 31.0, 24.0).copy(dayBags = 3.0, bagsFullLine = 3.0, birdsPerPanMax = 71.0))
         assertTrue(short.options.first().let { !it.feedReaches })
     }
 
     /**
-     * v53: only the barricades the farm has. Two leave the same empty floor at both ends; none (or "pans") never pens the
-     * birds; "barricade" pens them whenever the floor is roomy, warm or not; with no barricade the chicks have the whole house.
+     * v54: the floor is what the farm sets. Nothing set: the brooding plan (part of the house growing to all of it); once a
+     * barricade is set — or "none" — that is the floor, the brooding plan no longer applies. The plan never adds a barricade.
      */
-    @Test fun barricadesTheFarmHas() {
-        val coolIn = spaceIn(7222, 3.1, hot = 24.0, cool = 15.0)
-        val two = SpacePlan.plan(coolIn.copy(barricades = 2)).let { it.options[it.best] }
-        println("two barricades: ${two.title}")
-        assertEquals("pen", two.key)
-        assertTrue("front ${two.penStartFt}", two.penStartFt > 0)
-        assertEquals(two.penStartFt, 299.0 - two.penFt, 5.0)
-        assertTrue(SpacePlan.plan(coolIn.copy(barricades = 0)).options.none { it.key == "pen" })
-        val pans = SpacePlan.plan(coolIn.copy(spaceBy = "pans"))
-        assertTrue(pans.options.none { it.key == "pen" })
-        assertEquals("pans", pans.options[pans.best].key)
-        val warmBar = SpacePlan.plan(spaceIn(7222, 3.1, hot = 31.0, cool = 21.0).copy(spaceBy = "barricade"))
-        assertEquals("pen", warmBar.options[warmBar.best].key)
+    @Test fun theFloorIsWhatTheFarmSets() {
         val plain = rows.map { it.copy(broodingLength = null, penStartFt = null) }
-        val c0 = FlockCalc.compute(KgfFlock.flock, KgfFlock.farm.copy(barricades = 0), KgfFlock.config, plain, KgfFlock.kgOf)
-        assertEquals(KgfFlock.farm.usableLengthFt * KgfFlock.farm.usableWidthFt, c0.first { it.dayNumber == 2 }.occupiedFt2, 1e-6)
-        val c2 = FlockCalc.compute(KgfFlock.flock, KgfFlock.farm, KgfFlock.config, plain, KgfFlock.kgOf)
-        assertTrue(c2.first { it.dayNumber == 2 }.occupiedFt2 < KgfFlock.farm.usableLengthFt * KgfFlock.farm.usableWidthFt * 0.6)
+        val house = KgfFlock.farm.usableLengthFt * KgfFlock.farm.usableWidthFt
+        val c = FlockCalc.compute(KgfFlock.flock, KgfFlock.farm, KgfFlock.config, plain, KgfFlock.kgOf)
+        assertTrue(c.first { it.dayNumber == 2 }.occupiedFt2 < house * 0.6)
+        // "none" set on day 0: the whole house from the start
+        val open = plain.map { if (it.dayNumber == 0) it.copy(broodingLength = 0.0, penStartFt = 0.0) else it }
+        assertEquals(house, FlockCalc.compute(KgfFlock.flock, KgfFlock.farm, KgfFlock.config, open, KgfFlock.kgOf).first { it.dayNumber == 2 }.occupiedFt2, 1e-6)
+        // barricades at 40 and 140 ft from day 1: 100 ft of floor, held on
+        val pen = plain.map { if (it.dayNumber == 1) it.copy(broodingLength = 140.0, penStartFt = 40.0) else it }
+        assertEquals(100.0 * KgfFlock.farm.usableWidthFt, FlockCalc.compute(KgfFlock.flock, KgfFlock.farm, KgfFlock.config, pen, KgfFlock.kgOf)
+            .first { it.dayNumber == 3 }.occupiedFt2, 1e-6)
+        // and the plan for a floor set from the Output page (not saved yet) follows it
+        val r = KgfFlock.computed(44)
+        val d = com.example.flock.ui.screens.OutputData(KgfFlock.flock, KgfFlock.farm, r.last(), r, KgfFlock.feedTypes, null, emptyList(), false, false)
+        val p = com.example.flock.ui.screens.withBarricades(d, 40.0, 250.0)
+        assertEquals(40.0, p.penStartFt, 1e-9); assertEquals(250.0, p.barricadeFtNow, 1e-6)
+        assertEquals("set", p.space.options[p.space.best].key)
+        assertTrue("pans in the floor ${p.pansInArea}", p.pansInArea < d.pansInArea)
+        assertTrue(p.feedOptions.isNotEmpty())
     }
 
     /** v53: the weather of every finished day of the flock (24 hours known), lowest, average and highest. */

@@ -101,13 +101,13 @@ fun InsightsScreen(
                 ) {
                     Text(
                         text = "Flock Performance Index",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium)
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal)
                     )
                     Surface(color = DomainInsightWash, shape = RoundedCornerShape(8.dp)) {
                         Text(
                             text = String.format("EPEF %.0f", epef),
                             style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Medium,
+                                fontWeight = FontWeight.Normal,
                                 color = DomainInsight
                             ),
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
@@ -159,7 +159,7 @@ fun InsightsScreen(
                 ) {
                     Text(
                         text = "Flock Uniformity & CV%",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium)
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal)
                     )
                     val cvRating = if (cv < 10.0) "Uniform (<10%)" else if (cv < 12.0) "Moderate" else "Uneven (>12%)"
                     val cvRatingColor = if (cv < 10.0) StatusGood else if (cv < 12.0) StatusWarn else StatusCrit
@@ -170,7 +170,7 @@ fun InsightsScreen(
                         Text(
                             text = cvRating,
                             style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Medium,
+                                fontWeight = FontWeight.Normal,
                                 color = cvRatingColor
                             ),
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
@@ -258,7 +258,7 @@ fun InsightsScreen(
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
                     text = "Operational Action Checklist",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium)
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal)
                 )
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -319,7 +319,7 @@ fun KpiTile(
                 Text(
                     text = value,
                     style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = FontWeight.Normal,
                         fontFamily = com.example.ui.theme.NumberFont,
                         color = if (isGood) StatusGood else StatusWarn
                     )
@@ -355,7 +355,7 @@ fun ActionBullet(
         Column {
             Text(
                 text = title,
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Normal)
             )
             Text(
                 text = description,

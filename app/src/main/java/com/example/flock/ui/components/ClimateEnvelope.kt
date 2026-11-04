@@ -140,7 +140,7 @@ fun ClimateEnvelope(
             ) {
                 Text(
                     text = "Climate Envelope",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium)
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal)
                 )
                 Text(
                     text = if (outTemp != null) "Logged readings" else "Pending readings",
@@ -176,7 +176,7 @@ fun EnvelopeRow(metric: EnvelopeMetric) {
         Column(modifier = Modifier.width(110.dp)) {
             Text(
                 text = metric.label,
-                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Normal),
                 maxLines = 1
             )
             Text(
@@ -277,7 +277,7 @@ fun EnvelopeRow(metric: EnvelopeMetric) {
         Text(
             text = curStr,
             style = MaterialTheme.typography.bodyMedium.copy(
-                fontWeight = FontWeight.Medium,
+                fontWeight = FontWeight.Normal,
                 fontFamily = com.example.ui.theme.NumberFont,
                 color = valColor
             ),

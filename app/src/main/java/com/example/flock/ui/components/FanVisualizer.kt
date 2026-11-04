@@ -94,12 +94,12 @@ fun FanVisualizer(
             ) {
                 Text(
                     text = "Level ladder (enter once)",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium)
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal)
                 )
                 Surface(color = DomainVentWash, shape = RoundedCornerShape(8.dp)) {
                     Text(
                         text = "Day $day · MIN L${plan.minLevel} · MAX L${plan.maxLevel}",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium, color = DomainVent),
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Normal, color = DomainVent),
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                     )
                 }
@@ -166,11 +166,11 @@ private fun LevelRow(
     dim: Boolean = false
 ) {
     val style = if (header) {
-        MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Normal, color = MaterialTheme.colorScheme.onSurfaceVariant)
     } else {
         MaterialTheme.typography.bodySmall.copy(
             fontFamily = com.example.ui.theme.NumberFont,
-            fontWeight = if (highlight) FontWeight.Medium else FontWeight.Normal,
+            fontWeight = if (highlight) FontWeight.Normal else FontWeight.Normal,
             color = if (highlight) DomainVent else if (dim) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f) else MaterialTheme.colorScheme.onSurface
         )
     }
@@ -223,7 +223,7 @@ private fun FanItem(
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontSize = 9.sp,
                     fontFamily = com.example.ui.theme.NumberFont,
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = FontWeight.Normal,
                     color = if (isRunning) DomainVent else idle
                 ),
                 modifier = Modifier.align(Alignment.BottomEnd)
@@ -268,7 +268,7 @@ fun MetaRow(label: String, value: String) {
         Text(
             text = value,
             style = MaterialTheme.typography.bodySmall.copy(
-                fontWeight = FontWeight.Medium,
+                fontWeight = FontWeight.Normal,
                 fontFamily = com.example.ui.theme.NumberFont
             )
         )

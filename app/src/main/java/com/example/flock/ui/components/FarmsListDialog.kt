@@ -99,7 +99,7 @@ fun FarmsListDialog(
                     Column {
                         Text(
                             text = "Farms & Multi-Tenancy",
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium)
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Normal)
                         )
                         Text(
                             text = "Switch farms, sync with Google Sheets, or share",
@@ -141,7 +141,7 @@ fun FarmsListDialog(
                             Column {
                                 Text(
                                     text = if (authState.displayName.isNotBlank()) authState.displayName else "Offline Farmer",
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Normal)
                                 )
                                 Text(
                                     text = if (authState.isDemoMode) "Local Offline Mode" else authState.email,
@@ -203,7 +203,7 @@ fun FarmsListDialog(
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(
                                             text = farm.farmName,
-                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium)
+                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal)
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
@@ -254,7 +254,7 @@ fun FarmsListDialog(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Open Shared Farm", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium))
+                                Text("Open Shared Farm", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Normal))
                                 OutlinedTextField(
                                     value = sharedIdInput,
                                     onValueChange = { sharedIdInput = it },

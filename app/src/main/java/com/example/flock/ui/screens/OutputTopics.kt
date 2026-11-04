@@ -66,7 +66,7 @@ private val RhDial = Color(0xFFA9CCF0)
 
 @Composable
 fun SectionLabel(text: String) {
-    Text(text.uppercase(), style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium, letterSpacing = 1.6.sp),
+    Text(text.uppercase(), style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Normal, letterSpacing = 1.6.sp),
         color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(top = 10.dp))
 }
 
@@ -85,42 +85,6 @@ fun AlertList(alerts: List<TopicAlert>) {
 }
 
 // =================================== TABS ===================================
-
-/** How close the app's projections were to what was then entered: the latest check and the average miss. */
-@Composable
-internal fun AccuracyCard(d: OutputData) {
-    data class Line(val name: String, val acc: com.example.flock.domain.FlockKpis.Accuracy, val dec: Int)
-    val lines = listOf(Line("Weight g", d.weightAccuracy.upTo(d.day), 1), Line("Feed, bags", d.feedAccuracy.upTo(d.day), 2), Line("FCR", d.fcrAccuracy.upTo(d.day), 3),
-        Line("Mortality %", d.mortAccuracy.upTo(d.day), 2))
-    // close (within 5 %) green, else red — no middle colour
-    fun offColor(pct: Double?) = when { pct == null -> Color.White.copy(alpha = 0.5f); abs(pct) <= 5 -> TrendGood; else -> TrendBad }
-    val mono = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium, letterSpacing = (-0.3).sp)
-    val grey = Color.White.copy(alpha = 0.6f)
-    Part("Projection check", "accuracy") {
-        Column(Modifier.fillMaxWidth().border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Row(Modifier.fillMaxWidth()) {
-                Spacer(Modifier.weight(1.3f))
-                listOf("Projected" to 1.25f, "Actual" to 1.0f, "Off %" to 0.85f, "Avg %" to 0.8f).forEach { (t, w) ->
-                    Text(t, Modifier.weight(w), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium), color = grey, textAlign = TextAlign.End, maxLines = 1, softWrap = false)
-                }
-            }
-            lines.forEach { l ->
-                val c = l.acc.on(d.day) ?: l.acc.latest
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1.3f)) {
-                        Text(l.name, style = MaterialTheme.typography.labelMedium, color = grey, maxLines = 1, softWrap = false)
-                        Text(c?.let { "day ${it.day}" } ?: "no check yet", style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont), color = grey.copy(alpha = 0.45f), maxLines = 1, softWrap = false)
-                    }
-                    Text(c?.let { Fmt.n(it.projected, l.dec) } ?: "—", Modifier.weight(1.25f), style = mono, color = if (c == null) grey else kindColor(PR), textAlign = TextAlign.End, maxLines = 1, softWrap = false)
-                    Text(c?.let { Fmt.n(it.actual, l.dec) } ?: "—", Modifier.weight(1.0f), style = mono, color = if (c == null) grey else kindColor(P), textAlign = TextAlign.End, maxLines = 1, softWrap = false)
-                    Text(c?.let { Fmt.signed(it.errorPct, 1) } ?: "—", Modifier.weight(0.85f), style = mono, color = offColor(c?.errorPct), textAlign = TextAlign.End, maxLines = 1, softWrap = false)
-                    Text(l.acc.averageMissPct?.let { Fmt.n(it, 1) } ?: "—", Modifier.weight(0.8f), style = mono, color = offColor(l.acc.averageMissPct), textAlign = TextAlign.End, maxLines = 1, softWrap = false)
-                }
-            }
-        }
-    }
-}
 
 internal fun normCdf(z: Double): Double {
     // Abramowitz & Stegun 7.1.26
@@ -172,7 +136,7 @@ fun StockBlock(d: OutputData) {
         val maxBags = d.stockCodes.maxOfOrNull { max(d.recByCode[it] ?: 0.0, d.stockBags(it)) } ?: 0.0
         val unit = listOf(1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0).firstOrNull { maxBags / it <= 20 } ?: 200.0
         d.stockCodes.forEach { code -> FeedTypeBlock(d, code, unit) }
-        Text("All types, bags", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium))
+        Text("All types, bags", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Normal))
         StockRow(d.recBagsTD, d.usedBagsTD, d.stockBagsTotal)
         val canL = f.dieselCanL
         Param("Diesel", "L", v(d.e.dieselCansUsed * canL, 1, P, "Today"), v(d.dieselTD * canL, 1, P, "Till date"))
@@ -188,8 +152,8 @@ private fun FeedTypeBlock(d: OutputData, code: String, unit: Double) {
     Column(Modifier.fillMaxWidth().border(1.dp, GlassLine.copy(alpha = 0.35f), RoundedCornerShape(10.dp)).padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("$code · ${ft?.name ?: "Feed"}", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium), modifier = Modifier.weight(1f))
-            Text(Fmt.n(stock, 2), style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium),
+            Text("$code · ${ft?.name ?: "Feed"}", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Normal), modifier = Modifier.weight(1f))
+            Text(Fmt.n(stock, 2), style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Normal),
                 color = if (stock < 0) StatusCrit else kindColor(P))
         }
         if (rec > 0 || used > 0) SackStrip(max(0.0, stock) / unit, kotlin.math.min(used, rec) / unit, Color.White.copy(alpha = 0.8f))
@@ -214,10 +178,10 @@ private fun StockChip(icon: androidx.compose.ui.graphics.vector.ImageVector, lab
         Row(verticalAlignment = Alignment.CenterVertically) {
             androidx.compose.material3.Icon(icon, contentDescription = label, tint = col.copy(alpha = 0.9f), modifier = Modifier.size(13.dp))
             Spacer(Modifier.width(3.dp))
-            Text(label, maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium, fontSize = 10.5.sp, letterSpacing = (-0.1).sp), color = col.copy(alpha = 0.9f))
+            Text(label, maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Normal, fontSize = 10.5.sp, letterSpacing = (-0.1).sp), color = col.copy(alpha = 0.9f))
         }
         Text(x.text, maxLines = 1, softWrap = false,
-            style = MaterialTheme.typography.bodyLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium, fontSize = 15.sp, letterSpacing = (-0.3).sp), color = col)
+            style = MaterialTheme.typography.bodyLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Normal, fontSize = 15.sp, letterSpacing = (-0.3).sp), color = col)
     }
 }
 
@@ -290,7 +254,7 @@ private fun CoolingGridCard(d: OutputData, onPick: (Double, Double) -> Unit) {
                     val col = when { over > 4 -> StatusCrit; over > 2 -> StatusWarn; over < -3 -> ValueIdeal; else -> ValuePresent }
                     Column(Modifier.weight(1f).border(1.dp, GlassLine, RoundedCornerShape(10.dp)).clickable { onPick(t, h) }.padding(vertical = 8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(Fmt.n(s.fans, 1), style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium), color = col)
+                        Text(Fmt.n(s.fans, 1), style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Normal), color = col)
                         Text("${Fmt.n(s.feltC, 1)}°", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.7f))
                     }
                 }

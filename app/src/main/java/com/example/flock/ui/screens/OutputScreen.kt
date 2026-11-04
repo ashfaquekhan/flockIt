@@ -133,7 +133,9 @@ fun OutputScreen(
     weatherOn: Boolean = false,
     onWeatherOn: (Boolean) -> Unit = {},
     /** opens another day (a day tapped in the flock book) */
-    onSelectDay: ((Int) -> Unit)? = null
+    onSelectDay: ((Int) -> Unit)? = null,
+    /** sets the first and last barricade (ft from the front wall) from the day shown on */
+    onBarricades: ((Double, Double) -> Unit)? = null
 ) {
     // one scroll position for every day; the section being read stays put when the day changes
     val scroll = rememberScrollState()
@@ -241,8 +243,7 @@ fun OutputScreen(
 
     // the page's sections in the farm's order (v53): the birds (the window and their numbers), feed and floor, air and
     // ventilation, lifting, water, then the graphs and the records
-    val tabs = listOf("birds" to "Birds", "feed" to "Feed", "air" to "Air", "lift" to "Lifting", "water" to "Water", "graphs" to "Graphs")
-    val tabIcons = mapOf("birds" to GIcon.BIRDS, "feed" to GIcon.BAGS, "air" to GIcon.FAN, "lift" to GIcon.TRUCK, "water" to GIcon.WATER, "graphs" to GIcon.GRAPH)
+    val tabs = listOf("birds" to "Birds", "feed" to "Feed", "lift" to "Lifting", "air" to "Air", "water" to "Water", "graphs" to "Graphs")
     val dens = androidx.compose.ui.platform.LocalDensity.current
     var tabsPx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     val tabsDp = with(dens) { tabsPx.toDp() }
@@ -254,23 +255,22 @@ fun OutputScreen(
     androidx.compose.runtime.CompositionLocalProvider(LocalScrollAnchors provides anchors) {
     Box(modifier.fillMaxSize().onGloballyPositioned { anchors.viewportTop = it.positionInRoot().y }) {
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(scroll).padding(start = 14.dp, end = 14.dp, top = tabsDp + 10.dp, bottom = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = Modifier.fillMaxSize().verticalScroll(scroll).padding(start = 12.dp, end = 16.dp, top = tabsDp + 6.dp, bottom = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // 1. the birds: the house and the birds in it at the time on the rail, then their seven numbers and the radar
         Anchored("birds") {
-            GlassBox(Modifier.fillMaxWidth()) {
-                Coop3D(coop.copy(feedTimes = d.modelFeedTimes(d.feedOptions[feedPick.coerceIn(0, d.feedOptions.size - 1)].feedings)))
-            }
+            Coop3D(coop.copy(feedTimes = d.modelFeedTimes(d.feedOptions[feedPick.coerceIn(0, d.feedOptions.size - 1)].feedings)))
             BirdsSection(d, view, entryHHmm, live, { pinned = null }, hour)
             AlertList(d.allAlerts)
         }
         // 2. feed and floor: the bags, the pans and the barricades on the whole house (the feedings are the model's)
-        Anchored("feed") { FeedSection(d, feedPick, { feedPick = it }, needsNow, onFarmChange) }
-        // 3. air and ventilation: the house in four views, no sensors yet
-        Anchored("air") { AirSection(d, hour, needsNow, weatherOn, onWeatherOn, houseMap) }
-        // 4. lifting, 5. water, 6. the graphs, the trends and the book
+        Anchored("feed") { FeedSection(d, feedPick, { feedPick = it }, needsNow, onBarricades) }
+        // 3. lifting (v54: above the air)
         Anchored("lift") { LiftSection(d, onFlockPlan) }
+        // 4. air and ventilation: the house in four views, no sensors yet
+        Anchored("air") { AirSection(d, hour, needsNow, weatherOn, onWeatherOn, houseMap) }
+        // 5. water, 6. the graphs, the trends and the book
         Anchored("water") { WaterSection(d, needsNow, onFarmChange) }
         Anchored("graphs") {
             GraphsCard(d)
@@ -286,7 +286,7 @@ fun OutputScreen(
         Spacer(modifier = Modifier.height(32.dp))
     }
     // the sections, always at the top: the one being read is lit, a tap goes to another
-    SectionTabs(tabs, reading, icons = tabIcons, onJump = { key ->
+    SectionTabs(tabs, reading, onJump = { key ->
         anchors.topOf(key)?.let { y -> scope.launch { scroll.animateScrollTo((y - tabsPx - with(dens) { 8.dp.toPx() }.toInt()).coerceAtLeast(0)) } }
     }, modifier = Modifier.align(Alignment.TopStart).onGloballyPositioned { tabsPx = it.size.height })
     // the time of the day: a rail down the right edge, opened by touching it
@@ -371,7 +371,7 @@ private fun FeedEntryRow(d: OutputData, feeder: FeederState, zone: java.time.Zon
     }
     Column(Modifier.fillMaxWidth().border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(10.dp)).padding(10.dp).testTag("feed_log"),
         verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Log a feeding", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium))
+        Text("Log a feeding", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Normal))
         run {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 androidx.compose.material3.OutlinedTextField(
@@ -427,7 +427,7 @@ fun TagChip(k: ValueKind, modifier: Modifier = Modifier, text: String = kindTag(
             Spacer(Modifier.width(if (compact) 3.dp else 5.dp))
             Text(text, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
                 style = (if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium)
-                    .copy(fontWeight = FontWeight.Medium, color = kindColor(k)))
+                    .copy(fontWeight = FontWeight.Normal, color = kindColor(k)))
         }
     }
 }
@@ -436,16 +436,13 @@ fun alertColor(level: Int): Color = when (level) { 2 -> StatusCrit; 1 -> StatusW
 
 // =================================== card + shared bits ===================================
 
-/** Transparent glass panel with a thin white outline on matte black. */
+/**
+ * What a card sits in: nothing (v54, "no boundaries for topics and cards" — everything straight on the black, no outline,
+ * no panel); kept as one place so the look can change together.
+ */
 @Composable
 fun GlassBox(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    val shape = RoundedCornerShape(16.dp)
-    Box(
-        modifier
-            .clip(shape)
-            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(GlassFillTop, GlassFill)))
-            .border(1.dp, GlassLine, shape)
-    ) {
+    Box(modifier) {
         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides MaterialTheme.colorScheme.onSurface) { content() }
     }
 }
@@ -458,9 +455,9 @@ fun OutputCard(
 ) {
     val anchors = LocalScrollAnchors.current
     GlassBox(Modifier.fillMaxWidth().onGloballyPositioned { anchors?.report("card:$title", it.positionInRoot().y) }) {
-        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(modifier = Modifier.padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = title, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface),
+                Text(text = title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface),
                     modifier = Modifier.weight(1f))
                 if (info != null) InfoButton(info)
             }
@@ -472,10 +469,9 @@ fun OutputCard(
 /** One part of a card that holds several: a thin line, its name (and ⓘ), then its numbers. */
 @Composable
 fun Part(title: String, info: String? = null, content: @Composable () -> Unit) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.16f)))
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
+            Text(title, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Normal),
                 color = Color.White, modifier = Modifier.weight(1f))
             if (info != null) InfoButton(info)
         }
@@ -491,7 +487,7 @@ fun GistTile(item: GistItem, modifier: Modifier = Modifier) {
     Surface(color = Color.Black, shape = RoundedCornerShape(10.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine), modifier = modifier) {
         Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp)) {
             Text(item.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-            Text(item.value, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium, fontFamily = com.example.ui.theme.NumberFont, fontSize = 16.sp),
+            Text(item.value, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal, fontFamily = com.example.ui.theme.NumberFont, fontSize = 16.sp),
                 color = valColor, maxLines = 2)
             Text(item.sub, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -553,7 +549,7 @@ fun PopulationDistributionCard(entry: DailyDataEntity) {
                     else -> StatusCrit
                 }
                 Column(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
-                    Text(Fmt.n(loc.avg, 1), style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium))
+                    Text(Fmt.n(loc.avg, 1), style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Normal))
                     Box(modifier = Modifier.fillMaxWidth().height((frac * 110).dp).background(barColor, RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)))
                     Text(loc.label, style = MaterialTheme.typography.labelMedium)
                     Text("${loc.count} birds", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -575,7 +571,7 @@ fun PopulationDistributionCard(entry: DailyDataEntity) {
 private fun BandChip(label: String, count: Int, color: Color, modifier: Modifier = Modifier) {
     Surface(color = Color.Black, shape = RoundedCornerShape(8.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine), modifier = modifier) {
         Column(modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("$count spots", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium, color = color, fontFamily = com.example.ui.theme.NumberFont))
+            Text("$count spots", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Normal, color = color, fontFamily = com.example.ui.theme.NumberFont))
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         }
     }

@@ -90,10 +90,11 @@ data class FarmEntity(
     val feederLineGapFt: Double = 0.0,     // feeder line to feeder line (0 = usable width ÷ lines)
     // Bags that fill one line with every pan shut — the tube alone (0 = not known: worked out from the line's length) (v51)
     val lineFillBagsShut: Double = 0.0,
-    // Barricades the farm has (0 = none: the floor is set by the pans alone), how a floor too big for the birds is set
-    // ("auto" · "barricade" · "pans"), and how the cooling pads sit ("side": both side walls · "c": the end wall and both sides) (v53)
+    // v53's barricade count and floor mode: no longer used (v54: the farm sets the barricades, no modes) — kept so the
+    // database needs no change
     val barricades: Int = 2,
     val spaceBy: String = "auto",
+    // how the cooling pads sit ("side": both side walls · "c": the end wall and both sides) (v53)
     val padLayout: String = "side"
 )
 

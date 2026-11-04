@@ -33,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertIsEnabled
@@ -236,11 +237,11 @@ class ScreensRenderTest {
         rule.mainClock.advanceTimeBy(1200)
         // v53: the farm's order — birds (window, seven numbers, radar), feed and floor, air, lifting, water, graphs — each with its farm view
         listOf("glance", "radar_birds", "time_rail", "section_tabs", "feed_conclusion", "space_why", "coop_layers", "coop_facts",
-            "tile_live", "tile_cv", "tile_pans", "tile_barricades", "farm_iso_feed", "farm_iso_air", "farm_iso_water", "meat_bar", "tile_water",
+            "tile_live", "tile_cv", "tile_pans", "tile_barricades", "farm_iso_feed", "farm_iso_air", "meat_bar", "tile_water",
             "chart_cursor", "chart_window", "flock_book").forEach { rule.onNodeWithTag(it).assertExists() }
         listOf("jump_birds", "jump_feed", "jump_air", "jump_lift", "jump_water", "jump_graphs").forEach { rule.onNodeWithTag(it).assertExists() }
         // gone by request: the other radars, the feeding log, the nipple-line drawing, the named birds, the old walk and floor cards
-        listOf("radar_feed", "radar_air", "radar_floor", "feed_log", "nipple_view", "walk_feed", "plan_step_0").forEach {
+        listOf("radar_feed", "radar_air", "radar_floor", "feed_log", "nipple_view", "walk_feed", "plan_step_0", "farm_iso_water", "space_by_auto").forEach {
             assertTrue(it, rule.onAllNodesWithTag(it).fetchSemanticsNodes().isEmpty()) }
         assertTrue(rule.onAllNodesWithText("Pip").fetchSemanticsNodes().isEmpty())
         assertTrue(rule.onAllNodesWithText("Choose what shows", substring = true).fetchSemanticsNodes().isEmpty())
@@ -259,7 +260,7 @@ class ScreensRenderTest {
         rule.mainClock.autoAdvance = false
         rule.setContent { MyApplicationTheme { androidx.compose.foundation.layout.Column(Modifier.fillMaxSize().background(Color.Black).padding(14.dp),
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
-            com.example.flock.ui.screens.FeedSection(d, d.recommendedOption, {}, needs) { }
+            com.example.flock.ui.screens.FeedSection(d, d.recommendedOption, {}, needs) { _, _ -> }
             com.example.flock.ui.screens.AirSection(d, 14, needs, false, {}, com.example.flock.ui.screens.houseMapOf(d, 14))
             com.example.flock.ui.screens.LiftSection(d) { _, _ -> }
             com.example.flock.ui.screens.WaterSection(d, needs) { }
@@ -267,6 +268,7 @@ class ScreensRenderTest {
         rule.mainClock.advanceTimeBy(1600)
         rule.onNodeWithTag("tile_barricades").assertExists()
         rule.onNodeWithTag("farm_iso_feed").assertExists()
+        rule.onNodeWithTag("barricade_slider").assertExists()
         rule.onNodeWithTag("air_view_litter").performClick()
         rule.mainClock.advanceTimeBy(800)
         rule.onNodeWithTag("litter_view").assertExists()
@@ -325,11 +327,14 @@ class ScreensRenderTest {
         rule.setContent { MyApplicationTheme { com.example.flock.ui.components.FarmSettingsDialog(farm, com.example.flock.data.ConfigEntity(spreadsheetId = "t"), feedTypes,
             {}, { f, _ -> saved = f }, {}, {}) } }
         rule.onAllNodesWithText("Save settings")[0].assertExists()
-        rule.onNodeWithTag("space_by_setting_pans").performScrollTo().performClick()
+        // v54: no barricade count, no modes; the pans counted all together with the sensor pans among them
+        assertTrue(rule.onAllNodesWithText("Barricades you have", substring = true).fetchSemanticsNodes().isEmpty())
+        rule.onNodeWithTag("total_pans").performScrollTo().performTextReplacement("116")
+        rule.onAllNodesWithText("114 feed pans")[0].assertExists()
         rule.onNodeWithTag("pad_layout_c").performScrollTo().performClick()
         com.github.takahirom.roborazzi.captureScreenRoboImage("src/test/screenshots/screen_farm_settings.png")
         rule.onNodeWithTag("farm_settings_save").performClick()
-        assertEquals("pans", saved?.spaceBy); assertEquals("c", saved?.padLayout); assertEquals(2, saved?.barricades)
+        assertEquals("c", saved?.padLayout); assertEquals(114, saved?.pansPerFeederLine); assertEquals(2, saved?.sensorPansPerLine)
     }
     /** The house map's views on the farm window: the litter layer draws, with its key. */
     @Config(qualifiers = "w360dp-h1600dp-xhdpi") @Test fun coopLayers() {

@@ -466,7 +466,7 @@ class OutputData(
         feederGapFt = feederGapFt, drinkerGapFt = farm.usableWidthFt / max(1, drinkerLinesN),
         capKgM2 = farm.densityCapDefault, hotC = hotC, coolC = coolC, lifted = liftTD > 0,
         dayBags = dayBags, bagsFullLine = bagsFullLine, birdsPerPanMax = birdsPerPanMax, feedingsWanted = feedingsWanted,
-        penStartFt = penStartFt, bagsShutLine = bagsTubeLine, barricades = farm.barricades, spaceBy = farm.spaceBy))
+        penStartFt = penStartFt, bagsShutLine = bagsTubeLine))
     /** The way the floor is set once the birds are grown or lifted (null: a young flock, the feed plan below decides). */
     val floorPlan: com.example.flock.domain.SpacePlan.Option? = if (space.young) null else space.options[space.best]
     /** The floor plan's pans as a series over the floor it uses. */

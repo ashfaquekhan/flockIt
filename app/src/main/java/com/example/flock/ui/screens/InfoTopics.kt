@@ -148,8 +148,8 @@ object InfoTopics {
             "Every day.",
             "Update the controller's day curve when these move."),
         "plan" to InfoTopic("Feed and floor",
-            "The bags to pour today and how: how many feedings (pick 2, 3 or 4; best marked), the pans to open on every line and where the barricades go, drawn on the whole house (pinch to zoom, slide sideways; double tap fits it again). Amber pans are open, white ones shut, crossed ones lie outside the barricades; a dashed barricade is the plan's, not yet put up. Auto · Barricades · Pans: how a floor too big for the birds is set — Auto pens them on a cool day and shuts pans on a warm one, Barricades pens them whenever the floor is roomy, Pans never uses a barricade. Only the barricades the farm has are used (Farm settings). Gain today is the curve's: the company's day scaled by how the flock stands against the company.",
-            "1) Company ration: the company's feed for birds of the flock's own weight (a heavy flock is fed as an older one) × live birds. 2) Flock eats: how much of the company's ration this flock really takes, learned from its entries. The bags entered for a day are the bags poured, not exactly what was eaten — feed stays in the hoppers and lines — so a big entry is followed by a small one. A Kalman filter follows two things at once: the flock's appetite (slow to change) and the feed sitting in the lines. 3) Likely eaten = chart × appetite, with the range it falls in 8 days out of 10. 4) In the lines: feed left over (+) or run low (−) from the last days. 5) Pour = likely eaten − in the lines, in whole bags, never more than a quarter away from the company's. Times and pans: the same pour on every line each time, and the most open pan pattern that pour fills to the last pan.",
+            "The bags to pour today and how, for the floor between the barricades. Drag the two barricades along the house (5 ft steps): the pans, the bags and the feedings follow at once; Set keeps them from this day on (until a later day changes them). Pick 2, 3 or 4 feedings (best marked). The drawing is the whole house straight from the front and above: amber pans open, white shut, crossed ones outside the barricades; a dashed barricade is not set yet (the brooding plan, or one being moved). Pinch to zoom, slide sideways, double tap fits it again. Gain today is the curve's: the company's day scaled by how the flock stands against it.",
+            "Bags: the company's ration for birds of the flock's weight, corrected by the flock's own appetite once it is known, in whole bags. Pans: on the floor between the barricades every pan is on, unless there are fewer than 25 birds a pan — then a series is shut (1 on · 1 off …) to about 45 birds a pan, never past a 2 m walk. Feedings: as many as the age wants while each pour still fills to the last open pan, else fewer. Until a barricade is set the chicks are taken to have part of the house growing to all of it by day 11; once one is set, the floor is exactly what is set.",
             "The flock's weight (a weighing, or the last one carried on), live birds, the feed entered each day (from day 6: the first days are trays, paper and the first fill), the farm's lines, pans and bags per line.",
             "A weighing, deaths, every feed entry; the weather switch (heat lowers the ration).",
             "\"Entered\" shows the plan against the entries: any 3 days together should be within about ±10 %; a single day can be off by a quarter. Pour more only if the pans are cleared before the next feeding, less only if feed is left in them."),
@@ -166,17 +166,17 @@ object InfoTopics {
             "Each day's feed entry.",
             "Per bird should track the commercial line; well above it with poor FCR means wastage."),
         "water" to InfoTopic("Water",
-            "The house with its drinker lines and the tank (pinch to zoom), the refills a day (× sets how often the tank is refilled), and the water numbers: the day's litres, a bird's, an hour's, the walk to a nipple, birds a nipple, nipple height, pressure and flow for the age, the water's temperature and pH (a place for sensors), and how likely the birds are thirsty now.",
-            "Water = feed × 1.8 (water : feed) × 6 % more per °C above 20 °C. Tank fills needed = water ÷ tank litres, rounded up; refills = that × your multiplier (fresher, cooler water). Nipple flow, height and line pressure follow age (line pressure is in inches of water column on the regulator's sight tube, from the age curve).",
+            "How much the birds drink today and how to keep the water right: the day's litres and the refills of the tank (× sets how often it is refilled), a bird's, an hour's while the lights are on, the walk to a nipple, birds a nipple, nipple height, pressure and flow for the age, the water's temperature and pH (a place for sensors), and how likely the birds are thirsty now.",
+            "Water = feed × 1.8 (water : feed), more on hot days when the weather switch is on. Refills = the day's water ÷ the tank, rounded up, × the multiplier. Nipple flow, height and pressure follow the age (Ross).",
             "Feed, temperature, tank size and drinker lines (Settings), multiplier. The drawing shows the line's regulator with its sight tube (the water stands as high as the line pressure, in inches of water) and a dial reading the same, the line at its height over the litter and a bird of today's size drinking.",
             "Age, heat, the multiplier.",
             "Water 18–21 °C, pH 6.0–6.8; a sudden drop in drinking is often the first sign of trouble."),
-        "trends" to InfoTopic("Flock trends",
-            "Measures worked out from the flock's own weights, feed and deaths — the ones that show a problem early.",
-            "Average daily gain = weight ÷ age. FCR, last 7 days = feed eaten in the last 7 days ÷ weight gained in them (the cumulative FCR moves slowly; this one shows a change within the week). Days ahead or behind = the age at which the standard reaches the flock's weight − the flock's age. First-week mortality = deaths entered on days 0–6 ÷ birds at entry. Mortality, last 7 days = deaths in them ÷ birds alive 7 days ago. FCR with losses counted = all feed ÷ (live weight + weight of the birds lost, each at the flock's weight the day it was lost): the feed conversion of the birds themselves.",
-            "Weight samples, feed used, deaths and culls from Entry. The 7-day FCR needs feed entered for each of the last 7 days.",
-            "Every entry. A weight that is projected (yellow) makes the gain, days ahead and 7-day FCR projected too.",
-            "7-day FCR well above the cumulative FCR: feed is being wasted or the birds have stopped growing — check feeder height, heat and health. First-week mortality over 1 %: look at chick quality and brooding."),
+        "trends" to InfoTopic("Trends",
+            "Only what rests on counts and weighings: the birds placed and started, those removed (deaths and culls), the average daily gain, the first week's deaths and the last seven days' deaths, each against the company and the ideal.",
+            "Average daily gain = weight ÷ age. First week deaths = deaths in days 1–7 ÷ birds started. Last 7 days = deaths in the last 7 days ÷ birds started.",
+            "Weight samples, deaths and culls from Entry.",
+            "Every entry. A weight that is projected (amber) makes the gain projected too.",
+            "Deaths in the first week well above the company: look at the chicks' start (brooding temperature, water, feed on paper)."),
         "forecast" to InfoTopic("Target and forecast",
             "The weight the flock is grown to, when it will get there and what it will weigh at the planned harvest day — from the flock's own weighings.",
             "Each weighing is the flock's share of the commercial weight for that day (weighed ÷ standard). The share is tracked with a Kalman filter: it drifts about 0.6 % a day and one weighing is taken to be within about 3 %. Forecast weight on day d = standard weight on d × share. Low and High are the range it falls in 8 times out of 10; the range widens the further ahead it looks. Target day = the first day the forecast reaches the target; Earliest and Latest use the High and Low lines. Chance of target = the probability the weight at the harvest day is at or above the target.",
@@ -241,7 +241,7 @@ fun InfoButton(key: String, modifier: Modifier = Modifier) {
     var open by remember { mutableStateOf(false) }
     Box(modifier.size(24.dp).border(1.dp, Color.White.copy(alpha = 0.55f), CircleShape).clickable { open = true }.testTag("info_$key"),
         contentAlignment = Alignment.Center) {
-        Text("i", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium), color = Color.White.copy(alpha = 0.85f))
+        Text("i", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Normal), color = Color.White.copy(alpha = 0.85f))
     }
     if (open) AlertDialog(
         onDismissRequest = { open = false },
@@ -251,7 +251,7 @@ fun InfoButton(key: String, modifier: Modifier = Modifier) {
                 listOf("What it is" to topic.what, "How it is worked out" to topic.how, "What it needs" to topic.inputs,
                     "What changes it" to topic.changes, "Keeping it right" to topic.check).forEach { (h, b) ->
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(h, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = Color.White.copy(alpha = 0.7f))
+                        Text(h, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Normal), color = Color.White.copy(alpha = 0.7f))
                         Text(b, style = MaterialTheme.typography.bodyMedium)
                     }
                 }

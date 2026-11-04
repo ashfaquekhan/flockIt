@@ -125,7 +125,7 @@ class SheetSchemaTest {
         val again = SheetSchema.parse(sid, back, farm, null)
         assertEquals(listOf(24.0, 25.0, 26.0, 27.0), again.days.map { it.outTempMin })
         assertEquals(33.2, again.days[0].outTempMax!!, 1e-9); assertEquals(71.5, again.days[2].outRhAvg!!, 1e-9)
-        assertEquals(1, again.farm!!.barricades); assertEquals("pans", again.farm!!.spaceBy); assertEquals("c", again.farm!!.padLayout)
+        assertEquals("c", again.farm!!.padLayout)
         // the weather columns sit beside the day's typed-in outside reading
         val header = SheetSchema.dailyHeader(emptyList(), 5)
         assertEquals(header.indexOf("OutRH") + 1, header.indexOf("OutTempMin"))

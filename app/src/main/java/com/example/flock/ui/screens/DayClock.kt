@@ -123,7 +123,7 @@ private fun Totals(plan: DaySchedule.Plan, kinds: List<Kind>, a: DayAmounts) {
                             // at large text the value drops under the name instead of being cut
                             androidx.compose.foundation.layout.FlowRow {
                                 Text(c.name + " ", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.65f), maxLines = 1, softWrap = false)
-                                Text(c.value, style = MaterialTheme.typography.titleSmall.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium), color = c.col, maxLines = 1, softWrap = false)
+                                Text(c.value, style = MaterialTheme.typography.titleSmall.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Normal), color = c.col, maxLines = 1, softWrap = false)
                             }
                             if (c.sub.isNotEmpty()) Text(c.sub, style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont,
                                 letterSpacing = androidx.compose.ui.unit.TextUnit(-0.7f, androidx.compose.ui.unit.TextUnitType.Sp)), color = c.col.copy(alpha = 0.8f), maxLines = 1, softWrap = false)
@@ -147,8 +147,8 @@ private fun NextUp(kinds: List<Kind>, plan: DaySchedule.Plan, nowH: Double) {
         horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text("Next", Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), maxLines = 1, softWrap = false)
         Text(e.emoji, Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.titleMedium, maxLines = 1, softWrap = false)
-        Text(e.what, Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium), color = Color.White, maxLines = 1, softWrap = false)
-        Text(hhmmOf(e.h), Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium), color = e.col, maxLines = 1, softWrap = false)
+        Text(e.what, Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Normal), color = Color.White, maxLines = 1, softWrap = false)
+        Text(hhmmOf(e.h), Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Normal), color = e.col, maxLines = 1, softWrap = false)
         Text("in " + Fmt.n(fwd(nowH, e.h), 1) + " h", Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont), color = Color.White.copy(alpha = 0.65f), maxLines = 1, softWrap = false)
     }
 }
@@ -179,12 +179,12 @@ private fun Agenda(plan: DaySchedule.Plan, kinds: List<Kind>, a: DayAmounts, now
             val alpha = if (isNext) 1f else if (gone) 0.42f else 0.82f
             Row(Modifier.fillMaxWidth().then(if (isNext) Modifier.border(1.dp, it.col.copy(alpha = 0.7f), RoundedCornerShape(6.dp)) else Modifier).padding(horizontal = 4.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                Text(hhmmOf(it.h), style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium),
+                Text(hhmmOf(it.h), style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Normal),
                     color = it.col.copy(alpha = alpha), modifier = Modifier.width(52.dp * fs), maxLines = 1, softWrap = false)
                 Text(it.emoji, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(26.dp * fs), maxLines = 1, softWrap = false)
                 // at large text the job wraps between its words onto a second line; it is never cut
                 Text(it.what, style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = alpha), modifier = Modifier.weight(1f).padding(end = 4.dp), maxLines = 3)
-                if (it.amount.isNotEmpty()) Text(it.amount, style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium),
+                if (it.amount.isNotEmpty()) Text(it.amount, style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Normal),
                     color = it.col.copy(alpha = alpha), maxLines = 1, softWrap = false)
             }
         }

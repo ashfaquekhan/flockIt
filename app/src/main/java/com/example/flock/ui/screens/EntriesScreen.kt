@@ -393,7 +393,7 @@ fun EntriesScreen(
             }
             // more or fewer locations; the number is kept for the next weighing
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("${locs.size} locations", style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium),
+                Text("${locs.size} locations", style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Normal),
                     modifier = Modifier.weight(1f), maxLines = 1, softWrap = false)
                 OutlinedButton(onClick = { if (locs.size > 1) locs.removeAt(locs.size - 1) },
                     enabled = weightsEnabled && locs.size > 1 && locs.last().w.isBlank(),
@@ -424,7 +424,7 @@ fun EntriesScreen(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val mono = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium, fontFamily = com.example.ui.theme.NumberFont)
+                    val mono = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Normal, fontFamily = com.example.ui.theme.NumberFont)
                     Column {
                         Text("Average", style = MaterialTheme.typography.labelSmall)
                         Text(if (liveSampleRes.hasSample) String.format("%.1f g", liveSampleRes.flockAvgG) else "—", style = mono)
@@ -697,7 +697,7 @@ fun SampleMap(locations: Int, farm: com.example.flock.data.FarmEntity, occupiedF
     val spots = (0 until n).map { i -> ((i + 0.5) / n) to (if (n == 1) 0.5 else if (i % 2 == 0) 0.28 else 0.72) }
     val gold = com.example.ui.theme.ValuePredicted; val blue = com.example.ui.theme.ValueMin
     Column(modifier.fillMaxWidth().testTag("sample_map"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("Where to catch the birds", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium))
+        Text("Where to catch the birds", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Normal))
         androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(118.dp)) {
             val px = density
             val padL = 34f * px; val padR = 8f * px; val padT = 6f * px; val padB = 20f * px
@@ -887,7 +887,7 @@ fun HoldButton(
                     else -> label
                 },
                 color = Color.White,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 maxLines = 3
             )
@@ -901,13 +901,9 @@ private fun Section(
     subtitle: String? = null,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
 ) {
-    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
-        color = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(12.dp),
-        tonalElevation = 0.dp,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    // no outline or panel (v54): the section's title and its fields straight on the black
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium))
             if (subtitle != null) {
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -928,7 +924,7 @@ private fun InfoBanner(
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(8.dp))
-            Text(text, color = tint, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium))
+            Text(text, color = tint, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Normal))
         }
     }
 }
@@ -949,7 +945,7 @@ fun WeightSampleRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(loc, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium), modifier = Modifier.weight(1.2f))
+        Text(loc, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Normal), modifier = Modifier.weight(1.2f))
         OutlinedTextField(
             colors = entryFieldColors(),
             value = weight, onValueChange = onWeightChange,

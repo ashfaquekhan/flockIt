@@ -126,6 +126,8 @@ object FlockCalc {
         var penFt: Double? = null
         // the front barricade (ft from the front wall), carried on like the back one until a day changes it
         var penStart = 0.0
+        // a barricade (or "none") set on any day so far: the brooding plan no longer applies
+        var penSet = false
 
         // Stock tracking per feed type (Bug 3 Fix)
         var totalReceivedBags = 0.0
@@ -291,14 +293,13 @@ object FlockCalc {
             val livability = if (entryBirds > 0) ((live + cumLift).toDouble() / entryBirds) * 100.0 else null
 
             // Area & density: the floor the birds have (the barricade entered, else the brooding plan) and the birds after any lifting
-            r.broodingLength?.let { penFt = if (it <= 0 || it >= farm.usableLengthFt) null else it }
-            r.penStartFt?.let { penStart = it.coerceIn(0.0, max(0.0, farm.usableLengthFt - 10)) }
-            // the birds' floor runs from the front barricade to the back one (the back wall when there is none)
-            // with no barricade at all (none on the farm, or the farm sets its floor by the pans alone) the chicks have the whole
-            // house from the start: no brooding pen is assumed (v53)
-            val noPen = farm.barricades <= 0 || farm.spaceBy == "pans"
+            r.broodingLength?.let { penSet = true; penFt = if (it <= 0 || it >= farm.usableLengthFt) null else it }
+            r.penStartFt?.let { penSet = true; penStart = it.coerceIn(0.0, max(0.0, farm.usableLengthFt - 10)) }
+            // the birds' floor runs from the front barricade to the back one (the back wall when there is none); the brooding
+            // plan (a part of the house growing to all of it by day 11) only until the farm sets a barricade (v54: once set,
+            // "none" means the whole house)
             val penLen = if (penStart > 0 || penFt != null) ((penFt ?: farm.usableLengthFt) - penStart).coerceAtLeast(10.0)
-                else if (noPen) farm.usableLengthFt else null
+                else if (penSet) farm.usableLengthFt else null
             val areaRes = PhysiologicalEngine.computeAreaAndDensity(
                 liveBirds = live,
                 avgKg = avgAfterKg,

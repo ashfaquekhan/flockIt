@@ -78,7 +78,7 @@ fun ShareFarmDialog(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "Share Farm",
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium)
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Normal)
                         )
                     }
                     IconButton(onClick = onDismiss) {
@@ -104,7 +104,7 @@ fun ShareFarmDialog(
                 Column {
                     Text(
                         text = "Access Role",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium)
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Normal)
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(
@@ -154,7 +154,7 @@ fun ShareFarmDialog(
                     text = "SPREADSHEET ID / LINK",
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontFamily = com.example.ui.theme.NumberFont,
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = FontWeight.Normal,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 )
@@ -200,7 +200,7 @@ fun ShareFarmDialog(
                 ) {
                     Icon(Icons.Default.Share, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(6.dp))
-                    Text("Share Farm Link / ID", color = androidx.compose.ui.graphics.Color(0xFFF2F2F0), fontWeight = FontWeight.Medium)
+                    Text("Share Farm Link / ID", color = androidx.compose.ui.graphics.Color(0xFFF2F2F0), fontWeight = FontWeight.Normal)
                 }
             }
         }

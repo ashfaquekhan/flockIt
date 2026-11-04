@@ -8,6 +8,30 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v54 — 2026-11-05 · No boxes, the v46 line for every number, barricades set on the feed plan, a straight house, lighter type · no DB or sheet change
+- **No boundaries in the page**: no outlined cards or tiles on Output, Entry and Stock — every section and number sits
+  straight on the black, set apart by space; the top bar keeps its look. The page uses more of the width.
+- **The v46 line for every number**: name, arrow and value on one line, `com` and `ideal` (or the limits) on the next, then
+  the slim bar — the company's ±5 % band and tick under the line, the ideal's above, the flock's dot — or the range bar
+  (min · ideal band · max) for numbers with a safe range. One number a line, no tiles.
+- **Far fewer signs**: none on the numbers, the tabs or the choices; one small sign by each section's name only.
+- **Lighter, smaller type** across the app: Material's sizes, regular weight (medium only for section names); the
+  charts and drawings use the regular faces too.
+- **Feed and floor: set the first and last barricade there** — drag the two along the house (5 ft steps); the pans, the
+  bags and the feedings follow at once (shown dashed until set); **Set from day N** keeps them from that day on. No Auto /
+  Barricades / Pans modes, and the app never suggests a barricade of its own. Until a barricade is set the brooding plan
+  stands; once one is set (or "none"), the floor is exactly what was set.
+- **Farm settings**: the barricade count and the floor modes are gone. Pans are entered as **all the pans on a line
+  (sensor pans included)** and **the sensor pans of them**; the feed pans are shown worked out ("114 feed pans").
+- **Order**: Birds · Feed · **Lifting** · Air · Water · Graphs (lifting above the air).
+- **Water** has no house drawing.
+- **The house drawing is straight**: seen from the front and above, not turned.
+- **Trends** keep only what rests on counts and weighings: placed and started, removed (dead and culls), average daily
+  gain, first-week deaths, deaths in the last 7 days. Gone: the 7-day FCR, days ahead / behind, the 3- and 7-day advice
+  and the projection check.
+- **Fixed: scrolling over the graphs.** The chart took any sideways wobble of a finger as moving its cursor, so the page
+  would not scroll there; now only a sideways drag moves the cursor (a tap places it), up and down scroll the page.
+
 ## v53 — 2026-11-05 · The Output page in the farm's order with whole-house farm views and game-style signs, barricades the farm has, the weather kept, safe screen edges · **DB 19 → 20**, sheet schema 9 → 10
 - **The page in the farm's order**, six sections with tabs that carry their sign: **Birds · Feed · Air · Lifting · Water · Graphs**.
   Every number is a tile: its sign, its name, the value (entered green, projected amber) with its arrow, `co` and `id`

@@ -185,7 +185,7 @@ fun MainFlockScreen(
                             Text(
                                 text = tab.label,
                                 style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal
+                                    fontWeight = if (selected) FontWeight.Normal else FontWeight.Normal
                                 )
                             )
                         },
@@ -248,6 +248,7 @@ fun MainFlockScreen(
                     onFlockPlan = { w, h -> viewModel.updateFlockPlan(w, h) },
                     onLogFeeding = { bags, at -> viewModel.logFeeding(bags, at) },
                     onUndoFeeding = { viewModel.undoLastFeeding() },
+                    onBarricades = { s, e -> viewModel.setBarricades(s, e) },
                     weatherOn = weatherOn,
                     onWeatherOn = { weatherOn = it; com.example.flock.network.ViewPrefs.setWeatherOn(ctx, it) },
                     onSelectDay = { viewModel.selectDay(it) }

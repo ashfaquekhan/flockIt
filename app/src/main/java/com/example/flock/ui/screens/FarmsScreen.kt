@@ -91,7 +91,7 @@ fun FarmsScreen(
                     com.example.flock.ui.components.FlockWordmark(markSize = 34.dp, textStyle = MaterialTheme.typography.titleLarge)
                     Text(
                         "Your Farms",
-                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Medium)
+                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Normal)
                     )
                     Text(
                         text = (if (isDemoMode) "Offline · " else "") + userEmail.ifBlank { "local device" },
@@ -129,7 +129,7 @@ fun FarmsScreen(
                                     modifier = Modifier.size(48.dp)
                                 )
                                 Spacer(Modifier.height(10.dp))
-                                Text("No farms yet", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium))
+                                Text("No farms yet", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal))
                                 Text(
                                     "Create a farm, or pull down to sync your account.",
                                     style = MaterialTheme.typography.bodyMedium,
@@ -167,7 +167,7 @@ fun FarmsScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent, contentColor = androidx.compose.ui.graphics.Color.White)
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
-                Text("  New farm", color = Color.White, fontWeight = FontWeight.Medium)
+                Text("  New farm", color = Color.White, fontWeight = FontWeight.Normal)
             }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
@@ -175,7 +175,7 @@ fun FarmsScreen(
                 modifier = Modifier.fillMaxWidth().height(46.dp),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text("Open a shared farm", color = androidx.compose.ui.graphics.Color(0xFFF2F2F0), fontWeight = FontWeight.Medium)
+                Text("Open a shared farm", color = androidx.compose.ui.graphics.Color(0xFFF2F2F0), fontWeight = FontWeight.Normal)
             }
         }
     }
@@ -234,7 +234,7 @@ private fun FarmCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     farm.farmName,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium)
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal)
                 )
                 Text(
                     text = "${farm.role} · ${farm.syncStatus}",

@@ -91,13 +91,13 @@ fun FeedScreen(
                 ) {
                     Text(
                         text = "Feed to Issue Today",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium)
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal)
                     )
                     Surface(color = DomainFeedWash, shape = RoundedCornerShape(8.dp)) {
                         Text(
                             text = "${bagWeightKg.toInt()} kg / bag",
                             style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Medium,
+                                fontWeight = FontWeight.Normal,
                                 color = DomainFeed
                             ),
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
@@ -114,14 +114,14 @@ fun FeedScreen(
                     Text(
                         text = "$bagsToIssue",
                         style = MaterialTheme.typography.displaySmall.copy(
-                            fontWeight = FontWeight.Medium,
+                            fontWeight = FontWeight.Normal,
                             color = DomainFeed
                         )
                     )
                     Text(
                         text = " bags",
                         style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Medium,
+                            fontWeight = FontWeight.Normal,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         ),
                         modifier = Modifier.padding(bottom = 6.dp)
@@ -150,7 +150,7 @@ fun FeedScreen(
                             text = String.format("Heat de-rated: -%.1f%% due to %.1f°C incoming temp", deRatePct, temp),
                             style = MaterialTheme.typography.bodySmall.copy(
                                 color = StatusWarn,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Normal
                             )
                         )
                     }
@@ -169,7 +169,7 @@ fun FeedScreen(
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
                     text = "Diurnal Distribution (5 Blocks)",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium)
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal)
                 )
                 Text(
                     text = "Protects birds against heat prostration by keeping crops empty at peak heat.",
@@ -240,7 +240,7 @@ fun FeedScreen(
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
                     text = "Feed Conversion Performance",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium)
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal)
                 )
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -276,7 +276,7 @@ fun FeedScreen(
                     Text(
                         text = String.format("%.3f", stdFcr ?: 1.35),
                         style = MaterialTheme.typography.bodySmall.copy(
-                            fontWeight = FontWeight.Medium,
+                            fontWeight = FontWeight.Normal,
                             fontFamily = com.example.ui.theme.NumberFont
                         )
                     )
@@ -305,7 +305,7 @@ fun FeedBlockRow(
             Text(
                 text = time,
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = FontWeight.Normal,
                     fontFamily = com.example.ui.theme.NumberFont
                 )
             )
@@ -314,7 +314,7 @@ fun FeedBlockRow(
                     text = "$pct%",
                     style = MaterialTheme.typography.labelSmall.copy(
                         color = DomainFeed,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Normal
                     )
                 )
             }
@@ -326,7 +326,7 @@ fun FeedBlockRow(
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = FontWeight.Normal,
                     color = if (isRest) StatusCrit else MaterialTheme.colorScheme.onSurface
                 )
             )
@@ -347,7 +347,7 @@ fun FeedBlockRow(
                 Text(
                     text = "$bags bags",
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = FontWeight.Normal,
                         color = DomainFeed
                     ),
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -361,7 +361,7 @@ fun FeedBlockRow(
                 Text(
                     text = "Lines Up",
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = FontWeight.Normal,
                         color = StatusCrit
                     ),
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -388,7 +388,7 @@ fun FcrCard(
                 text = label.uppercase(),
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontFamily = com.example.ui.theme.NumberFont,
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = FontWeight.Normal,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             )
@@ -396,7 +396,7 @@ fun FcrCard(
             Text(
                 text = value,
                 style = MaterialTheme.typography.titleLarge.copy(
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = FontWeight.Normal,
                     fontFamily = com.example.ui.theme.NumberFont,
                     color = DomainFeed
                 )

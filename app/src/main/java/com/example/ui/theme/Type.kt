@@ -38,8 +38,8 @@ object AppFonts {
     fun load(context: Context) {
         if (loaded) return
         try {
-            ResourcesCompat.getFont(context, R.font.jetbrains_mono_medium)?.let { mono = it }
-            ResourcesCompat.getFont(context, R.font.rubik_medium)?.let { text = it }
+            ResourcesCompat.getFont(context, R.font.jetbrains_mono_regular)?.let { mono = it }
+            ResourcesCompat.getFont(context, R.font.rubik_regular)?.let { text = it }
         } catch (e: Exception) {
             // the system faces stay in place
         }
@@ -52,9 +52,10 @@ private fun ts(size: Int, line: Int, w: FontWeight = FontWeight.Normal, ls: Doub
 
 /** Material 3 sizes, each one step (≈ 1 sp) larger so values read easily in the shed. Rubik runs a little wide, so the tracking is tighter than Material's. */
 val Typography = Typography(
-    displayLarge = ts(58, 66), displayMedium = ts(46, 54), displaySmall = ts(37, 45),
-    headlineLarge = ts(33, 41), headlineMedium = ts(29, 37), headlineSmall = ts(25, 33),
-    titleLarge = ts(23, 29), titleMedium = ts(17, 25, FontWeight.Medium, 0.0), titleSmall = ts(15, 21, FontWeight.Medium, 0.0),
-    bodyLarge = ts(17, 25, ls = 0.2), bodyMedium = ts(15, 21, ls = 0.1), bodySmall = ts(13, 17, ls = 0.2),
-    labelLarge = ts(15, 21, FontWeight.Medium, 0.0), labelMedium = ts(13, 17, FontWeight.Medium, 0.2), labelSmall = ts(12, 16, FontWeight.Medium, 0.2)
+    // v54: smaller and light ("too much bold, thick and big"): Material's sizes, regular weight throughout
+    displayLarge = ts(54, 62), displayMedium = ts(42, 50), displaySmall = ts(34, 42),
+    headlineLarge = ts(30, 38), headlineMedium = ts(26, 34), headlineSmall = ts(22, 30),
+    titleLarge = ts(20, 26), titleMedium = ts(16, 22, FontWeight.Normal, 0.0), titleSmall = ts(14, 20, FontWeight.Normal, 0.0),
+    bodyLarge = ts(15, 22, ls = 0.2), bodyMedium = ts(14, 20, ls = 0.1), bodySmall = ts(12, 16, ls = 0.2),
+    labelLarge = ts(14, 20, FontWeight.Normal, 0.0), labelMedium = ts(12, 16, FontWeight.Normal, 0.2), labelSmall = ts(11, 15, FontWeight.Normal, 0.2)
 )

@@ -528,6 +528,24 @@ class FlockRepository(
             }
         }
 
+    /**
+     * The barricades from a day on (they hold until a later day changes them): the first [startFt] and the last [endFt],
+     * ft from the front wall (0 / the house's length: none at that end). Sent to the sheet like an entry.
+     */
+    suspend fun setBarricades(spreadsheetId: String, flockId: String, dayNumber: Int, startFt: Double, endFt: Double, houseLenFt: Double, userEmail: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            ioLock.withLock {
+                val existing = dailyDataDao.getDayEntry(spreadsheetId, flockId, dayNumber)
+                    ?: return@withLock Result.failure(Exception("Day entry not found"))
+                val start = startFt.coerceIn(0.0, max(0.0, houseLenFt - 10))
+                val end = if (endFt >= houseLenFt - 0.5) 0.0 else endFt.coerceIn(start + 10, houseLenFt)
+                if (existing.penStartFt == start && existing.broodingLength == end) return@withLock Result.success(Unit)
+                val row = existing.copy(penStartFt = start, broodingLength = end, updatedAt = System.currentTimeMillis(), updatedBy = userEmail)
+                saveAndPushDay("Barricades", spreadsheetId, row.copy(dirtyFields = mergeDirtyFields(existing.dirty, existing.dirtyFields, setOf("penstartft", "broodinglength"))))
+                Result.success(Unit)
+            }
+        }
+
     /** One finished day's outside weather at the farm: lowest, average and highest °C and % RH. */
     data class DayWeather(val tMin: Double, val tAvg: Double, val tMax: Double, val rhMin: Double, val rhAvg: Double, val rhMax: Double)
 

@@ -226,7 +226,7 @@ fun GraphsCard(d: OutputData) {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             specs.forEach { s ->
                 val on = s.key == c.key
-                Text(s.title, style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (on) FontWeight.Medium else FontWeight.Medium),
+                Text(s.title, style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (on) FontWeight.Normal else FontWeight.Normal),
                     color = Color.White.copy(alpha = if (on) 1f else 0.7f),
                     modifier = Modifier.border(if (on) 2.dp else 1.dp, Color.White.copy(alpha = if (on) 1f else 0.3f), RoundedCornerShape(10.dp))
                         .clickable { pick = s.key }.padding(horizontal = 12.dp, vertical = 8.dp).testTag("chart_pick_${s.key}"))
@@ -235,7 +235,7 @@ fun GraphsCard(d: OutputData) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) { ChartKey(c) }
             Spacer(Modifier.width(8.dp))
-            Text("Zoom", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = Color.White,
+            Text("Zoom", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Normal), color = Color.White,
                 modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).clickable { zoomed = true }
                     .padding(horizontal = 12.dp, vertical = 6.dp).testTag("chart_zoom"))
         }
@@ -259,13 +259,16 @@ private fun ChartCanvas(c: ChartSpec, from: Double, to: Double, sel: Int, onSel:
             val gw = size.width - padL - 30f * density
             return (f + ((x - padL) / gw).coerceIn(0f, 1f) * (t - f)).roundToInt().coerceIn(c.fromDay, c.maxDay)
         }
-        awaitEachGesture {
-            val down = awaitFirstDown(); setSel(dayAt(down.position.x))
-            do {
-                val ev = awaitPointerEvent()
-                ev.changes.firstOrNull { it.pressed }?.let { ch -> if (kotlin.math.abs(ch.position.x - ch.previousPosition.x) > 0f) { setSel(dayAt(ch.position.x)); ch.consume() } }
-            } while (ev.changes.any { it.pressed })
+        // only a sideways drag moves the cursor (a tap puts it there): up and down scroll the page as anywhere else
+        // (v54: any sideways wobble of a finger used to take the drag, so the page could not be scrolled over the chart)
+        detectHorizontalDragGestures(onDragStart = { setSel(dayAt(it.x)) }) { ch, _ -> ch.consume(); setSel(dayAt(ch.position.x)) }
+    }.pointerInput(c.key) {
+        fun dayAt(x: Float): Int {
+            val padL = PAD_L * density + 12f * density
+            val gw = size.width - padL - 30f * density
+            return (f + ((x - padL) / gw).coerceIn(0f, 1f) * (t - f)).roundToInt().coerceIn(c.fromDay, c.maxDay)
         }
+        detectTapGestures { setSel(dayAt(it.x)) }
     }) { drawChart(c, from, to, sel, labelArgb, textSp * density, dotLabels) }
 }
 

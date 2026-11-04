@@ -104,8 +104,8 @@ fun isoFarmOf(d: OutputData, pattern: OutputData.PanPattern, fromFt: Double, toF
         f.padLayout, padLen, padWet, running > d.minLevel.avgFans * 1.5 + 0.5, map)
 }
 
-private const val YAW = 0.21            // 12°: the house runs left to right, rising a little
-private const val ELEV = 0.96           // 55°: seen from above and the side
+private const val YAW = 0.0             // v54: straight — the house runs left to right, not turned
+private const val ELEV = 0.96           // 55°: seen from above and the near side
 private const val VZ = 1.5              // walls drawn a little taller than they are, to read at this size
 
 /**
@@ -356,7 +356,7 @@ private fun DrawScope.drawIso(f: IsoFarm, view: IsoView, g: IsoGeo, zoom: Float,
     if (view == IsoView.AIR || view == IsoView.LITTER) listOf(0.2, 0.5, 0.8).forEach { xf ->
         val p = P(L * xf, 3.5, W * 0.5)
         drawLine(Color.White.copy(alpha = 0.3f), P(L * xf, 0.0, W * 0.5), p, 1f)
-        drawGameIcon(GIcon.SENSOR, Offset(p.x - 8.dp.toPx(), p.y - 16.dp.toPx()), 16.dp.toPx(), 0.45f)
+        drawCircle(Color.White.copy(alpha = 0.35f), 3.dp.toPx(), p, style = Stroke(1.2f))
     }
 
     // ---- the water tank outside the front wall ----

@@ -295,8 +295,8 @@ fun FlockBookCard(d: OutputData, onSelectDay: ((Int) -> Unit)?) {
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
         Column(Modifier.fillMaxSize().background(Color.Black).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Flock book · ${d.flock?.name ?: ""}", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium), modifier = Modifier.weight(1f))
-                Text("Close", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = Color.White,
+                Text("Flock book · ${d.flock?.name ?: ""}", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal), modifier = Modifier.weight(1f))
+                Text("Close", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Normal), color = Color.White,
                     modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).clickable { full = false }.padding(horizontal = 12.dp, vertical = 6.dp))
             }
             FlockBookGrid(d, Modifier.fillMaxWidth().weight(1f)) { day -> onSelectDay?.invoke(day); full = false }
@@ -309,8 +309,8 @@ private fun FlockBookGrid(d: OutputData, modifier: Modifier, onSelectDay: ((Int)
     val cols = remember { bookCols() }
     val days = remember(d) { d.rows.filter { it.dayNumber <= max(d.day, d.lastEnteredDay) }.sortedByDescending { it.dayNumber } }
     val h = rememberScrollState()
-    val mono = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium, letterSpacing = (-0.3).sp)
-    val head = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium)
+    val mono = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Normal, letterSpacing = (-0.3).sp)
+    val head = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Normal)
     Column(modifier.border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(8.dp)).testTag("flock_book")) {
         // the titles
         Row(Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.06f)).padding(vertical = 6.dp)) {

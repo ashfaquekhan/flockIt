@@ -95,17 +95,16 @@ fun FarmSettingsDialog(
     var panSpacingFt by remember { mutableStateOf(farm.panSpacingFt.toString()) }
     var feederLineGapFt by remember { mutableStateOf(farm.feederLineGapFt.toString()) }
     var feederMoveMin by remember { mutableStateOf(farm.feederMoveMin.toString()) }
-    var pansPerFeederLine by remember { mutableStateOf(farm.pansPerFeederLine.toString()) }
     var dieselCanL by remember { mutableStateOf(farm.dieselCanL.toString()) }
     var godownBags by remember { mutableStateOf(farm.godownBags.toString()) }
     var manualFeeders by remember { mutableStateOf(farm.manualFeeders.toString()) }
     var manualDrinkers by remember { mutableStateOf(farm.manualDrinkers.toString()) }
     var nipplesPerLine by remember { mutableStateOf(farm.nipplesPerLine.toString()) }
     var panLipCm by remember { mutableStateOf(farm.panLipCm.toString()) }
-    // barricades the farm has, how a floor too big for the birds is set, how the cooling pads sit (v53)
-    var barricades by remember { mutableStateOf(farm.barricades.toString()) }
-    var spaceBy by remember { mutableStateOf(farm.spaceBy) }
+    // how the cooling pads sit (v53)
     var padLayout by remember { mutableStateOf(farm.padLayout) }
+    // pans on a line counted all together, the sensor pans among them (v54: "inclusive or exclusive?" — said plainly)
+    var totalPans by remember { mutableStateOf((farm.pansPerFeederLine + farm.sensorPansPerLine).toString()) }
 
     var waterRefillFactor by remember { mutableStateOf(farm.waterRefillFactor.toString()) }
     var minVentFactor by remember { mutableStateOf(farm.minVentFactor.toString()) }
@@ -151,7 +150,7 @@ fun FarmSettingsDialog(
                     Column {
                         Text(
                             text = "Farm & Shed Configuration",
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium)
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Normal)
                         )
                         Text(
                             text = farm.farmName,
@@ -189,7 +188,7 @@ fun FarmSettingsDialog(
                 ) {
                     if (selectedTab == 0) {
                         // House & Specs
-                        Text("Shed Geometry & Hardware", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium))
+                        Text("Shed Geometry & Hardware", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Normal))
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
@@ -280,7 +279,7 @@ fun FarmSettingsDialog(
 
                         Divider(modifier = Modifier.padding(vertical = 4.dp))
 
-                        Text("Placement Area & Cooling Pads", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium))
+                        Text("Placement Area & Cooling Pads", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Normal))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(usableLengthFt, { usableLengthFt = it }, label = { Text("Placement length (ft)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
                             OutlinedTextField(usableWidthFt, { usableWidthFt = it }, label = { Text("Placement width (ft)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
@@ -294,15 +293,7 @@ fun FarmSettingsDialog(
 
                         Divider(modifier = Modifier.padding(vertical = 4.dp))
 
-                        Text("Barricades", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium))
-                        OutlinedTextField(barricades, { barricades = it.filter { c -> c.isDigit() } }, label = { Text("Barricades you have (0–4)") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth().testTag("barricades_input"))
-                        Text("When the floor is too big for the birds", style = MaterialTheme.typography.labelLarge, color = Color.White)
-                        ChoiceRow(listOf("auto" to "Auto", "barricade" to "Barricades", "pans" to "Feeder pans"), spaceBy, { spaceBy = it }, "space_by_setting")
-
-                        Divider(modifier = Modifier.padding(vertical = 4.dp))
-
-                        Text("Heaters & Fuel", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium))
+                        Text("Heaters & Fuel", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Normal))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(heaterCount, { heaterCount = it }, label = { Text("Heaters") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
                             OutlinedTextField(heaterKw, { heaterKw = it }, label = { Text("Heater kW each") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
@@ -311,7 +302,7 @@ fun FarmSettingsDialog(
 
                         Divider(modifier = Modifier.padding(vertical = 4.dp))
 
-                        Text("Drinkers & Feeders", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium))
+                        Text("Drinkers & Feeders", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Normal))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(drinkerLines, { drinkerLines = it }, label = { Text("Drinker lines") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
                             OutlinedTextField(nippleLineHoldL, { nippleLineHoldL = it }, label = { Text("Water 1 drinker line holds (L)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
@@ -323,17 +314,22 @@ fun FarmSettingsDialog(
                         // optional: the tube alone (it stays full between feedings, so a feeding only fills the open pans)
                         OutlinedTextField(lineFillBagsShut, { lineFillBagsShut = it }, label = { Text("Bags to fill 1 line, pans shut (optional)") },
                             supportingText = { Text("The tube alone: filling a line takes it as well as the open pans. Empty: not counted. About " +
-                                com.example.flock.ui.Fmt.n(0.72 * (((pansPerFeederLine.toIntOrNull() ?: farm.pansPerFeederLine) + (sensorPans.toIntOrNull() ?: farm.sensorPansPerLine)) *
+                                com.example.flock.ui.Fmt.n(0.72 * ((totalPans.toIntOrNull() ?: (farm.pansPerFeederLine + farm.sensorPansPerLine)) *
                                     (panSpacingFt.replace(",", ".").toDoubleOrNull() ?: farm.panSpacingFt)) * 0.3048 / (if (farm.feedBagKg > 0) farm.feedBagKg else 50.0), 2) +
                                 " bags for a line this long") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
+                        val feedPansNow = ((totalPans.toIntOrNull() ?: 0) - (sensorPans.toIntOrNull() ?: 0))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(feederMoveMin, { feederMoveMin = it }, label = { Text("Feeder move (min)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
-                            OutlinedTextField(pansPerFeederLine, { pansPerFeederLine = it }, label = { Text("Feed pans / line") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                            OutlinedTextField(totalPans, { totalPans = it.filter { c -> c.isDigit() } }, label = { Text("Pans on 1 line, all") },
+                                supportingText = { Text("sensor pans included") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f).testTag("total_pans"))
+                            OutlinedTextField(sensorPans, { sensorPans = it.filter { c -> c.isDigit() } }, label = { Text("Sensor pans of them") },
+                                supportingText = { Text(if (feedPansNow > 0) "$feedPansNow feed pans" else "more than all?") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f).testTag("sensor_pans"))
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(sensorPans, { sensorPans = it }, label = { Text("Sensor pans / line") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
                             OutlinedTextField(panSpacingFt, { panSpacingFt = it }, label = { Text("Pan spacing (ft)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
+                            OutlinedTextField(feederMoveMin, { feederMoveMin = it }, label = { Text("Feeder move (min)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(feederLineGapFt, { feederLineGapFt = it }, label = { Text("Feeder line gap (ft, 0 = auto)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
@@ -342,7 +338,7 @@ fun FarmSettingsDialog(
                             OutlinedTextField(nipplesPerLine, { nipplesPerLine = it }, label = { Text("Nipples/drinker line") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
                             OutlinedTextField(panLipCm, { panLipCm = it }, label = { Text("Pan lip height (cm)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
                         }
-                        Text("First week", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium))
+                        Text("First week", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Normal))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(manualFeeders, { manualFeeders = it }, label = { Text("Manual feeders (trays)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
                             OutlinedTextField(manualDrinkers, { manualDrinkers = it }, label = { Text("Manual drinkers") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
@@ -350,12 +346,12 @@ fun FarmSettingsDialog(
 
                         Divider(modifier = Modifier.padding(vertical = 4.dp))
 
-                        Text("Godown (feed store)", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium))
+                        Text("Godown (feed store)", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Normal))
                         OutlinedTextField(godownBags, { godownBags = it }, label = { Text("Bags the godown holds") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
 
                         Divider(modifier = Modifier.padding(vertical = 4.dp))
 
-                        Text("Calibration (tune to your farm)", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium))
+                        Text("Calibration (tune to your farm)", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Normal))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(waterRefillFactor, { waterRefillFactor = it }, label = { Text("Water refill ×") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
                             OutlinedTextField(minVentFactor, { minVentFactor = it }, label = { Text("Min-vent ×") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
@@ -368,7 +364,7 @@ fun FarmSettingsDialog(
 
                         Divider(modifier = Modifier.padding(vertical = 4.dp))
 
-                        Text("Target Comfort Bands", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium))
+                        Text("Target Comfort Bands", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Normal))
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
@@ -414,7 +410,7 @@ fun FarmSettingsDialog(
                         // User-Defined Feed Types (_FeedTypes)
                         Text(
                             text = "Custom Feed Types (_FeedTypes)",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium)
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Normal)
                         )
                         Text(
                             text = "Define feed types available on your farm for delivery logging and stock tracking.",
@@ -438,7 +434,7 @@ fun FarmSettingsDialog(
                                     Column {
                                         Text(
                                             text = "${ft.code} — ${ft.name}",
-                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Normal)
                                         )
                                         Text(
                                             text = "${ft.bagKg} kg/bag · Phase: ${ft.phase}",
@@ -466,7 +462,7 @@ fun FarmSettingsDialog(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Add Custom Feed Type", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium))
+                                Text("Add Custom Feed Type", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Normal))
 
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     OutlinedTextField(
@@ -569,7 +565,7 @@ fun FarmSettingsDialog(
                                 panSpacingFt = panSpacingFt.replace(",", ".").toDoubleOrNull()?.takeIf { it > 0 } ?: farm.panSpacingFt,
                                 feederLineGapFt = feederLineGapFt.replace(",", ".").toDoubleOrNull()?.coerceAtLeast(0.0) ?: farm.feederLineGapFt,
                                 feederMoveMin = feederMoveMin.toDoubleOrNull() ?: farm.feederMoveMin,
-                                pansPerFeederLine = pansPerFeederLine.toIntOrNull() ?: farm.pansPerFeederLine,
+                                pansPerFeederLine = totalPans.toIntOrNull()?.let { t -> (t - (sensorPans.toIntOrNull() ?: farm.sensorPansPerLine)).coerceAtLeast(1) } ?: farm.pansPerFeederLine,
                                 dieselCanL = dieselCanL.toDoubleOrNull() ?: farm.dieselCanL,
                                 waterRefillFactor = waterRefillFactor.toDoubleOrNull() ?: farm.waterRefillFactor,
                                 minVentFactor = minVentFactor.toDoubleOrNull() ?: farm.minVentFactor,
@@ -578,8 +574,7 @@ fun FarmSettingsDialog(
                                 manualDrinkers = manualDrinkers.toIntOrNull() ?: farm.manualDrinkers,
                                 nipplesPerLine = nipplesPerLine.toIntOrNull() ?: farm.nipplesPerLine,
                                 panLipCm = panLipCm.toDoubleOrNull() ?: farm.panLipCm,
-                                barricades = barricades.toIntOrNull()?.coerceIn(0, 4) ?: farm.barricades,
-                                spaceBy = spaceBy, padLayout = padLayout
+                                padLayout = padLayout
                             )
                             val updatedConfig = config.copy(
                                 tempBand = tempBand.toDoubleOrNull() ?: config.tempBand,

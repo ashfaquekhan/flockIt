@@ -35,7 +35,8 @@ object SheetSchema {
      * 9: DailyData gains PenStartFt (the front barricade, ft from the front wall; BroodingLength is the back one);
      *    _Farm gains lineFillBagsShut (bags that fill a line with its pans shut).
      * 10: DailyData gains the day's outside weather kept for the models (OutTempMin / Avg / Max, OutRhMin / Avg / Max);
-     *    _Farm gains barricades (how many the farm has), spaceBy (auto · barricade · pans) and padLayout (side · c).
+     *    _Farm gains padLayout (side · c). (v53 also wrote barricades and spaceBy; v54 dropped both — the farm sets the
+     *    barricades themselves, there are no modes.)
      */
     const val VERSION = 10
 
@@ -397,7 +398,7 @@ object SheetSchema {
         listOf("lineFillBags", sv(farm.lineFillBags)), listOf("sensorPansPerLine", sv(farm.sensorPansPerLine)),
         listOf("panSpacingFt", sv(farm.panSpacingFt)), listOf("feederLineGapFt", sv(farm.feederLineGapFt)),
         listOf("lineFillBagsShut", sv(farm.lineFillBagsShut)),
-        listOf("barricades", sv(farm.barricades)), listOf("spaceBy", farm.spaceBy), listOf("padLayout", farm.padLayout)
+        listOf("padLayout", farm.padLayout)
     )
 
     /** Farm settings from the _Farm key/value tab, laid over [base]; a key the sheet lacks keeps the base value. Keys match case-insensitively. */
@@ -438,8 +439,6 @@ object SheetSchema {
             sensorPansPerLine = it2("sensorPansPerLine", base.sensorPansPerLine),
             panSpacingFt = db("panSpacingFt", base.panSpacingFt), feederLineGapFt = db("feederLineGapFt", base.feederLineGapFt),
             lineFillBagsShut = db("lineFillBagsShut", base.lineFillBagsShut),
-            barricades = it2("barricades", base.barricades).coerceIn(0, 4),
-            spaceBy = st("spaceBy", base.spaceBy).lowercase().takeIf { it in listOf("auto", "barricade", "pans") } ?: base.spaceBy,
             padLayout = st("padLayout", base.padLayout).lowercase().takeIf { it in listOf("side", "c") } ?: base.padLayout
         )
     }

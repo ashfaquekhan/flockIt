@@ -1,5 +1,6 @@
 package com.example.flock.ui.screens
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -7,10 +8,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -30,13 +29,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.flock.domain.Litter
 import com.example.flock.domain.SpacePlan
 import com.example.flock.engine.PhysiologicalEngine
@@ -56,120 +56,88 @@ private val NE = ValueKind.NEUTRAL
 // =================================== the pieces every section uses ===================================
 
 /**
- * One number of a section: its sign, its name, the value in the colour of what it is (entered, projected …) with the
- * arrow against the company, then the company's and the ideal (or the limits that apply) and the line between them.
- * [sensor] tiles show where a house sensor's reading will go (none yet).
+ * One number of a section, in the v46 line: its name, the arrow and the value (coloured by what it is: entered,
+ * projected …) on the first line; com and ideal (or the limits that apply) on the second; then the slim bar — the
+ * company's ±5 % band and tick under the line, the ideal's above, the flock's dot — or, for a number with a safe range,
+ * the range bar. [sensor] numbers show where a house sensor's reading will go (none yet).
  */
-class PTile(
-    val icon: GIcon, val name: String, val value: V, val unit: String = "",
+class PLine(
+    val name: String, val value: V, val unit: String = "",
     val trend: TrendMark? = null,
-    val com: Double? = null, val ideal: Double? = null, val dec: Int = 1,
-    /** the ideal as a band or a limit ("≤ 8.0", "26.5–29.5") when it is not one number */
+    val com: Double? = null, val ideal: Double? = null, val dec: Int = 1, val better: Better = Better.HIGHER,
+    /** the ideal as a band or a limit ("≤ 8.0") when it is not one number */
     val idealText: String? = null,
-    /** lines in place of company and ideal, each in its own colour */
+    /** lines in place of com and ideal, each in its own colour */
     val refs: List<Pair<String, Color>>? = null,
+    /** a short note on the second line's left (how many feedings, a likelihood …) */
+    val sub: String? = null,
     val actual: Double? = null,
+    /** a safe range: the range bar instead of the comparison bar */
+    val min: Double? = null, val max: Double? = null, val band: Pair<Double, Double>? = null,
     val sensor: Boolean = false,
-    val wide: Boolean = false,
     val tag: String? = null,
     val extra: (@Composable () -> Unit)? = null
 )
 
 @Composable
-fun ParamTile(t: PTile, modifier: Modifier = Modifier) {
-    val col = kindColor(if (t.value.text == "—") NE else t.value.kind)
-    val mono = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, letterSpacing = (-0.3).sp)
+fun ParamLine(t: PLine) {
     fun f(x: Double) = if (t.dec == 0) Fmt.i(Math.round(x).toInt()) else Fmt.n(x, t.dec)
-    // long values (a pan series, a range) in smaller type, so they never break
-    val len = t.value.text.length + (if (t.unit.isNotEmpty()) t.unit.length / 2 + 1 else 0)
-    val big = when { len <= 7 -> 21.sp; len <= 10 -> 18.sp; len <= 13 -> 15.sp; else -> 13.sp }
-    Column(modifier.border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(12.dp)).padding(horizontal = 8.dp, vertical = 7.dp)
-        .let { if (t.tag != null) it.testTag(t.tag) else it }, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            GameIcon(t.icon, 26.dp)
-            Spacer(Modifier.width(6.dp))
-            Text(t.name, style = MaterialTheme.typography.labelLarge, color = Color.White, maxLines = 2, modifier = Modifier.weight(1f))
-        }
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(t.value.text, style = MaterialTheme.typography.titleLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium,
-                fontSize = big, letterSpacing = (-0.5).sp), color = col, maxLines = 1, softWrap = false, modifier = Modifier.weight(1f, fill = false))
-            if (t.unit.isNotEmpty()) {
-                Spacer(Modifier.width(3.dp))
-                Text(t.unit, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f), maxLines = 1, softWrap = false,
-                    modifier = Modifier.padding(bottom = 3.dp))
-            }
-            if (t.trend != null) { Spacer(Modifier.width(4.dp)); Box(Modifier.padding(bottom = 5.dp)) { TrendIcon(t.trend, 11.dp) } }
-        }
-        if (t.refs != null) t.refs.forEach { (s, c) -> Text(s, style = mono, color = c, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) }
-        else {
-            Text("co " + (t.com?.let { f(it) } ?: "NA"), style = mono, color = kindColor(C).copy(alpha = if (t.com == null) 0.55f else 1f), maxLines = 1, softWrap = false)
-            Text("id " + (t.idealText ?: t.ideal?.let { f(it) } ?: "NA"), style = mono,
-                color = kindColor(I).copy(alpha = if (t.ideal == null && t.idealText == null) 0.55f else 1f), maxLines = 1, softWrap = false)
-            MiniCompare(t.actual, t.value.kind, t.com, t.ideal)
-        }
-        if (t.sensor) Row(verticalAlignment = Alignment.CenterVertically) {
-            GameIcon(GIcon.SENSOR, 14.dp, dim = true)
-            Spacer(Modifier.width(4.dp))
-            Text("sensor —", style = mono, color = Color.White.copy(alpha = 0.45f), maxLines = 1, softWrap = false)
+    val ranged = t.min != null || t.max != null || t.band != null
+    val refs = t.refs ?: buildList {
+        if (!ranged) add("com " + (t.com?.let { f(it) } ?: "NA") to kindColor(C))
+        // a number with only a limit (air speed, CO₂) shows the limit alone
+        if (!ranged || t.ideal != null || t.idealText != null) add("ideal " + (t.idealText ?: t.ideal?.let { f(it) } ?: "NA") to kindColor(I))
+        t.min?.let { add("min " + f(it) to kindColor(MN)) }
+        t.max?.let { add("max " + f(it) to kindColor(MX)) }
+    }
+    Column(Modifier.fillMaxWidth().let { if (t.tag != null) it.testTag(t.tag) else it }) {
+        CompactLine(t.name, t.unit, t.sub ?: if (t.sensor) "sensor —" else null, t.value, t.trend, refs)
+        when {
+            ranged -> RangeBar(t.min, t.ideal, t.max, t.actual, if (t.value.text == "—") NE else t.value.kind, t.band, slim = true)
+            t.com != null || t.ideal != null -> SlimCompareBar(Kpi(t.name, t.unit, t.actual, t.value.kind, t.com, t.ideal, t.better, t.dec))
         }
         t.extra?.invoke()
     }
 }
 
-/** Tiles two to a row (a wide one takes its row), the two of a row as tall as each other. */
+/** The numbers of a section, one under the other. */
 @Composable
-fun TileGrid(tiles: List<PTile>) {
-    val rows = mutableListOf<List<PTile>>()
-    var cur = mutableListOf<PTile>()
-    tiles.forEach { t ->
-        if (t.wide) { if (cur.isNotEmpty()) { rows += cur; cur = mutableListOf() }; rows += listOf(t) }
-        else { cur += t; if (cur.size == 2) { rows += cur; cur = mutableListOf() } }
-    }
-    if (cur.isNotEmpty()) rows += cur
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        rows.forEach { row ->
-            if (row.size == 1 && row[0].wide) ParamTile(row[0], Modifier.fillMaxWidth())
-            else Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                row.forEach { ParamTile(it, Modifier.weight(1f).fillMaxHeight()) }
-                if (row.size == 1) Spacer(Modifier.weight(1f))
-            }
-        }
-    }
+fun LineList(lines: List<PLine>) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { lines.forEach { ParamLine(it) } }
 }
 
-/** A section of the page: its sign, its name (and what sits beside it), its ⓘ, then what it holds. */
+/**
+ * A section of the page, straight on the black (no outline, no panel): its sign and name (and what sits beside it), its
+ * ⓘ, then what it holds.
+ */
 @Composable
 fun SectionCard(icon: GIcon, title: String, info: String?, modifier: Modifier = Modifier, trailing: @Composable (() -> Unit)? = null,
                 content: @Composable ColumnScope.() -> Unit) {
     val anchors = LocalScrollAnchors.current
-    GlassBox(modifier.fillMaxWidth().onGloballyPositioned { anchors?.report("card:$title", it.positionInRoot().y) }) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                GameIcon(icon, 30.dp)
-                Spacer(Modifier.width(8.dp))
-                Text(title, style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1, softWrap = false,
-                    overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                trailing?.invoke()
-                if (info != null) { Spacer(Modifier.width(6.dp)); InfoButton(info) }
-            }
-            content()
+    Column(modifier.fillMaxWidth().padding(top = 10.dp).onGloballyPositioned { anchors?.report("card:$title", it.positionInRoot().y) },
+        verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            GameIcon(icon, 20.dp)
+            Spacer(Modifier.width(8.dp))
+            Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium), color = Color.White, maxLines = 1, softWrap = false,
+                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            trailing?.invoke()
+            if (info != null) { Spacer(Modifier.width(6.dp)); InfoButton(info) }
         }
+        content()
     }
 }
 
-/** A row of choices, the chosen one white; each with its sign when given, and a small word under it when given. */
+/** A row of choices, the chosen one white, and a small word under each when given. */
 @Composable
-fun PickChips(items: List<Triple<String, String, GIcon?>>, current: String, onPick: (String) -> Unit, tagPrefix: String, subs: Map<String, String> = emptyMap()) {
+fun PickChips(items: List<Pair<String, String>>, current: String, onPick: (String) -> Unit, tagPrefix: String, subs: Map<String, String> = emptyMap()) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        items.forEach { (key, label, icon) ->
+        items.forEach { (key, label) ->
             val on = key == current
             Column(Modifier.weight(1f).background(if (on) Color.White else Color.Transparent, RoundedCornerShape(10.dp))
-                .border(1.dp, Color.White.copy(alpha = if (on) 1f else 0.4f), RoundedCornerShape(10.dp)).clickable { onPick(key) }
+                .border(1.dp, Color.White.copy(alpha = if (on) 1f else 0.35f), RoundedCornerShape(10.dp)).clickable { onPick(key) }
                 .padding(horizontal = 4.dp, vertical = 5.dp).testTag("${tagPrefix}_$key"), horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (icon != null) { GameIcon(icon, 18.dp); Spacer(Modifier.width(4.dp)) }
-                    Text(label, style = MaterialTheme.typography.labelLarge, color = if (on) Color.Black else Color.White, maxLines = 1, softWrap = false)
-                }
+                Text(label, style = MaterialTheme.typography.labelLarge, color = if (on) Color.Black else Color.White, maxLines = 1, softWrap = false)
                 subs[key]?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = if (on) Color.Black.copy(alpha = 0.7f) else Color.White.copy(alpha = 0.6f), maxLines = 1, softWrap = false) }
             }
         }
@@ -178,11 +146,11 @@ fun PickChips(items: List<Triple<String, String, GIcon?>>, current: String, onPi
 
 private fun pct(x: Double) = Fmt.n(x * 100, 1)
 
-// =================================== 1. birds: the window and the seven numbers ===================================
+// =================================== 1. birds: the window and their numbers ===================================
 
 /**
- * The birds in seven numbers, in the farm's order — live birds, weight, FCR, cFCR, mortality, CV (with how the weights
- * spread) and stocking density — each with the company and the ideal; the one-score radar under them.
+ * The birds in the farm's order — live birds, weight, FCR, cFCR, mortality, CV (with how the weights spread) and
+ * stocking density — each against the company and the ideal; the one-score radar under them.
  */
 @Composable
 fun BirdsSection(d: OutputData, view: OutputData.NowView, entryHHmm: String?, live: Boolean, onNow: () -> Unit, hour: Int) {
@@ -194,19 +162,17 @@ fun BirdsSection(d: OutputData, view: OutputData.NowView, entryHHmm: String?, li
     val liveNow = if (d.mortEntered) d.live.toDouble() else view.live
     val s = d.space
     val u = remember(d) { uniformityOf(d) }
-    val tiles = listOf(
-        PTile(GIcon.LIVE, "Live birds", if (d.mortEntered) vi(d.live, P) else vi(Math.round(view.live).toInt(), PR),
-            trend = trendOf(liveNow, d.liveCom, Better.HIGHER, 1.0), com = d.liveCom, ideal = d.liveIdeal, dec = 0, actual = liveNow, tag = "tile_live"),
-        PTile(GIcon.WEIGHT, "Weight", v(weight, 1, d.vk), "g", trendOf(weight, d.bwCom, Better.HIGHER), d.bwCom, d.bwIdeal, 1, actual = weight),
-        PTile(GIcon.FCR, "FCR", v(fcr, 3, d.fcrKind), "", trendOf(fcr, d.fcrCom, Better.LOWER), d.fcrCom, d.fcrIdeal, 3, actual = fcr),
-        PTile(GIcon.CFCR, "cFCR 2 kg", v(m?.cFcrCompany, 3, d.fcrKind), "", trendOf(m?.cFcrCompany, d.cfcrCom, Better.LOWER), d.cfcrCom, d.cfcrIdeal, 3,
+    val lines = listOf(
+        PLine("Live birds", if (d.mortEntered) vi(d.live, P) else vi(Math.round(view.live).toInt(), PR), "",
+            trendOf(liveNow, d.liveCom, Better.HIGHER, 1.0), d.liveCom, d.liveIdeal, 0, actual = liveNow, tag = "tile_live"),
+        PLine("Weight", v(weight, 1, d.vk), "g", trendOf(weight, d.bwCom, Better.HIGHER), d.bwCom, d.bwIdeal, 1, actual = weight),
+        PLine("FCR", v(fcr, 3, d.fcrKind), "", trendOf(fcr, d.fcrCom, Better.LOWER), d.fcrCom, d.fcrIdeal, 3, Better.LOWER, actual = fcr),
+        PLine("cFCR, 2 kg", v(m?.cFcrCompany, 3, d.fcrKind), "", trendOf(m?.cFcrCompany, d.cfcrCom, Better.LOWER), d.cfcrCom, d.cfcrIdeal, 3, Better.LOWER,
             actual = m?.cFcrCompany),
-        PTile(GIcon.MORTALITY, "Mortality", v(mort, 2, d.mk), "%", trendOf(mort, d.comCumPct, Better.LOWER), d.comCumPct, d.ceilingPct, 2, actual = mort),
-        PTile(GIcon.DENSITY, "Stocking density", v(s.kgM2, 1, d.vk), "kg/m²", trendOf(s.kgM2, s.targetKgM2, Better.LOWER, 5.0),
-            refs = listOf("id ≤ " + Fmt.n(s.targetKgM2, 1) to kindColor(I), "max " + Fmt.n(d.farm.densityCapDefault, 1) to kindColor(MX),
-                Fmt.n(s.ft2PerBird, 2) + " ft²/bird" to Color.White.copy(alpha = 0.75f))),
-        PTile(GIcon.CV, "CV, how even", v(d.cvEst, 1, if (d.cvMeasured) P else PR), "%", d.cvEst?.let { rangeTrend(it, null, 10.0) }, null, 8.0, 1,
-            idealText = "≤ 8.0", actual = d.cvEst, wide = true, tag = "tile_cv", extra = {
+        PLine("Mortality", v(mort, 2, d.mk), "%", trendOf(mort, d.comCumPct, Better.LOWER), d.comCumPct, d.ceilingPct, 2, Better.LOWER, actual = mort),
+        PLine("CV, how even", v(d.cvEst, 1, if (d.cvMeasured) P else PR), "%", d.cvEst?.let { rangeTrend(it, null, 10.0) },
+            refs = listOf("ideal ≤ 8.0" to kindColor(I), "max 10.0" to kindColor(MX)), actual = d.cvEst, max = 10.0, band = 0.0 to 8.0, tag = "tile_cv",
+            extra = {
                 WeightHistogram(u.bins, u.mean, u.measured)
                 Row(Modifier.fillMaxWidth()) {
                     listOf("light" to u.lightPct, "even" to u.evenPct, "heavy" to u.heavyPct).forEach { (w, x) ->
@@ -220,7 +186,10 @@ fun BirdsSection(d: OutputData, view: OutputData.NowView, entryHHmm: String?, li
                 }
                 Text(if (u.measured) "${u.n} birds weighed one by one" else "expected at this CV · weigh 10 one by one",
                     style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f))
-            })
+            }),
+        PLine("Stocking density", v(s.kgM2, 1, d.vk), "kg/m²", trendOf(s.kgM2, s.targetKgM2, Better.LOWER, 5.0),
+            refs = listOf("ideal ≤ " + Fmt.n(s.targetKgM2, 1) to kindColor(I), "max " + Fmt.n(d.farm.densityCapDefault, 1) to kindColor(MX)),
+            sub = Fmt.n(s.ft2PerBird, 2) + " ft² a bird", actual = s.kgM2, max = d.farm.densityCapDefault, band = 0.0 to s.targetKgM2)
     )
     SectionCard(GIcon.BIRDS, "Birds", "glance", Modifier.testTag("glance"), trailing = {
         val sky = d.hourly.firstOrNull { it.date == d.e.date && it.hour == hour }
@@ -237,7 +206,7 @@ fun BirdsSection(d: OutputData, view: OutputData.NowView, entryHHmm: String?, li
     }) {
         ColourKey(listOf(kindColor(P) to "entered " + (entryHHmm ?: "—"), kindColor(PR) to "projected " + view.hhmm,
             kindColor(C) to "company", kindColor(I) to "ideal (Ross)"))
-        TileGrid(tiles)
+        LineList(lines)
         BirdRadar(d, view)
     }
 }
@@ -266,190 +235,109 @@ fun uniformityOf(d: OutputData): FlockSpread {
 
 // =================================== 2. feed and floor ===================================
 
+/** The day as it would be with the barricades at [fromFt]–[toFt] (ft from the front wall): the plan for a floor not yet set. */
+fun withBarricades(d: OutputData, fromFt: Double, toFt: Double): OutputData {
+    val L = d.farm.usableLengthFt; val W = d.farm.usableWidthFt
+    val e2 = d.e.copy(penStartFt = fromFt, broodingLength = if (toFt >= L - 0.5) 0.0 else toFt, occupiedFt2 = (toFt - fromFt).coerceAtLeast(10.0) * W)
+    return OutputData(d.flock, d.farm, e2, d.rows.map { if (it.dayNumber == d.day) e2 else it }, d.feedTypes, d.weather, d.hourly, d.isToday, d.envOn)
+}
+
 /**
- * Feed and floor: how the floor is set (barricades or pans), how many feedings, the whole house with every pan as the
- * plan opens them and the barricades where they go — then the bags, the grams a bird, yesterday's gain and today's from
- * the curve, the pans, the barricades, the walk to feed and the rest of the feed numbers.
+ * Feed and floor: the first and last barricade (set here, from this day on), how many feedings, the whole house with
+ * every pan as the plan opens it — then the bags, the grams a bird, yesterday's gain and today's from the curve, the
+ * pans, the barricades, the walk to feed and the rest of the feed numbers. The plan follows the barricades: no modes.
  */
 @Composable
-fun FeedSection(d: OutputData, pick: Int, onPick: (Int) -> Unit, needs: com.example.flock.domain.FlockNeeds.State,
-                onFarmChange: ((com.example.flock.data.FarmEntity) -> Unit)?) {
+fun FeedSection(d0: OutputData, pick: Int, onPick: (Int) -> Unit, needs: com.example.flock.domain.FlockNeeds.State,
+                onBarricades: ((Double, Double) -> Unit)? = null) {
+    val L = d0.farm.usableLengthFt
+    val curFrom = d0.penStartFt; val curTo = d0.barricadeFtNow
+    // barricades moved but not set yet: the plan, the drawing and the numbers show them at once
+    var pending by remember(d0.day, curFrom, curTo) { mutableStateOf<Pair<Double, Double>?>(null) }
+    val d = remember(d0, pending) { pending?.let { withBarricades(d0, it.first, it.second) } ?: d0 }
     val o = d.feedOptions[pick.coerceIn(0, d.feedOptions.size - 1)]
     val pat = d.patternFor(pick)
-    val plan = d.floorPlan
-    val from = plan?.penStartFt ?: d.penStartFt
-    val to = plan?.penFt ?: d.barricadeFtNow
-    val houseL = d.farm.usableLengthFt
-    // barricades the plan puts where none stand yet are drawn dashed
-    val planned = abs(from - d.penStartFt) > 0.5 || abs(to - d.barricadeFtNow) > 0.5
-    val iso = remember(d, pat, from, to, planned) { isoFarmOf(d, pat, from, to, planned, d.hour) }
+    val from = d.penStartFt
+    val to = d.barricadeFtNow
+    // set on this day or before (else the brooding plan's floor, drawn dashed)
+    val isSet = pending == null && d0.rows.any { it.dayNumber <= d0.day && (it.penStartFt != null || it.broodingLength != null) }
+    val iso = remember(d, pat, from, to, isSet) { isoFarmOf(d, pat, from, to, !isSet, d.hour) }
     val fillBags = d.bagsToFill(pat.openPerLine)
     val perBird = d.dayBags * d.bagKg * 1000 / d.liveSafe
     val walk = d.feedWalkM(pat)
     val lim = d.walkLimits
-    val used = listOf(from > 0.5, to < houseL - 0.5).count { it }
+    fun ft(x: Double) = x.roundToInt().toString()
     val barText = when {
-        from > 0.5 && to < houseL - 0.5 -> "${Fmt.n(from, 0)}–${Fmt.n(to, 0)}"
-        to < houseL - 0.5 -> "at ${Fmt.n(to, 0)}"
-        from > 0.5 -> "at ${Fmt.n(from, 0)}"
+        from > 0.5 && to < L - 0.5 -> "${ft(from)}–${ft(to)}"
+        to < L - 0.5 -> "0–${ft(to)}"
+        from > 0.5 -> "${ft(from)}–${ft(L)}"
         else -> "none"
     }
-    val tiles = buildList {
-        add(PTile(GIcon.BAGS, "Bags to use", v(d.dayBags, 1, PR), "bags", trendOf(d.dayBags, d.giveBags, Better.CLOSER, 10.0),
-            refs = listOf("${o.feedings} × ${Fmt.n(o.bagsPerFeeding, 1)} bags" to kindColor(PR), Fmt.n(o.bagsPerLine, 2) + " a line" to kindColor(PR),
-                "co " + Fmt.n(d.giveBags, 1) to kindColor(C), "id " + Fmt.n(d.idealBags, 1) to kindColor(I)),
-            tag = "feed_conclusion"))
-        add(PTile(GIcon.GRAM, "Feed a bird", v(perBird, 1, PR), "g", trendOf(perBird, d.comPerBird, Better.CLOSER), d.comPerBird, d.idealPerBird, 1, actual = perBird))
-        add(PTile(GIcon.GAIN_Y, "Yesterday's gain", v(d.gain, 1, d.gainKind), "g", trendOf(d.gain, d.gainCom, Better.HIGHER), d.gainCom, d.gainIdeal, 1, actual = d.gain))
-        add(PTile(GIcon.GAIN_T, "Gain today, curve", v(d.gainToday, 1, PR), "g", null, d.gainTodayCom, d.gainTodayIdeal, 1, actual = d.gainToday))
-        add(PTile(GIcon.PANS, "Pans", vt(pat.label.lowercase(), PR), "", null,
-            refs = listOf("${pat.openPerLine} open a line" to kindColor(PR),
-                (if (pat.birdsPerPan < 1e6) Fmt.n(pat.birdsPerPan, 1) else "—") + " a pan" to kindColor(PR),
-                "max " + d.birdsPerPanMax.roundToInt() + " a pan" to kindColor(MX), "fill " + Fmt.n(fillBags, 1) + " bags" to kindColor(PR)), tag = "tile_pans"))
-        add(PTile(GIcon.BARRICADE, "Barricades", vt(barText, if (planned) PR else P), if (barText == "none") "" else "ft", null,
-            refs = listOf((if (planned) "plan" else "as set") + " · $used used" to Color.White.copy(alpha = 0.8f),
-                "you have ${d.farm.barricades}" to Color.White.copy(alpha = 0.6f)), tag = "tile_barricades"))
-        add(PTile(GIcon.WALK, "Walk to feed", v(walk, 2, PR), "m", rangeTrend(walk, null, lim.safeM),
-            refs = listOf("id ≤ " + Fmt.n(lim.safeM, 1) to kindColor(I), "max " + Fmt.n(lim.maxM, 1) to kindColor(MX))))
-        add(PTile(GIcon.HUNGRY, "Hungry now", vt(pct(needs.hungry), PR), "%", null, refs = listOf("likelihood" to Color.White.copy(alpha = 0.6f))))
-        add(PTile(GIcon.EATEN, "Eaten yesterday", v(d.usedPerBirdY, 1, P), "g", trendOf(d.usedPerBirdY, d.comPerBirdY, Better.CLOSER), d.comPerBirdY,
-            d.idealPerBirdY, 1, actual = d.usedPerBirdY))
-        add(PTile(GIcon.CLOCK, "Feedings", vt(d.modelFeedTimes(o.feedings).joinToString(" "), PR), "", null,
-            refs = listOf("each fills ${o.fillPct.roundToInt()} %" to Color.White.copy(alpha = 0.7f))))
+    val lines = buildList {
+        add(PLine("Bags to use", v(d.dayBags, 1, PR), "bags", trendOf(d.dayBags, d.giveBags, Better.CLOSER, 10.0), d.giveBags, d.idealBags, 1, Better.CLOSER,
+            sub = "${o.feedings} × ${Fmt.n(o.bagsPerFeeding, 1)} · ${Fmt.n(o.bagsPerLine, 2)} a line", actual = d.dayBags, tag = "feed_conclusion"))
+        add(PLine("Feed a bird", v(perBird, 1, PR), "g", trendOf(perBird, d.comPerBird, Better.CLOSER), d.comPerBird, d.idealPerBird, 1, Better.CLOSER, actual = perBird))
+        add(PLine("Yesterday's gain", v(d.gain, 1, d.gainKind), "g", trendOf(d.gain, d.gainCom, Better.HIGHER), d.gainCom, d.gainIdeal, 1, actual = d.gain))
+        add(PLine("Gain today, curve", v(d.gainToday, 1, PR), "g", null, d.gainTodayCom, d.gainTodayIdeal, 1, actual = d.gainToday))
+        add(PLine("Pans", vt(pat.label.lowercase(), PR), "", null,
+            refs = listOf((if (pat.birdsPerPan < 1e6) Fmt.n(pat.birdsPerPan, 1) else "—") + " a pan" to kindColor(PR),
+                "ideal " + SpacePlan.AIM_BIRDS_PER_PAN.roundToInt() to kindColor(I), "max " + d.birdsPerPanMax.roundToInt() to kindColor(MX)),
+            sub = "${pat.openPerLine} open a line · fill ${Fmt.n(fillBags, 1)} bags", actual = pat.birdsPerPan.takeIf { it < 1e6 },
+            min = SpacePlan.FEW_BIRDS_PER_PAN, max = d.birdsPerPanMax, band = SpacePlan.FEW_BIRDS_PER_PAN to SpacePlan.AIM_BIRDS_PER_PAN * 1.4, tag = "tile_pans"))
+        add(PLine("Barricades", vt(barText, if (isSet) P else PR), if (barText == "none") "" else "ft", null,
+            refs = emptyList(), sub = if (pending != null) "not set yet" else if (isSet) "as set" else "brooding plan", tag = "tile_barricades"))
+        add(PLine("Walk to feed", v(walk, 2, PR), "m", rangeTrend(walk, null, lim.maxM),
+            refs = listOf("ideal ≤ " + Fmt.n(lim.safeM, 1) to kindColor(I), "max " + Fmt.n(lim.maxM, 1) to kindColor(MX)), actual = walk, max = lim.maxM, band = 0.0 to lim.safeM))
+        add(PLine("Hungry now", vt(pct(needs.hungry), PR), "%", null, refs = emptyList(), sub = "likelihood"))
+        add(PLine("Eaten yesterday", v(d.usedPerBirdY, 1, P), "g", trendOf(d.usedPerBirdY, d.comPerBirdY, Better.CLOSER), d.comPerBirdY, d.idealPerBirdY, 1,
+            Better.CLOSER, actual = d.usedPerBirdY))
+        add(PLine("Feedings", vt(d.modelFeedTimes(o.feedings).joinToString(" "), PR), "", null, refs = emptyList(), sub = "each fills ${o.fillPct.roundToInt()} %"))
         val c = d.correction
-        if (c.pct != 0.0) add(PTile(GIcon.TARGET, "Correction", vt((if (c.pct > 0) "+" else "") + Fmt.n(c.pct, 1), PR), "%", null,
-            refs = listOf(Fmt.n(d.correctedBags, 1) + " bags with it" to kindColor(PR))))
+        if (c.pct != 0.0) add(PLine("Correction", vt((if (c.pct > 0) "+" else "") + Fmt.n(c.pct, 1), PR), "%", null, refs = emptyList(),
+            sub = Fmt.n(d.correctedBags, 1) + " bags with it"))
         if (d.day <= 7) {
-            add(PTile(GIcon.TRAYS, "Feeder trays", v(kotlin.math.ceil(d.farm.manualFeeders * d.trayKeepFrac), 0, PR), "", null,
-                refs = listOf("id " + Fmt.n(d.traysKeepIdeal, 0) to kindColor(I), "yours ${d.farm.manualFeeders}" to Color.White.copy(alpha = 0.6f))))
-            if (d.day <= 4) add(PTile(GIcon.PAPER, "Feed paper", v(d.paperFt2, 0, I), "ft²", null, refs = listOf("≥ 70 % of the floor" to kindColor(I))))
+            add(PLine("Feeder trays", v(kotlin.math.ceil(d.farm.manualFeeders * d.trayKeepFrac), 0, PR), "", null,
+                refs = listOf("ideal " + Fmt.n(d.traysKeepIdeal, 0) to kindColor(I)), sub = "yours ${d.farm.manualFeeders}"))
+            if (d.day <= 4) add(PLine("Feed paper", v(d.paperFt2, 0, I), "ft²", null, refs = emptyList(), sub = "≥ 70 % of the floor"))
         }
     }
     SectionCard(GIcon.BAGS, "Feed and floor", "plan") {
-        // the farm's way to set a floor too big for the birds (only with barricades on the farm)
-        if (d.farm.barricades > 0 && onFarmChange != null) PickChips(listOf(Triple("auto", "Auto", null), Triple("barricade", "Barricades", null),
-            Triple("pans", "Pans", null)), d.farm.spaceBy, { onFarmChange(d.farm.copy(spaceBy = it)) }, "space_by")
-        PickChips(d.feedOptions.mapIndexed { i, opt -> Triple(i.toString(), "${opt.feedings} ×", null as GIcon?) }, pick.toString(), { onPick(it.toInt()) },
+        // the first and last barricade: drag them along the house (5 ft steps), then set them from this day on
+        if (onBarricades != null) {
+            val shown = pending ?: (curFrom to curTo)
+            fun snap(x: Float) = ((x / 5f).roundToInt() * 5f).toDouble().let { if (it > L - 2.5) L else it }
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Barricades", style = MaterialTheme.typography.labelLarge, color = Color.White, modifier = Modifier.weight(1f))
+                    Text("first " + (if (shown.first > 0.5) ft(shown.first) + " ft" else "none") + " · last " + (if (shown.second < L - 0.5) ft(shown.second) + " ft" else "none"),
+                        style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont), color = kindColor(if (pending != null || !isSet) PR else P))
+                }
+                androidx.compose.material3.RangeSlider(value = shown.first.toFloat()..shown.second.toFloat(),
+                    onValueChange = { r -> val a = snap(r.start); val b = snap(r.endInclusive); if (b - a >= 10) pending = a to b },
+                    valueRange = 0f..L.toFloat(), modifier = Modifier.fillMaxWidth().testTag("barricade_slider"),
+                    colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White.copy(alpha = 0.8f),
+                        inactiveTrackColor = Color.White.copy(alpha = 0.2f), activeTickColor = Color.Transparent, inactiveTickColor = Color.Transparent))
+                if (pending != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Set from day ${d0.day}", style = MaterialTheme.typography.labelLarge, color = Color.Black,
+                        modifier = Modifier.background(Color.White, RoundedCornerShape(10.dp)).clickable {
+                            pending?.let { (a, b) -> onBarricades(a, b) }; pending = null
+                        }.padding(horizontal = 14.dp, vertical = 8.dp).testTag("barricade_set"))
+                    Text("Cancel", style = MaterialTheme.typography.labelLarge, color = Color.White,
+                        modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(10.dp)).clickable { pending = null }
+                            .padding(horizontal = 14.dp, vertical = 8.dp))
+                }
+            }
+        }
+        PickChips(d.feedOptions.mapIndexed { i, opt -> i.toString() to "${opt.feedings} ×" }, pick.toString(), { onPick(it.toInt()) },
             "feedings_pick", subs = d.feedOptions.mapIndexed { i, opt -> i.toString() to when { !opt.safe -> "too few bags"; i == d.recommendedOption -> "best"; else -> "ok" } }.toMap())
         Text(d.space.why, style = MaterialTheme.typography.labelLarge, color = Color.White, modifier = Modifier.testTag("space_why"))
         FarmIso(iso, IsoView.FEED)
         KeyLine(kindColor(PR) to "pan on", Color.White.copy(alpha = 0.55f) to "off", Color.White to "barricade")
-        TileGrid(tiles)
+        LineList(lines)
     }
 }
 
-// =================================== 3. air and ventilation ===================================
-
-/**
- * Air and ventilation in four views of the same house (air · fans · pads · litter), the whole house small and still;
- * each view's numbers under it with their ideal and the place for a sensor's reading.
- */
-@Composable
-fun AirSection(d: OutputData, hour: Int, needs: com.example.flock.domain.FlockNeeds.State, weatherOn: Boolean, onWeatherOn: (Boolean) -> Unit,
-               map: com.example.flock.models.HouseMap.Field?) {
-    var view by rememberSaveable { mutableStateOf("air") }
-    val iv = when (view) { "fans" -> IsoView.FANS; "pads" -> IsoView.PADS; "litter" -> IsoView.LITTER; else -> IsoView.AIR }
-    val layer = when (iv) { IsoView.AIR -> com.example.flock.models.HouseMap.Layer.HEAT; IsoView.LITTER -> com.example.flock.models.HouseMap.Layer.LITTER; else -> null }
-    val iso = remember(d, hour, map) { isoFarmOf(d, d.feedPattern, d.penStartFt, d.barricadeFtNow, false, hour, map) }
-    val e = d.e
-    val h = d.envAt(hour)
-    val sky = d.env?.at(hour)
-    val l = remember(d, hour) { litterOf(d, hour) }
-    val fans = h?.fans ?: d.minLevel.avgFans
-    val fpm = d.airFpm(fans)
-    val lv = d.minLevel
-    val live = d.liveSafe.toDouble()
-    val out = d.outsideHours.getOrNull(hour.coerceIn(0, 23))
-    val padNow = remember(d, hour) { out?.let { d.sim(it.second, it.third, hour) } }
-    val hot = d.scenarios.last().state
-    val wx = if (d.outsideSource == com.example.flock.domain.BirdEnvironment.Source.WEATHER) NE else PR
-    fun range(lo: Double?, hi: Double?, dec: Int = 1) = listOfNotNull(lo?.let { "min " + Fmt.n(it, dec) to kindColor(MN) }, hi?.let { "max " + Fmt.n(it, dec) to kindColor(MX) })
-    val tiles: List<PTile> = when (view) {
-        "fans" -> listOf(
-            PTile(GIcon.FAN, "Min vent air", v(d.minAvgCfm / live, 3, PR), "cfm/bird", trendOf(d.minAvgCfm, d.plan.needCfm, Better.HIGHER),
-                refs = listOf("id " + Fmt.n(d.plan.needCfm / live, 3) to kindColor(I), "house " + Fmt.n(d.minAvgCfm, 0) + " cfm" to kindColor(PR))),
-            PTile(GIcon.TIMER, "Fan timer", vt(if (lv.isTimer) "${lv.on}/${lv.off}" else "on", I), if (lv.isTimer) "s" else "", null,
-                refs = listOf("fan " + lv.cyc.joinToString(",").ifEmpty { lv.cont.joinToString(",") } to kindColor(I),
-                    "cycle " + (if (lv.isTimer) "${lv.on + lv.off} s" else "running") to Color.White.copy(alpha = 0.7f))),
-            PTile(GIcon.FAN, "Fans now", v(fans, 1, PR), "", null, refs = listOf("avg min vent " + Fmt.n(lv.avgFans, 2) to kindColor(I),
-                "allowed ${d.plan.maxFans}" to kindColor(MX))),
-            PTile(GIcon.WIND, "Air speed", v(fpm, 1, PR), "ft/min", rangeTrend(fpm, null, PhysiologicalEngine.maxAirSpeedFpm(d.day)),
-                refs = range(null, PhysiologicalEngine.maxAirSpeedFpm(d.day)), sensor = true),
-            PTile(GIcon.AIRCHANGE, "Air changes", v(if (d.houseVolFt3 > 0) d.minAvgCfm * 60 / d.houseVolFt3 else null, 1, PR), "/h", null,
-                refs = listOf("id " + Fmt.n(if (d.houseVolFt3 > 0) d.plan.needCfm * 60 / d.houseVolFt3 else null, 1) to kindColor(I))),
-            PTile(GIcon.CONTROL, "Controller", v(d.plan.set, 1, I), "°C SET", null,
-                refs = listOf("heat on " + Fmt.n(d.plan.heat, 1) to kindColor(I), "comfort " + Fmt.n(d.plan.comfort, 1) to kindColor(I)))
-        )
-        "pads" -> listOf(
-            PTile(if ((padNow?.padEff ?: 0.0) > 0.05) GIcon.PAD_WET else GIcon.PAD_DRY, "Pads now", vt(if ((padNow?.padEff ?: 0.0) > 0.05) "wet" else "dry", PR), "", null,
-                refs = listOf("cooling " + Fmt.n((padNow?.padEff ?: 0.0) * 100, 0) + " %" to kindColor(PR)), sensor = true),
-            PTile(GIcon.PANT, "Hottest hour", vt(if (hot.padEff > 0.05) "wet" else "dry", PR), "", null,
-                refs = listOf("%02d:00 · ".format(d.hottestHour) + Fmt.n(d.hottestC, 1) + " °C" to kindColor(PR), "cooling " + Fmt.n(hot.padEff * 100, 0) + " %" to kindColor(PR))),
-            PTile(GIcon.PAD_WET, "Pad layout", vt(if (d.farm.padLayout == "c") "C-type" else "side by side", NE), "", null,
-                refs = listOf(Fmt.n(d.farm.padAreaFt2, 0) + " ft² · ${d.farm.padCount} pads" to Color.White.copy(alpha = 0.7f))),
-            PTile(GIcon.HUMIDITY, "Outside air", v(out?.third, 0, wx), "% RH", null,
-                refs = listOf(Fmt.n(out?.second, 1) + " °C" to kindColor(wx), "pads cool less in damp air" to Color.White.copy(alpha = 0.55f))),
-            PTile(GIcon.TIMER, "Wet / dry", vt(listOf(e.padWetMin, e.padDryMin).joinToString("/") { Fmt.n(it, 0) }, P), "min", null,
-                refs = listOf("as entered" to Color.White.copy(alpha = 0.6f)), sensor = true)
-        )
-        "litter" -> listOf(
-            PTile(GIcon.MOIST, "Moisture", v(l.moisturePct, 1, PR), "%", rangeTrend(l.moisturePct, null, Litter.IDEAL_MOIST_HI),
-                refs = listOf("id " + Fmt.n(Litter.IDEAL_MOIST_LO, 0) + "–" + Fmt.n(Litter.IDEAL_MOIST_HI, 0) to kindColor(I), "max " + Fmt.n(Litter.MOIST_MAX, 0) to kindColor(MX)), sensor = true),
-            PTile(GIcon.LITTER_TEMP, "Litter temp", v(l.tempC, 1, PR), "°C", rangeTrend(l.tempC, d.litterTemp.first, d.litterTemp.third),
-                refs = listOf("id " + Fmt.n(d.litterTemp.second, 1) to kindColor(I)) + range(d.litterTemp.first, d.litterTemp.third), sensor = true),
-            PTile(GIcon.DRINKER, "Under drinkers", v(l.underDrinkersPct, 1, PR), "%", rangeTrend(l.underDrinkersPct, null, Litter.MOIST_MAX),
-                refs = listOf("max " + Fmt.n(Litter.MOIST_MAX, 0) to kindColor(MX))),
-            PTile(GIcon.AMMONIA, "Ammonia", v(l.nh3Ppm, 1, PR), "ppm", rangeTrend(l.nh3Ppm, null, Litter.NH3_MAX),
-                refs = listOf("id ≤ " + Fmt.n(Litter.NH3_IDEAL, 0) to kindColor(I), "max " + Fmt.n(Litter.NH3_MAX, 0) to kindColor(MX)), sensor = true),
-            PTile(GIcon.DEPTH, "Depth", v(l.depthCm, 1, PR), "cm", null,
-                refs = listOf("id " + Fmt.n(Litter.IDEAL_DEPTH_LO, 0) + "–" + Fmt.n(Litter.IDEAL_DEPTH_HI, 0) to kindColor(I), "bedding " + Fmt.n(l.beddingCm, 1) to Color.White.copy(alpha = 0.6f))),
-            PTile(GIcon.LITTER, "Caked floor", v(l.cakedPct, 1, PR), "%", rangeTrend(l.cakedPct, null, 20.0), refs = listOf("max 20" to kindColor(MX)))
-        )
-        else -> buildList {
-            add(PTile(GIcon.TEMP, "Temperature", v(h?.air?.tempC ?: e.tempIdeal, 1, if (h != null) PR else I), "°C",
-                rangeTrend(h?.air?.tempC, e.tempMin, e.tempMax), refs = listOf("id " + Fmt.n(e.tempIdeal, 1) to kindColor(I)) + range(e.tempMin, e.tempMax), sensor = true))
-            add(PTile(GIcon.HUMIDITY, "Humidity", v(h?.air?.rhPct ?: e.rhIdeal, 1, if (h != null) PR else I), "%",
-                rangeTrend(h?.air?.rhPct, e.rhMin, e.rhMax), refs = listOf("id " + Fmt.n(e.rhIdeal, 1) to kindColor(I)) + range(e.rhMin, e.rhMax), sensor = true))
-            add(PTile(GIcon.FEELS, "Birds feel", v(h?.r?.feltC, 1, PR), "°C", h?.r?.feltC?.let { trendOf(it, d.plan.comfort, Better.CLOSER) },
-                refs = listOf("id " + Fmt.n(d.plan.comfort, 1) to kindColor(I), (h?.r?.state?.label ?: "weather off") to Color.White.copy(alpha = 0.6f))))
-            add(PTile(GIcon.WIND, "Air speed", v(fpm, 1, PR), "ft/min", rangeTrend(fpm, null, PhysiologicalEngine.maxAirSpeedFpm(d.day)),
-                refs = range(null, PhysiologicalEngine.maxAirSpeedFpm(d.day)), sensor = true))
-            add(PTile(GIcon.PRESSURE, "Static pressure", v(e.measuredPressure, 1, P), "Pa", rangeTrend(e.measuredPressure, 20.0, 25.0),
-                refs = listOf("id 20–25" to kindColor(I)), sensor = true))
-            add(PTile(GIcon.GAS, "CO₂", v(e.measuredCo2, 0, P), "ppm", rangeTrend(e.measuredCo2, null, e.co2Max), refs = range(null, e.co2Max, 0), sensor = true))
-            add(PTile(GIcon.OUTSIDE, "Outside", v(sky?.outC ?: out?.second, 1, wx), "°C", null,
-                refs = listOfNotNull(Fmt.n(sky?.outRh ?: out?.third, 0) + " % RH" to kindColor(wx),
-                    d.env?.let { "low " + Fmt.n(it.outMinC, 1) to kindColor(wx) }, d.env?.let { "high " + Fmt.n(it.outMaxC, 1) to kindColor(wx) })))
-            add(PTile(GIcon.BODY, "Body temp", v(h?.r?.bodyTempC, 1, PR), "°C", h?.r?.bodyTempC?.let { rangeTrend(it, d.bodyTemp.first, d.bodyTemp.third) },
-                refs = listOf("id " + Fmt.n(d.bodyTemp.second, 1) to kindColor(I)) + range(d.bodyTemp.first, d.bodyTemp.third)))
-            add(PTile(GIcon.PANT, "Panting now", vt(pct(needs.panting), PR), "%", null, refs = listOf("likelihood" to Color.White.copy(alpha = 0.6f))))
-            add(PTile(GIcon.LIGHT, "Light", v(e.lightHours, 1, I), "h", null,
-                refs = listOf("dark " + Fmt.n(24 - e.lightHours, 1) + " h" to kindColor(I), "id " + Fmt.n(d.lightLux.first, 0) + "–" + Fmt.n(d.lightLux.second, 0) + " lux" to kindColor(I)), sensor = true))
-            if (d.envOn && d.env != null) add(PTile(GIcon.OUTSIDE, "Weather on the day", vt(Fmt.signed((d.envFeedF - 1) * 100, 1), PR), "% feed", null,
-                refs = listOf("water " + Fmt.signed((d.envWaterF - 1) * 100, 1) + " %" to kindColor(PR), "growth " + Fmt.signed((d.envGainF - 1) * 100, 1) + " %" to kindColor(PR))))
-        }
-    }
-    SectionCard(GIcon.FAN, "Air and ventilation", "air", trailing = {
-        GameIcon(GIcon.OUTSIDE, 20.dp, dim = !weatherOn)
-        Spacer(Modifier.width(2.dp))
-        androidx.compose.material3.Switch(checked = weatherOn, onCheckedChange = onWeatherOn, modifier = Modifier.testTag("weather_switch"),
-            colors = androidx.compose.material3.SwitchDefaults.colors(checkedThumbColor = Color.Black, checkedTrackColor = Color.White,
-                uncheckedThumbColor = Color.White.copy(alpha = 0.7f), uncheckedTrackColor = Color.Black, uncheckedBorderColor = Color.White.copy(alpha = 0.5f)))
-    }) {
-        PickChips(listOf(Triple("air", "Air", GIcon.TEMP), Triple("fans", "Fans", GIcon.FAN), Triple("pads", "Pads", GIcon.PAD_WET),
-            Triple("litter", "Litter", GIcon.LITTER)), view, { view = it }, "air_view")
-        FarmIso(iso, iv, zoomable = false, layer = layer)
-        if (iv == IsoView.FANS) FanBank(iso)
-        if (layer != null && map != null) LayerKey(map, layer)
-        Text("No sensors yet · projected from the weather and the flock", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
-        TileGrid(tiles)
-        if (view == "litter") LitterSideView(l, d.litterTemp.second)
-    }
-    // the fans for another outside temperature: turn the dials (fans view)
-    if (view == "fans") VentSection(d, hour)
-}
-
-// =================================== 4. lifting ===================================
+// =================================== 3. lifting ===================================
 
 /** Where the flock's meat is (in the house, lifted, dead), the lifting, the FCRs on what was produced, the target and harvest. */
 @Composable
@@ -457,34 +345,33 @@ fun LiftSection(d: OutputData, onFlockPlan: ((Double, Int) -> Unit)?) {
     val m = d.mass
     val g = d.growth
     var edit by remember { mutableStateOf(false) }
-    val tiles = buildList {
+    val lines = buildList {
         val lifted = m?.liftedBirds ?: d.liftTD
         val days = d.rows.filter { it.birdsLifted > 0 && it.dayNumber <= d.day }.map { it.dayNumber }
-        add(PTile(GIcon.CRATE, "Birds lifted", vi(lifted, P), "", null, refs = listOf(
-            (if (days.isEmpty()) "none yet" else "days " + days.joinToString(",")) to Color.White.copy(alpha = 0.7f),
-            Fmt.n(m?.liftedKg ?: d.liftKgTD, 1) + " kg" to kindColor(P))))
-        if (m != null && m.liftedBirds > 0) add(PTile(GIcon.SCALE, "Lifted, a bird", v(m.liftedKg / m.liftedBirds, 3, P), "kg", null,
-            refs = listOfNotNull(if (m.liftedToday > 0) "today ${m.liftedToday} · " + Fmt.n(m.liftAvgKg, 3) + " kg" to kindColor(P) else null,
-                if (m.liftedToday > 0) "left " + Fmt.n(m.avgAfterKg * 1000, 0) + " g" to kindColor(PR) else null)))
-        add(PTile(GIcon.HEART, "Livability", v(d.e.livability, 2, d.mk), "%", trendOf(d.e.livability, 100 - d.comCumPct, Better.HIGHER, 1.0),
+        add(PLine("Birds lifted", vi(lifted, P), "", null, refs = listOf(Fmt.n(m?.liftedKg ?: d.liftKgTD, 1) + " kg" to kindColor(P)),
+            sub = if (days.isEmpty()) "none yet" else "days " + days.joinToString(",")))
+        if (m != null && m.liftedBirds > 0) add(PLine("Lifted, a bird", v(m.liftedKg / m.liftedBirds, 3, P), "kg", null,
+            refs = listOfNotNull(if (m.liftedToday > 0) "left " + Fmt.n(m.avgAfterKg * 1000, 0) + " g" to kindColor(PR) else null),
+            sub = if (m.liftedToday > 0) "today ${m.liftedToday} · " + Fmt.n(m.liftAvgKg, 3) + " kg" else null))
+        add(PLine("Livability", v(d.e.livability, 2, d.mk), "%", trendOf(d.e.livability, 100 - d.comCumPct, Better.HIGHER, 1.0),
             100 - d.comCumPct, 100 - d.ceilingPct, 2, actual = d.e.livability))
-        add(PTile(GIcon.EPEF, "EPEF", v(d.epef, 1, d.fcrKind), "", trendOf(d.epef, d.epefCom, Better.HIGHER), d.epefCom, d.epefIdeal, 1, actual = d.epef))
+        add(PLine("EPEF", v(d.epef, 1, d.fcrKind), "", trendOf(d.epef, d.epefCom, Better.HIGHER), d.epefCom, d.epefIdeal, 1, actual = d.epef))
         if (m != null) {
-            add(PTile(GIcon.MEAT, "Produced", v(m.producedKg, 0, PR), "kg", null, refs = listOf(Fmt.n(m.cumBwKg, 3) + " kg a bird" to kindColor(PR),
-                "dead " + Fmt.n(m.deadKg, 0) + " kg" to kindColor(PR))))
-            add(PTile(GIcon.FCR, "FCR, dead counted", v(m.fcrAll, 3, PR), "", trendOf(m.fcrAll, d.fcrIdeal, Better.LOWER), null, d.fcrIdeal, 3, actual = m.fcrAll))
-            add(PTile(GIcon.CFCR, "cFCR, breed", v(m.cFcrBreed, 3, d.fcrKind), "", trendOf(m.cFcrBreed, d.cfcrIdeal, Better.LOWER), null, d.cfcrIdeal, 3, actual = m.cFcrBreed))
+            add(PLine("Produced", v(m.producedKg, 0, PR), "kg", null, refs = listOf("dead " + Fmt.n(m.deadKg, 0) + " kg" to kindColor(PR)),
+                sub = Fmt.n(m.cumBwKg, 3) + " kg a bird"))
+            add(PLine("FCR, dead counted", v(m.fcrAll, 3, PR), "", trendOf(m.fcrAll, d.fcrIdeal, Better.LOWER), null, d.fcrIdeal, 3, Better.LOWER, actual = m.fcrAll))
+            add(PLine("cFCR, breed", v(m.cFcrBreed, 3, d.fcrKind), "", trendOf(m.cFcrBreed, d.cfcrIdeal, Better.LOWER), null, d.cfcrIdeal, 3, Better.LOWER, actual = m.cFcrBreed))
         }
-        add(PTile(GIcon.TARGET, "Target", v(d.targetG, 0, I), "g", null, refs = listOf("harvest day ${d.harvestAge}" to kindColor(I),
-            Fmt.n(g.share * 100, 1) + " % of company" to kindColor(if (g.samples > 0) P else PR))))
-        add(PTile(GIcon.CLOCK, "Reaches target", vt(g.targetDay?.let { "day $it" } ?: "—", PR), "", null,
+        add(PLine("Target", v(d.targetG, 0, I), "g", null, refs = listOf(Fmt.n(g.share * 100, 1) + " % of company" to kindColor(if (g.samples > 0) P else PR)),
+            sub = "harvest day ${d.harvestAge}"))
+        add(PLine("Reaches target", vt(g.targetDay?.let { "day $it" } ?: "—", PR), "", null,
             refs = listOf("earliest " + (g.targetDayEarly?.toString() ?: "—") to kindColor(MN), "latest " + (g.targetDayLate?.toString() ?: "—") to kindColor(MX))))
-        g.atHarvest?.let { hv -> add(PTile(GIcon.WEIGHT, "At harvest", v(hv.mean, 0, PR), "g", null,
-            refs = listOf(Fmt.n(hv.low, 0) + "–" + Fmt.n(hv.high, 0) to kindColor(PR), "chance " + Fmt.n((g.chanceTargetAtHarvest ?: 0.0) * 100, 0) + " %" to kindColor(PR)))) }
+        g.atHarvest?.let { hv -> add(PLine("At harvest", v(hv.mean, 0, PR), "g", null,
+            refs = listOf(Fmt.n(hv.low, 0) + "–" + Fmt.n(hv.high, 0) to kindColor(PR)), sub = "chance " + Fmt.n((g.chanceTargetAtHarvest ?: 0.0) * 100, 0) + " %")) }
     }
     SectionCard(GIcon.TRUCK, "Lifting", "lifting") {
         if (m != null) MeatBar(m)
-        TileGrid(tiles)
+        LineList(lines)
         if (onFlockPlan != null) androidx.compose.material3.OutlinedButton(onClick = { edit = true },
             border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), modifier = Modifier.fillMaxWidth()) {
             Text("Set target weight and harvest day", color = Color.White)
@@ -493,13 +380,13 @@ fun LiftSection(d: OutputData, onFlockPlan: ((Double, Int) -> Unit)?) {
     if (edit && onFlockPlan != null) TargetDialog(d, onFlockPlan) { edit = false }
 }
 
-/** The flock's meat in one bar: in the house, lifted, dead — each part with its sign and kilos. */
+/** The flock's meat in one bar: in the house, lifted, dead — each part with its word and kilos. */
 @Composable
 private fun MeatBar(m: com.example.flock.data.FlockCalc.Mass) {
-    val parts = listOf(Triple(GIcon.HOUSE, m.liveKg, kindColor(PR)), Triple(GIcon.TRUCK, m.liftedKg, kindColor(P)), Triple(GIcon.MORTALITY, m.deadKg, Color.White.copy(alpha = 0.45f)))
+    val parts = listOf(Triple("in the house", m.liveKg, kindColor(PR)), Triple("lifted", m.liftedKg, kindColor(P)), Triple("dead", m.deadKg, Color.White.copy(alpha = 0.45f)))
     val total = parts.sumOf { it.second }.takeIf { it > 0 } ?: return
     Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.testTag("meat_bar")) {
-        androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(14.dp)) {
+        Canvas(Modifier.fillMaxWidth().height(10.dp)) {
             var x = 0f
             parts.forEach { (_, kg, c) ->
                 val w = (kg / total).toFloat() * size.width
@@ -508,10 +395,11 @@ private fun MeatBar(m: com.example.flock.data.FlockCalc.Mass) {
             }
         }
         Row(Modifier.fillMaxWidth()) {
-            parts.forEach { (ic, kg, c) ->
-                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                    GameIcon(ic, 18.dp); Spacer(Modifier.width(4.dp))
-                    Text(Fmt.i(kg.roundToInt()) + " kg", style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont), color = c, maxLines = 1, softWrap = false)
+            parts.forEach { (word, kg, c) ->
+                Column(Modifier.weight(1f)) {
+                    Text(word, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.7f), maxLines = 1, softWrap = false)
+                    Text(Fmt.i(kg.roundToInt()) + " kg", style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont), color = c,
+                        maxLines = 1, softWrap = false)
                 }
             }
         }
@@ -543,79 +431,109 @@ internal fun TargetDialog(d: OutputData, onFlockPlan: (Double, Int) -> Unit, onD
     )
 }
 
-// =================================== 5. water ===================================
+// =================================== 4. air and ventilation ===================================
 
-/** Water: the house with its drinker lines and the tank, the refills, and the water numbers with their ideals. */
+/**
+ * Air and ventilation in four views of the same house (air · fans · pads · litter), the whole house small and still;
+ * each view's numbers under it with their ideal and the place for a sensor's reading.
+ */
 @Composable
-fun WaterSection(d: OutputData, needs: com.example.flock.domain.FlockNeeds.State, onFarmChange: ((com.example.flock.data.FarmEntity) -> Unit)?) {
+fun AirSection(d: OutputData, hour: Int, needs: com.example.flock.domain.FlockNeeds.State, weatherOn: Boolean, onWeatherOn: (Boolean) -> Unit,
+               map: com.example.flock.models.HouseMap.Field?) {
+    var view by rememberSaveable { mutableStateOf("air") }
+    val iv = when (view) { "fans" -> IsoView.FANS; "pads" -> IsoView.PADS; "litter" -> IsoView.LITTER; else -> IsoView.AIR }
+    val layer = when (iv) { IsoView.AIR -> com.example.flock.models.HouseMap.Layer.HEAT; IsoView.LITTER -> com.example.flock.models.HouseMap.Layer.LITTER; else -> null }
+    val iso = remember(d, hour, map) { isoFarmOf(d, d.feedPattern, d.penStartFt, d.barricadeFtNow, false, hour, map) }
     val e = d.e
-    val iso = remember(d) { isoFarmOf(d, d.feedPattern, d.penStartFt, d.barricadeFtNow, false, d.hour) }
-    val factor = if (d.refillF > 0) d.refillF else 1.0
-    val lim = d.walkLimits
-    val tiles = buildList {
-        add(PTile(GIcon.TANK, "Water today", v(d.waterL, 0, PR), "L", trendOf(d.waterL, d.waterIdealL, Better.CLOSER),
-            refs = listOf("${d.waterRefills} refills" to kindColor(PR), "tank " + d.tankL.roundToInt() + " L" to Color.White.copy(alpha = 0.7f),
-                "id " + Fmt.n(d.waterIdealL, 0) to kindColor(I)), tag = "tile_water"))
-        add(PTile(GIcon.WATER, "Water a bird", v(d.waterPerBird, 1, PR), "mL", trendOf(d.waterPerBird, d.waterIdealPerBird, Better.CLOSER), null,
-            d.waterIdealPerBird, 1, actual = d.waterPerBird))
-        add(PTile(GIcon.FLOW, "An hour, lit", v(d.waterL / max(0.5, e.lightHours), 1, PR), "L/h", null,
-            refs = listOf(Fmt.n(e.drinkerFlowLHrLine.takeIf { it > 0 }, 1) + " L/h a line" to kindColor(I))))
-        add(PTile(GIcon.WALK, "Walk to water", v(d.waterWalkM, 2, PR), "m", rangeTrend(d.waterWalkM, null, lim.safeM),
-            refs = listOf("id ≤ " + Fmt.n(lim.safeM, 1) to kindColor(I), "max " + Fmt.n(lim.maxM, 1) to kindColor(MX))))
-        add(PTile(GIcon.NIPPLE, "Birds a nipple", v(d.birdsPerNipple, 1, PR), "", d.birdsPerNipple?.let { rangeTrend(it, null, d.birdsPerNippleMax) },
-            refs = listOf("max " + Fmt.n(d.birdsPerNippleMax, 0) to kindColor(MX))))
-        add(PTile(GIcon.DRINKER, "Nipple height", v(d.drinkerHtIn, 1, I), "in", null,
-            refs = listOf("pressure " + Fmt.n(e.drinkerPressureIn.takeIf { it > 0 }, 2) + " in" to kindColor(I))))
-        add(PTile(GIcon.FLOW, "Nipple flow", vt(Fmt.n(d.nippleFlow.first, 0) + "–" + Fmt.n(d.nippleFlow.second, 0), I), "mL/min", null,
-            refs = listOf("for the age" to Color.White.copy(alpha = 0.6f)), sensor = true))
-        add(PTile(GIcon.WATER_TEMP, "Water temp", v(e.waterTempC, 1, P), "°C", rangeTrend(e.waterTempC, 18.0, 21.0), refs = listOf("id 18–21" to kindColor(I)), sensor = true))
-        add(PTile(GIcon.PH, "Water pH", v(e.waterPh, 2, P), "", rangeTrend(e.waterPh, 6.0, 6.8), refs = listOf("id 6.0–6.8" to kindColor(I)), sensor = true))
-        add(PTile(GIcon.THIRST, "Thirsty now", vt(pct(needs.thirsty), PR), "%", null, refs = listOf("likelihood" to Color.White.copy(alpha = 0.6f))))
-    }
-    SectionCard(GIcon.WATER, "Water", "water") {
-        FarmIso(iso, IsoView.WATER)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            GameIcon(GIcon.TANK, 22.dp)
-            Text("refill ×", style = MaterialTheme.typography.labelMedium, color = Color.White, maxLines = 1, softWrap = false)
-            listOf(1.0, 2.0, 3.0, 4.0).forEach { mlt ->
-                val on = abs(factor - mlt) < 0.01
-                Text("${mlt.roundToInt()}×", style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont),
-                    color = if (on) Color.Black else Color.White, maxLines = 1, softWrap = false,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    modifier = Modifier.weight(1f).background(if (on) Color.White else Color.Transparent, RoundedCornerShape(8.dp))
-                        .border(1.dp, Color.White.copy(alpha = if (on) 1f else 0.4f), RoundedCornerShape(8.dp))
-                        .clickable(enabled = onFarmChange != null) { onFarmChange?.invoke(d.farm.copy(waterRefillFactor = mlt)) }.padding(vertical = 6.dp)
-                        .testTag("refill_${mlt.toInt()}"))
-            }
+    val h = d.envAt(hour)
+    val sky = d.env?.at(hour)
+    val l = remember(d, hour) { litterOf(d, hour) }
+    val fans = h?.fans ?: d.minLevel.avgFans
+    val fpm = d.airFpm(fans)
+    val lv = d.minLevel
+    val live = d.liveSafe.toDouble()
+    val out = d.outsideHours.getOrNull(hour.coerceIn(0, 23))
+    val padNow = remember(d, hour) { out?.let { d.sim(it.second, it.third, hour) } }
+    val hot = d.scenarios.last().state
+    val wx = if (d.outsideSource == com.example.flock.domain.BirdEnvironment.Source.WEATHER) NE else PR
+    val maxAir = PhysiologicalEngine.maxAirSpeedFpm(d.day)
+    val lines: List<PLine> = when (view) {
+        "fans" -> listOf(
+            PLine("Min vent air", v(d.minAvgCfm / live, 3, PR), "cfm a bird", trendOf(d.minAvgCfm, d.plan.needCfm, Better.HIGHER), null, d.plan.needCfm / live, 3,
+                sub = "house " + Fmt.i(d.minAvgCfm.roundToInt()) + " cfm", actual = d.minAvgCfm / live),
+            PLine("Fan timer", vt(if (lv.isTimer) "${lv.on} / ${lv.off}" else "on", I), if (lv.isTimer) "s" else "", null,
+                refs = listOf("cycle " + (if (lv.isTimer) "${lv.on + lv.off} s" else "running") to kindColor(I)),
+                sub = "fan " + lv.cyc.joinToString(",").ifEmpty { lv.cont.joinToString(",") }),
+            PLine("Fans now", v(fans, 1, PR), "", null, refs = listOf("min vent " + Fmt.n(lv.avgFans, 2) to kindColor(I), "allowed ${d.plan.maxFans}" to kindColor(MX))),
+            PLine("Air speed", v(fpm, 1, PR), "ft/min", rangeTrend(fpm, null, maxAir), actual = fpm, max = maxAir, sensor = true),
+            PLine("Air changes", v(if (d.houseVolFt3 > 0) d.minAvgCfm * 60 / d.houseVolFt3 else null, 1, PR), "an hour", null,
+                refs = listOf("ideal " + Fmt.n(if (d.houseVolFt3 > 0) d.plan.needCfm * 60 / d.houseVolFt3 else null, 1) to kindColor(I))),
+            PLine("Controller", v(d.plan.set, 1, I), "°C SET", null,
+                refs = listOf("heat on " + Fmt.n(d.plan.heat, 1) to kindColor(I), "comfort " + Fmt.n(d.plan.comfort, 1) to kindColor(I)))
+        )
+        "pads" -> listOf(
+            PLine("Pads now", vt(if ((padNow?.padEff ?: 0.0) > 0.05) "wet" else "dry", PR), "", null,
+                refs = listOf("cooling " + Fmt.n((padNow?.padEff ?: 0.0) * 100, 0) + " %" to kindColor(PR)), sensor = true),
+            PLine("Hottest hour", vt(if (hot.padEff > 0.05) "wet" else "dry", PR), "", null,
+                refs = listOf("cooling " + Fmt.n(hot.padEff * 100, 0) + " %" to kindColor(PR)), sub = "%02d:00 · ".format(d.hottestHour) + Fmt.n(d.hottestC, 1) + " °C"),
+            PLine("Pad layout", vt(if (d.farm.padLayout == "c") "C-type" else "side by side", NE), "", null, refs = emptyList(),
+                sub = Fmt.n(d.farm.padAreaFt2, 0) + " ft² · ${d.farm.padCount} pads"),
+            PLine("Outside air", v(out?.third, 0, wx), "% RH", null, refs = listOf(Fmt.n(out?.second, 1) + " °C" to kindColor(wx)), sub = "damp air: pads cool less"),
+            PLine("Wet / dry", vt(listOf(e.padWetMin, e.padDryMin).joinToString(" / ") { Fmt.n(it, 0) }, P), "min", null, refs = emptyList(), sensor = true)
+        )
+        "litter" -> listOf(
+            PLine("Moisture", v(l.moisturePct, 1, PR), "%", rangeTrend(l.moisturePct, null, Litter.IDEAL_MOIST_HI), actual = l.moisturePct,
+                max = Litter.MOIST_MAX, band = Litter.IDEAL_MOIST_LO to Litter.IDEAL_MOIST_HI, idealText = Fmt.n(Litter.IDEAL_MOIST_LO, 0) + "–" + Fmt.n(Litter.IDEAL_MOIST_HI, 0), sensor = true),
+            PLine("Litter temp", v(l.tempC, 1, PR), "°C", rangeTrend(l.tempC, d.litterTemp.first, d.litterTemp.third), ideal = d.litterTemp.second, actual = l.tempC,
+                min = d.litterTemp.first, max = d.litterTemp.third, sensor = true),
+            PLine("Under drinkers", v(l.underDrinkersPct, 1, PR), "%", rangeTrend(l.underDrinkersPct, null, Litter.MOIST_MAX), actual = l.underDrinkersPct,
+                max = Litter.MOIST_MAX, band = Litter.IDEAL_MOIST_LO to Litter.IDEAL_MOIST_HI, idealText = Fmt.n(Litter.IDEAL_MOIST_LO, 0) + "–" + Fmt.n(Litter.IDEAL_MOIST_HI, 0)),
+            PLine("Ammonia", v(l.nh3Ppm, 1, PR), "ppm", rangeTrend(l.nh3Ppm, null, Litter.NH3_MAX), actual = l.nh3Ppm, max = Litter.NH3_MAX,
+                band = 0.0 to Litter.NH3_IDEAL, idealText = "≤ " + Fmt.n(Litter.NH3_IDEAL, 0), sensor = true),
+            PLine("Depth", v(l.depthCm, 1, PR), "cm", null, actual = l.depthCm, band = Litter.IDEAL_DEPTH_LO to Litter.IDEAL_DEPTH_HI,
+                idealText = Fmt.n(Litter.IDEAL_DEPTH_LO, 0) + "–" + Fmt.n(Litter.IDEAL_DEPTH_HI, 0), sub = "bedding " + Fmt.n(l.beddingCm, 1)),
+            PLine("Caked floor", v(l.cakedPct, 1, PR), "%", rangeTrend(l.cakedPct, null, 20.0), ideal = 0.0, actual = l.cakedPct, max = 20.0)
+        )
+        else -> buildList {
+            add(PLine("Temperature", v(h?.air?.tempC ?: e.tempIdeal, 1, if (h != null) PR else I), "°C", rangeTrend(h?.air?.tempC, e.tempMin, e.tempMax),
+                ideal = e.tempIdeal, actual = h?.air?.tempC, min = e.tempMin, max = e.tempMax, sensor = true))
+            add(PLine("Humidity", v(h?.air?.rhPct ?: e.rhIdeal, 1, if (h != null) PR else I), "%", rangeTrend(h?.air?.rhPct, e.rhMin, e.rhMax),
+                ideal = e.rhIdeal, actual = h?.air?.rhPct, min = e.rhMin, max = e.rhMax, sensor = true))
+            add(PLine("Birds feel", v(h?.r?.feltC, 1, PR), "°C", h?.r?.feltC?.let { trendOf(it, d.plan.comfort, Better.CLOSER) },
+                refs = listOf("ideal " + Fmt.n(d.plan.comfort, 1) to kindColor(I)), sub = h?.r?.state?.label ?: "weather off"))
+            add(PLine("Air speed", v(fpm, 1, PR), "ft/min", rangeTrend(fpm, null, maxAir), actual = fpm, max = maxAir, sensor = true))
+            add(PLine("Static pressure", v(e.measuredPressure, 1, P), "Pa", rangeTrend(e.measuredPressure, 20.0, 25.0), actual = e.measuredPressure,
+                band = 20.0 to 25.0, idealText = "20–25", sensor = true))
+            add(PLine("CO₂", v(e.measuredCo2, 0, P), "ppm", rangeTrend(e.measuredCo2, null, e.co2Max), actual = e.measuredCo2, max = e.co2Max, sensor = true))
+            add(PLine("Outside", v(sky?.outC ?: out?.second, 1, wx), "°C", null,
+                refs = listOfNotNull(Fmt.n(sky?.outRh ?: out?.third, 0) + " % RH" to kindColor(wx)),
+                sub = d.env?.let { "low " + Fmt.n(it.outMinC, 1) + " · high " + Fmt.n(it.outMaxC, 1) }))
+            add(PLine("Body temp", v(h?.r?.bodyTempC, 1, PR), "°C", h?.r?.bodyTempC?.let { rangeTrend(it, d.bodyTemp.first, d.bodyTemp.third) },
+                ideal = d.bodyTemp.second, actual = h?.r?.bodyTempC, min = d.bodyTemp.first, max = d.bodyTemp.third))
+            add(PLine("Panting now", vt(pct(needs.panting), PR), "%", null, refs = emptyList(), sub = "likelihood"))
+            add(PLine("Light", v(e.lightHours, 1, I), "h", null,
+                refs = listOf("ideal " + Fmt.n(d.lightLux.first, 0) + "–" + Fmt.n(d.lightLux.second, 0) + " lux" to kindColor(I)), sub = "dark " + Fmt.n(24 - e.lightHours, 1) + " h", sensor = true))
+            if (d.envOn && d.env != null) add(PLine("Weather on the day", vt(Fmt.signed((d.envFeedF - 1) * 100, 1), PR), "% feed", null,
+                refs = listOf("water " + Fmt.signed((d.envWaterF - 1) * 100, 1) + " %" to kindColor(PR), "growth " + Fmt.signed((d.envGainF - 1) * 100, 1) + " %" to kindColor(PR))))
         }
-        TileGrid(tiles)
     }
-}
-
-// =================================== 6. trends (with the graphs and the book) ===================================
-
-/** The flock's trends as tiles: the start, daily gain, the last week's FCR, days ahead or behind, the first week's and the last week's deaths. */
-@Composable
-fun TrendsSection(d: OutputData) {
-    val k = d.kpis
-    val tiles = listOf(
-        PTile(GIcon.LIVE, "Placed", vi(d.placed, P), "", null, refs = listOf("reception ${d.reception} · " + Fmt.n(d.receptionPct, 2) + " %" to kindColor(P),
-            "started " + Fmt.i(d.entryBirds) to kindColor(P))),
-        PTile(GIcon.MORTALITY, "Removed", vi(d.mortTD, d.mk), "dead", null, refs = listOf("culls ${d.lameTD}" to kindColor(P),
-            "with reception " + Fmt.n(d.mortWithReceptionPct, 2) + " %" to kindColor(d.mk))),
-        PTile(GIcon.GAIN_Y, "Daily gain, average", v(k.adg, 1, d.vk), "g", trendOf(k.adg, d.adgCom, Better.HIGHER), d.adgCom, d.adgIdeal, 1, actual = k.adg),
-        PTile(GIcon.FCR, "FCR, last 7 days", v(k.fcr7, 3, d.fcr7Kind), "", trendOf(k.fcr7, d.fcr7Com, Better.LOWER), d.fcr7Com, d.fcr7Ideal, 3, actual = k.fcr7),
-        PTile(GIcon.TREND, "Days ahead", vt(Fmt.signed(d.daysAheadCom, 1), d.vk), "d", null,
-            refs = listOf("vs company" to kindColor(C), Fmt.signed(d.daysAheadIdeal, 1) + " vs ideal" to kindColor(I))),
-        PTile(GIcon.MORTALITY, "First week", v(k.firstWeekMortPct, 2, if (k.firstWeekComplete) P else PR), "%", trendOf(k.firstWeekMortPct, d.firstWeekMortCom, Better.LOWER),
-            d.firstWeekMortCom, d.firstWeekMortIdeal, 2, actual = k.firstWeekMortPct),
-        PTile(GIcon.MORTALITY, "Deaths, last 7 days", v(k.mort7Pct, 2, d.mk), "%", trendOf(k.mort7Pct, d.mort7Com, Better.LOWER), d.mort7Com, null, 2, actual = k.mort7Pct)
-    )
-    SectionCard(GIcon.TREND, "Trends", "trends") {
-        TileGrid(tiles)
-        SuggestCard(d)
-        AccuracyCard(d)
+    SectionCard(GIcon.FAN, "Air and ventilation", "air", trailing = {
+        Text("weather", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = if (weatherOn) 0.9f else 0.5f))
+        Spacer(Modifier.width(6.dp))
+        androidx.compose.material3.Switch(checked = weatherOn, onCheckedChange = onWeatherOn, modifier = Modifier.testTag("weather_switch"),
+            colors = androidx.compose.material3.SwitchDefaults.colors(checkedThumbColor = Color.Black, checkedTrackColor = Color.White,
+                uncheckedThumbColor = Color.White.copy(alpha = 0.7f), uncheckedTrackColor = Color.Black, uncheckedBorderColor = Color.White.copy(alpha = 0.5f)))
+    }) {
+        PickChips(listOf("air" to "Air", "fans" to "Fans", "pads" to "Pads", "litter" to "Litter"), view, { view = it }, "air_view")
+        FarmIso(iso, iv, zoomable = false, layer = layer)
+        if (iv == IsoView.FANS) FanBank(iso)
+        if (layer != null && map != null) LayerKey(map, layer)
+        Text("No sensors yet · projected from the weather and the flock", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+        LineList(lines)
+        if (view == "litter") LitterSideView(l, d.litterTemp.second)
     }
+    // the fans for another outside temperature: turn the dials (fans view)
+    if (view == "fans") VentSection(d, hour)
 }
 
 /** The fans on the end wall, numbered, those running now lit — in the order the controller starts them. */
@@ -625,11 +543,82 @@ private fun FanBank(f: IsoFarm) {
     val lit = f.fanOrder.take(f.fansRunning.roundToInt().coerceIn(if (f.fansRunning > 0.05) 1 else 0, f.fans)).toSet()
     Row(Modifier.fillMaxWidth().testTag("fan_bank"), horizontalArrangement = Arrangement.SpaceEvenly) {
         (1..f.fans).forEach { k ->
+            val on = k in lit
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                GameIcon(GIcon.FAN, 24.dp, dim = k !in lit)
+                Canvas(Modifier.size(20.dp)) {
+                    val r = size.minDimension / 2 - 1.5f
+                    if (on) drawCircle(Color.White.copy(alpha = 0.25f), r, center)
+                    drawCircle(if (on) Color.White else Color.White.copy(alpha = 0.35f), r, center, style = Stroke(1.5f))
+                    for (b in 0 until 3) { val a = b * 2 * Math.PI / 3 - 0.3
+                        drawLine(if (on) Color.White else Color.White.copy(alpha = 0.3f), center, Offset(center.x + (r * 0.8f * kotlin.math.cos(a)).toFloat(), center.y + (r * 0.8f * kotlin.math.sin(a)).toFloat()), 1.5f) }
+                }
                 Text("$k", style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont),
-                    color = if (k in lit) Color.White else Color.White.copy(alpha = 0.45f))
+                    color = if (on) Color.White else Color.White.copy(alpha = 0.45f))
             }
         }
     }
+}
+
+// =================================== 5. water ===================================
+
+/** Water: the refills, and the water numbers with their ideals (no house drawing: the numbers say it). */
+@Composable
+fun WaterSection(d: OutputData, needs: com.example.flock.domain.FlockNeeds.State, onFarmChange: ((com.example.flock.data.FarmEntity) -> Unit)?) {
+    val e = d.e
+    val factor = if (d.refillF > 0) d.refillF else 1.0
+    val lim = d.walkLimits
+    val lines = buildList {
+        add(PLine("Water today", v(d.waterL, 0, PR), "L", trendOf(d.waterL, d.waterIdealL, Better.CLOSER), null, d.waterIdealL, 0, Better.CLOSER,
+            sub = "${d.waterRefills} " + (if (d.waterRefills == 1) "refill" else "refills") + " of " + d.tankL.roundToInt() + " L", actual = d.waterL, tag = "tile_water"))
+        add(PLine("Water a bird", v(d.waterPerBird, 1, PR), "mL", trendOf(d.waterPerBird, d.waterIdealPerBird, Better.CLOSER), null,
+            d.waterIdealPerBird, 1, Better.CLOSER, actual = d.waterPerBird))
+        add(PLine("An hour, lit", v(d.waterL / max(0.5, e.lightHours), 1, PR), "L", null,
+            refs = listOf(Fmt.n(e.drinkerFlowLHrLine.takeIf { it > 0 }, 1) + " L/h a line" to kindColor(I))))
+        add(PLine("Walk to water", v(d.waterWalkM, 2, PR), "m", rangeTrend(d.waterWalkM, null, lim.maxM),
+            refs = listOf("ideal ≤ " + Fmt.n(lim.safeM, 1) to kindColor(I), "max " + Fmt.n(lim.maxM, 1) to kindColor(MX)), actual = d.waterWalkM, max = lim.maxM, band = 0.0 to lim.safeM))
+        add(PLine("Birds a nipple", v(d.birdsPerNipple, 1, PR), "", d.birdsPerNipple?.let { rangeTrend(it, null, d.birdsPerNippleMax) },
+            refs = listOf("max " + Fmt.n(d.birdsPerNippleMax, 0) to kindColor(MX)), actual = d.birdsPerNipple, max = d.birdsPerNippleMax))
+        add(PLine("Nipple height", v(d.drinkerHtIn, 1, I), "in", null, refs = listOf("pressure " + Fmt.n(e.drinkerPressureIn.takeIf { it > 0 }, 2) + " in" to kindColor(I))))
+        add(PLine("Nipple flow", vt(Fmt.n(d.nippleFlow.first, 0) + "–" + Fmt.n(d.nippleFlow.second, 0), I), "mL/min", null, refs = emptyList(), sub = "for the age", sensor = true))
+        add(PLine("Water temp", v(e.waterTempC, 1, P), "°C", rangeTrend(e.waterTempC, 18.0, 21.0), actual = e.waterTempC, band = 18.0 to 21.0, idealText = "18–21", sensor = true))
+        add(PLine("Water pH", v(e.waterPh, 2, P), "", rangeTrend(e.waterPh, 6.0, 6.8), actual = e.waterPh, band = 6.0 to 6.8, idealText = "6.0–6.8", sensor = true))
+        add(PLine("Thirsty now", vt(pct(needs.thirsty), PR), "%", null, refs = emptyList(), sub = "likelihood"))
+    }
+    SectionCard(GIcon.WATER, "Water", "water") {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("refill ×", style = MaterialTheme.typography.labelMedium, color = Color.White, maxLines = 1, softWrap = false)
+            listOf(1.0, 2.0, 3.0, 4.0).forEach { mlt ->
+                val on = abs(factor - mlt) < 0.01
+                Text("${mlt.roundToInt()}×", style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont),
+                    color = if (on) Color.Black else Color.White, maxLines = 1, softWrap = false, textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f).background(if (on) Color.White else Color.Transparent, RoundedCornerShape(8.dp))
+                        .border(1.dp, Color.White.copy(alpha = if (on) 1f else 0.35f), RoundedCornerShape(8.dp))
+                        .clickable(enabled = onFarmChange != null) { onFarmChange?.invoke(d.farm.copy(waterRefillFactor = mlt)) }.padding(vertical = 6.dp)
+                        .testTag("refill_${mlt.toInt()}"))
+            }
+        }
+        LineList(lines)
+    }
+}
+
+// =================================== 6. trends (with the graphs and the book) ===================================
+
+/**
+ * The flock's trends that rest on what was counted and weighed: the start, the removals, the average daily gain, the
+ * first week's and the last week's deaths. (v54: no FCR over 7 days — daily feed entries swing too much — no "days
+ * ahead", no 3 / 7-day advice, no projection check.)
+ */
+@Composable
+fun TrendsSection(d: OutputData) {
+    val k = d.kpis
+    val lines = listOf(
+        PLine("Placed", vi(d.placed, P), "", null, refs = listOf("started " + Fmt.i(d.entryBirds) to kindColor(P)),
+            sub = "reception ${d.reception} · " + Fmt.n(d.receptionPct, 2) + " %"),
+        PLine("Removed", vi(d.mortTD + d.lameTD, d.mk), "", null, refs = listOf("dead ${d.mortTD}" to kindColor(d.mk), "culls ${d.lameTD}" to kindColor(P))),
+        PLine("Daily gain, average", v(k.adg, 1, d.vk), "g", trendOf(k.adg, d.adgCom, Better.HIGHER), d.adgCom, d.adgIdeal, 1, actual = k.adg),
+        PLine("First week deaths", v(k.firstWeekMortPct, 2, if (k.firstWeekComplete) P else PR), "%", trendOf(k.firstWeekMortPct, d.firstWeekMortCom, Better.LOWER),
+            d.firstWeekMortCom, d.firstWeekMortIdeal, 2, Better.LOWER, actual = k.firstWeekMortPct),
+        PLine("Deaths, last 7 days", v(k.mort7Pct, 2, d.mk), "%", trendOf(k.mort7Pct, d.mort7Com, Better.LOWER), d.mort7Com, null, 2, Better.LOWER, actual = k.mort7Pct)
+    )
+    SectionCard(GIcon.TREND, "Trends", "trends") { LineList(lines) }
 }

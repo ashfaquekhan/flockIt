@@ -59,7 +59,7 @@ fun NewFarmDialog(
                 ) {
                     Text(
                         text = "Create New Farm",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium)
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Normal)
                     )
                     IconButton(onClick = onDismiss) {
                         Icon(Icons.Default.Close, contentDescription = "Close")

@@ -56,7 +56,7 @@ fun WeatherForecastDialog(forecast: ForecastResult?, onDismiss: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text("14-day weather", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium))
+                        Text("14-day weather", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Normal))
                         Text(
                             text = forecast?.let {
                                 "${it.locationName.ifBlank { "Farm location" }} · ${String.format("%.3f", it.lat)}, ${String.format("%.3f", it.lon)}"
@@ -119,7 +119,7 @@ private fun ForecastRow(d: ForecastDay) {
     }
     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(d.emoji, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(end = 6.dp))
-        Text(label, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium), modifier = Modifier.weight(1.6f))
+        Text(label, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Normal), modifier = Modifier.weight(1.6f))
         Text(
             text = "${d.tMinC?.let { String.format("%.0f", it) } ?: "–"}–${d.tMaxC?.let { String.format("%.0f", it) } ?: "–"}",
             style = MaterialTheme.typography.bodySmall.copy(fontFamily = com.example.ui.theme.NumberFont),
@@ -129,7 +129,7 @@ private fun ForecastRow(d: ForecastDay) {
         Text(d.windKmh?.let { "${it.toInt()}" } ?: "–", style = MaterialTheme.typography.bodySmall.copy(fontFamily = com.example.ui.theme.NumberFont), modifier = Modifier.weight(1f))
         Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
             Box(modifier = Modifier.size(8.dp).padding(end = 0.dp)) {}
-            Text("${d.confidencePct}%", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium, color = confColor, fontSize = 12.sp))
+            Text("${d.confidencePct}%", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Normal, color = confColor, fontSize = 12.sp))
         }
     }
 }

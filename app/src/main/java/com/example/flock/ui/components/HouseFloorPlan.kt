@@ -70,7 +70,7 @@ fun HouseFloorPlan(
             ) {
                 Text(
                     text = "House Floor-Plan & Space",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium)
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal)
                 )
                 Surface(
                     color = BrandWashLight,
@@ -79,7 +79,7 @@ fun HouseFloorPlan(
                     Text(
                         text = if (fullHouse) "Full House (${usableLength.toInt()} ft)" else "Barricade at $barricadeFt ft",
                         style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Medium,
+                            fontWeight = FontWeight.Normal,
                             color = MaterialTheme.colorScheme.primary
                         ),
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
@@ -122,7 +122,7 @@ fun HouseFloorPlan(
                 }
                 Text(
                     text = "Birds kept here",
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.primary),
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Normal, color = MaterialTheme.colorScheme.primary),
                     modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp)
                 )
                 if (!fullHouse) {
@@ -163,7 +163,7 @@ fun HouseFloorPlan(
                     )
                     Text(
                         text = String.format("%,.0f ft²", occupiedFt2),
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Normal)
                     )
                 }
 
@@ -180,7 +180,7 @@ fun HouseFloorPlan(
                     Text(
                         text = String.format("%.2f ft² (min %.2f)", ftPerBird, minFtPerBird),
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            fontWeight = FontWeight.Medium,
+                            fontWeight = FontWeight.Normal,
                             color = if (spaceOk) StatusGood else StatusWarn
                         )
                     )
@@ -199,7 +199,7 @@ fun HouseFloorPlan(
                     Text(
                         text = String.format("%.2f / %.2f kg/ft²", density * 0.092903, farm.densityCapDefault * 0.092903),
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            fontWeight = FontWeight.Medium,
+                            fontWeight = FontWeight.Normal,
                             color = if (densityOk) StatusGood else StatusCrit
                         )
                     )

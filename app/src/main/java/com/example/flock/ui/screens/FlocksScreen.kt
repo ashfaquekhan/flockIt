@@ -99,7 +99,7 @@ fun FlocksScreen(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         farmName,
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium),
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Normal),
                         maxLines = 1
                     )
                     Text(
@@ -133,7 +133,7 @@ fun FlocksScreen(
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(48.dp)
                                 )
                                 Spacer(Modifier.height(10.dp))
-                                Text("No flocks yet", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium))
+                                Text("No flocks yet", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal))
                                 Text(
                                     "Add a batch, or pull down to sync.",
                                     style = MaterialTheme.typography.bodyMedium,
@@ -168,7 +168,7 @@ fun FlocksScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent, contentColor = androidx.compose.ui.graphics.Color.White)
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
-                Text("  New flock / batch", color = Color.White, fontWeight = FontWeight.Medium)
+                Text("  New flock / batch", color = Color.White, fontWeight = FontWeight.Normal)
             }
         }
     }
@@ -243,7 +243,7 @@ private fun FlockCard(
             ) {
                 Text(
                     "#$seq · ${flock.name}",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal),
                     modifier = Modifier.weight(1f)
                 )
                 if (flock.locked) {

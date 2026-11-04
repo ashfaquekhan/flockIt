@@ -248,7 +248,7 @@ fun SectionTabs(items: List<Pair<String, String>>, current: String?, onJump: (St
                 .padding(start = if (icons[key] != null) 7.dp else 12.dp, end = 12.dp, top = 5.dp, bottom = 5.dp).testTag("jump_$key"),
                 verticalAlignment = Alignment.CenterVertically) {
                 icons[key]?.let { GameIcon(it, 20.dp); Spacer(Modifier.width(5.dp)) }
-                Text(label, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = if (on) Color.Black else Color.White,
+                Text(label, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Normal), color = if (on) Color.Black else Color.White,
                     maxLines = 1, softWrap = false)
             }
         }
@@ -343,7 +343,7 @@ fun TimeRail(minutes: Int, nowMinutes: Int?, entryMinutes: Int?, light: LightPro
         androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxHeight()) {
             val top = (maxHeight * (minutes / 1440f) - 12.dp).coerceIn(0.dp, maxHeight - 24.dp)
             if (engaged) Text(label, Modifier.padding(top = top).background(Color.White, RoundedCornerShape(6.dp)).padding(horizontal = 4.dp, vertical = 2.dp),
-                style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium), color = Color.Black,
+                style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Normal), color = Color.Black,
                 textAlign = TextAlign.Center)
         }
     }
