@@ -260,10 +260,11 @@ private fun status(k: Kpi): Pair<String, Color> {
     if (k.settling) return "settling" to grey
     val pct = if (c != 0.0) (a - c) / c * 100 else 0.0
     val txt = if (k.points) Fmt.signed(a - c, 2) + " pt" else Fmt.signed(pct, 1) + "%"
+    // good or bad only (green or red), judged by what the number is, not by which way it moved
     val col = when (k.better) {
-        Better.HIGHER -> if (pct >= -5) OkGreen else if (pct >= -10) StatusWarn else StatusCrit
-        Better.LOWER -> if (pct <= 5) OkGreen else if (pct <= 10) StatusWarn else StatusCrit
-        Better.CLOSER -> if (abs(pct) <= 10) OkGreen else if (abs(pct) <= 20) StatusWarn else StatusCrit
+        Better.HIGHER -> if (pct >= -5) OkGreen else StatusCrit
+        Better.LOWER -> if (pct <= 5) OkGreen else StatusCrit
+        Better.CLOSER -> if (abs(pct) <= 10) OkGreen else StatusCrit
     }
     return "$txt vs com" to col
 }
@@ -354,44 +355,46 @@ fun SlimCompareBar(k: Kpi) {
 
 // =================================== trend markers ===================================
 
-enum class Grade { GOOD, AVERAGE, BAD }
-/** [dir] 1 above the reference, −1 below, 0 on par; [grade] says whether that is good. */
+/** Good or bad, nothing in between (the user's rule, v52): green or red. */
+enum class Grade { GOOD, BAD }
+/** [dir] 1 above the reference, −1 below, 0 on par — only a marker; [grade] (its colour) says whether that is good. */
 data class TrendMark(val dir: Int, val grade: Grade)
 
 val TrendGood = Color(0xFF46B98C)
+/** the house map's "past the ideal" step between green and red (a map scale, not a grade) */
 val TrendAverage = Color(0xFFF0A23A)
 val TrendBad = Color(0xFFE5534B)
-fun gradeColor(g: Grade) = when (g) { Grade.GOOD -> TrendGood; Grade.AVERAGE -> TrendAverage; Grade.BAD -> TrendBad }
+fun gradeColor(g: Grade) = when (g) { Grade.GOOD -> TrendGood; Grade.BAD -> TrendBad }
 
 /**
- * Against a standard: within ±[tolPct] % is on par (an orange dash where higher or lower is better, a
- * green one where being on target is the aim). Beyond it the arrow shows the direction and its colour
- * whether that is good: green good, orange a little off, red well off (3 × the tolerance).
+ * Against a standard. The arrow is only the direction (up = above the standard, down = below, = within ±[tolPct] %);
+ * the colour says whether that is good, which depends on the number, not on the direction: a higher weight, gain,
+ * EPEF or livability is good, a higher FCR or mortality bad. On par is good. Where being on target is the aim
+ * ([Better.CLOSER]: feed and water amounts) it is good within twice the tolerance either way.
  */
 fun trendOf(actual: Double?, ref: Double?, better: Better, tolPct: Double = 3.0): TrendMark? {
     if (actual == null || ref == null || ref == 0.0) return null
     val d = (actual - ref) / abs(ref) * 100
     val dir = if (abs(d) < tolPct) 0 else if (d > 0) 1 else -1
-    val grade = when (better) {
-        Better.HIGHER -> when { d >= tolPct -> Grade.GOOD; d > -3 * tolPct -> Grade.AVERAGE; else -> Grade.BAD }
-        Better.LOWER -> when { d <= -tolPct -> Grade.GOOD; d < 3 * tolPct -> Grade.AVERAGE; else -> Grade.BAD }
-        Better.CLOSER -> when { abs(d) < tolPct -> Grade.GOOD; abs(d) < 3 * tolPct -> Grade.AVERAGE; else -> Grade.BAD }
+    val good = when (better) {
+        Better.HIGHER -> d > -tolPct
+        Better.LOWER -> d < tolPct
+        Better.CLOSER -> abs(d) <= 2 * tolPct
     }
-    return TrendMark(dir, grade)
+    return TrendMark(dir, if (good) Grade.GOOD else Grade.BAD)
 }
 
-/** A reading against its safe range: inside is good (green dash); just outside orange, well outside red. */
+/** A reading against its safe range: inside is good (green =), outside bad (red arrow the way it is out). */
 fun rangeTrend(actual: Double?, min: Double?, max: Double?): TrendMark? {
     if (actual == null || (min == null && max == null)) return null
-    val span = if (min != null && max != null) max - min else abs(min ?: max!!) * 0.2
     return when {
-        max != null && actual > max -> TrendMark(1, if (actual - max <= span * 0.15) Grade.AVERAGE else Grade.BAD)
-        min != null && actual < min -> TrendMark(-1, if (min - actual <= span * 0.15) Grade.AVERAGE else Grade.BAD)
+        max != null && actual > max -> TrendMark(1, Grade.BAD)
+        min != null && actual < min -> TrendMark(-1, Grade.BAD)
         else -> TrendMark(0, Grade.GOOD)
     }
 }
 
-/** ▲ / ▼ / – in the grade's colour. */
+/** ▲ / ▼ / = in the grade's colour. */
 @Composable
 fun TrendIcon(t: TrendMark, size: androidx.compose.ui.unit.Dp = 12.dp) {
     val c = gradeColor(t.grade)
@@ -401,8 +404,8 @@ fun TrendIcon(t: TrendMark, size: androidx.compose.ui.unit.Dp = 12.dp) {
             1 -> drawPath(androidx.compose.ui.graphics.Path().apply { moveTo(w / 2, h * 0.12f); lineTo(w * 0.95f, h * 0.88f); lineTo(w * 0.05f, h * 0.88f); close() }, c)
             -1 -> drawPath(androidx.compose.ui.graphics.Path().apply { moveTo(w * 0.05f, h * 0.12f); lineTo(w * 0.95f, h * 0.12f); lineTo(w / 2, h * 0.88f); close() }, c)
             else -> {
-                val pc = if (t.grade == Grade.GOOD) c else Color.White.copy(alpha = 0.6f)
-                drawLine(pc, Offset(w * 0.15f, h * 0.36f), Offset(w * 0.85f, h * 0.36f), strokeWidth = h * 0.14f, cap = StrokeCap.Round)
+                val pc = c
+                drawLine(pc,Offset(w * 0.15f, h * 0.36f), Offset(w * 0.85f, h * 0.36f), strokeWidth = h * 0.14f, cap = StrokeCap.Round)
                 drawLine(pc, Offset(w * 0.15f, h * 0.64f), Offset(w * 0.85f, h * 0.64f), strokeWidth = h * 0.14f, cap = StrokeCap.Round)
             }
         }

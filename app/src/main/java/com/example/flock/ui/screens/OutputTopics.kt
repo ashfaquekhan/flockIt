@@ -191,7 +191,8 @@ internal fun AccuracyCard(d: OutputData) {
     data class Line(val name: String, val acc: com.example.flock.domain.FlockKpis.Accuracy, val dec: Int)
     val lines = listOf(Line("Weight g", d.weightAccuracy.upTo(d.day), 1), Line("Feed, bags", d.feedAccuracy.upTo(d.day), 2), Line("FCR", d.fcrAccuracy.upTo(d.day), 3),
         Line("Mortality %", d.mortAccuracy.upTo(d.day), 2))
-    fun offColor(pct: Double?) = when { pct == null -> Color.White.copy(alpha = 0.5f); abs(pct) <= 3 -> TrendGood; abs(pct) <= 8 -> TrendAverage; else -> TrendBad }
+    // close (within 5 %) green, else red — no middle colour
+    fun offColor(pct: Double?) = when { pct == null -> Color.White.copy(alpha = 0.5f); abs(pct) <= 5 -> TrendGood; else -> TrendBad }
     val mono = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium, letterSpacing = (-0.3).sp)
     val grey = Color.White.copy(alpha = 0.6f)
     Part("Projection check", "accuracy") {

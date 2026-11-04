@@ -101,23 +101,23 @@ fun TimePickerField(
         },
         modifier = modifier.clickable { show = true }
     )
-    if (show) {
-        val parts = valueHHmm.split(":")
-        val h = parts.getOrNull(0)?.toIntOrNull()?.coerceIn(0, 23) ?: 8
-        val m = parts.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 59) ?: 0
-        val state = rememberTimePickerState(initialHour = h, initialMinute = m, is24Hour = true)
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { show = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false),
-            confirmButton = {
-                TextButton(onClick = {
-                    onPick(String.format("%02d:%02d", state.hour, state.minute))
-                    show = false
-                }) { Text("OK") }
-            },
-            dismissButton = { TextButton(onClick = { show = false }) { Text("Cancel") } },
-            title = { Text(label) },
-            text = { TimePicker(state = state) }
-        )
-    }
+    if (show) TimePickDialog(label, valueHHmm, { onPick(it); show = false }, { show = false })
+}
+
+/** The Material time picker in a dialog (24 h); [onPick] gets HH:mm. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TimePickDialog(label: String, valueHHmm: String, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    val parts = valueHHmm.split(":")
+    val h = parts.getOrNull(0)?.toIntOrNull()?.coerceIn(0, 23) ?: 8
+    val m = parts.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 59) ?: 0
+    val state = rememberTimePickerState(initialHour = h, initialMinute = m, is24Hour = true)
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        confirmButton = { TextButton(onClick = { onPick(String.format("%02d:%02d", state.hour, state.minute)) }) { Text("OK") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        title = { Text(label) },
+        text = { TimePicker(state = state) }
+    )
 }

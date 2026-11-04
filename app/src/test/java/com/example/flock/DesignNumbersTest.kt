@@ -1,6 +1,7 @@
 package com.example.flock
 
 import com.example.flock.ui.screens.OutputData
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -33,5 +34,29 @@ class DesignNumbersTest {
         groups.forEach { g -> println("RADAR ${g.key} mean=${g.mean?.let { "%.1f".format(it) }} " + g.flock.joinToString(",") { "${it.key}=${it.score?.let { s -> "%.1f".format(s) }}" }) }
         assertTrue(groups.size == 4 && groups.all { g -> g.flock.all { it.score == null || it.score!! in 0.0..150.0 } })
         assertTrue(radar.size == 6 && radar.all { it.score != null && it.score!! in 0.0..150.0 })
+        // the one score in the radar's middle: the six averaged
+        val (entered, projected, _) = com.example.flock.ui.screens.birdScores(d, view)
+        val overall = com.example.flock.ui.screens.overallScore(entered, projected)
+        println("RADAR overall=${overall?.let { "%.1f".format(it) }}")
+        assertTrue(overall != null && overall in 0.0..150.0)
+    }
+
+    /**
+     * v52: an arrow is only the direction against the standard; green or red says good or bad, and that depends on the
+     * number (FCR and mortality up is bad, weight down is bad). No middle grade.
+     */
+    @Test fun arrowsAreGreenOrRedByWhatTheNumberIs() {
+        val G = com.example.flock.ui.screens.Grade.GOOD; val B = com.example.flock.ui.screens.Grade.BAD
+        fun t(a: Double, ref: Double, b: com.example.flock.ui.screens.Better) = com.example.flock.ui.screens.trendOf(a, ref, b)!!
+        val lower = com.example.flock.ui.screens.Better.LOWER; val higher = com.example.flock.ui.screens.Better.HIGHER
+        assertEquals(1 to B, t(1.600, 1.500, lower).let { it.dir to it.grade })        // FCR up: red up
+        assertEquals(-1 to G, t(1.400, 1.500, lower).let { it.dir to it.grade })       // FCR down: green down
+        assertEquals(1 to B, t(6.5, 5.95, lower).let { it.dir to it.grade })           // mortality up: red up
+        assertEquals(-1 to B, t(2900.0, 3100.0, higher).let { it.dir to it.grade })    // weight down: red down
+        assertEquals(1 to G, t(3300.0, 3100.0, higher).let { it.dir to it.grade })     // weight up: green up
+        assertEquals(0 to G, t(1.51, 1.50, lower).let { it.dir to it.grade })          // on par: green =
+        assertEquals(setOf(G, B), com.example.flock.ui.screens.Grade.values().toSet())
+        assertEquals(B, com.example.flock.ui.screens.rangeTrend(12.0, null, 10.0)!!.grade)
+        assertEquals(G, com.example.flock.ui.screens.scoreGrade(98.0)); assertEquals(B, com.example.flock.ui.screens.scoreGrade(92.0))
     }
 }

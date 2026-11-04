@@ -268,8 +268,11 @@ fun EntriesScreen(
     val othersEnabled = !isHardLocked && !dayLocked
     val zone = remember(farm?.timeZone) { try { java.time.ZoneId.of(farm?.timeZone ?: "Asia/Kolkata") } catch (e: Exception) { java.time.ZoneId.systemDefault() } }
     val dayIso = entry?.date.orEmpty()
-    // the time already saved for this day (its weighing, else its lifting): a save again keeps it unless another is picked
+    // the time the day's data was first entered (its weighing, else its lifting, else — a day saved before times were
+    // kept — its save on that same date): a save again keeps it unless another is picked at Save
     val savedAtMs = listOf(entry?.weighedAt ?: 0L, entry?.liftedAt ?: 0L).firstOrNull { it > 0 }
+        ?: entry?.updatedAt?.takeIf { it > 0 && saved.isNotEmpty() }?.takeIf { ms ->
+            java.time.Instant.ofEpochMilli(ms).atZone(zone).toLocalDate().toString() == dayIso }
     val savedHHmm = savedAtMs?.let { ms ->
         java.time.Instant.ofEpochMilli(ms).atZone(zone).toLocalTime().let { String.format("%02d:%02d", it.hour, it.minute) }
     }
@@ -286,6 +289,53 @@ fun EntriesScreen(
         val m = shownHHmm.substringAfter(":").toCount() ?: return null
         val t = date.atTime(h, m).atZone(zone).toInstant().toEpochMilli()
         return t.coerceAtMost(System.currentTimeMillis())
+    }
+    var askTime by remember(draftKey) { mutableStateOf(false) }
+    var pickTime by remember(draftKey) { mutableStateOf(false) }
+    fun doSave() {
+        val rows = feedUse.filter { (it.bags.toNum() ?: 0.0) > 0.0 }
+        val breakdown = rows.joinToString(";") { "${it.type}=${it.bags.toNum() ?: 0.0}" }
+        val feedSum = rows.sumOf { it.bags.toNum() ?: 0.0 }
+        val firstType = rows.firstOrNull()?.type ?: (feedTypes.firstOrNull()?.code ?: "B1")
+        onSave(
+            DailyInputs(
+                w1 = locs.getOrNull(0)?.w?.toNum(), n1 = locs.getOrNull(0)?.n?.toCount(),
+                w2 = locs.getOrNull(1)?.w?.toNum(), n2 = locs.getOrNull(1)?.n?.toCount(),
+                w3 = locs.getOrNull(2)?.w?.toNum(), n3 = locs.getOrNull(2)?.n?.toCount(),
+                w4 = locs.getOrNull(3)?.w?.toNum(), n4 = locs.getOrNull(3)?.n?.toCount(),
+                w5 = locs.getOrNull(4)?.w?.toNum(), n5 = locs.getOrNull(4)?.n?.toCount(),
+                moreSamples = com.example.flock.data.formatMoreSamples(locs.drop(5).map { it.w.toNum() to it.n.toCount() }),
+                locCount = locs.size,
+                indivWeights = PhysiologicalEngine.parseWeights(singles).joinToString(", ") { it.fmt() },
+                mortality = mortality.trim().toCount(),
+                feedBagsUsed = feedSum,
+                feedUsedType = firstType,
+                feedUsedBreakdown = breakdown,
+                birdsLifted = birdsLifted.toCount() ?: 0,
+                weightLifted = weightLifted.toNum() ?: 0.0,
+                lameSeparated = lameSeparated.toCount() ?: 0,
+                feedRecB1 = feedRecB1.toNum() ?: 0.0, feedTypeB1 = feedTypeB1,
+                feedRecB2 = feedRecB2.toNum() ?: 0.0, feedTypeB2 = feedTypeB2,
+                feedRecB3 = feedRecB3.toNum() ?: 0.0, feedTypeB3 = feedTypeB3,
+                // the back barricade as ft from the front wall (0: the whole house); the front one as typed (0: none)
+                broodingLength = penFt.toNum()?.takeIf { it > 0 }?.let { b -> if (houseLen != null) (houseLen - b).coerceAtLeast(10.0) else b }
+                    ?: entry?.broodingLength?.let { 0.0 }, actualFans = null, actualFanTime = null,
+                outTemp = null, outRH = null,
+                // the notes as saved when nothing in them was changed (an untouched note is not re-sent over another phone's)
+                notes = (noteItems + listOfNotNull(cleanNote(newNote).takeIf { v -> v.isNotEmpty() && noteItems.none { noteKey(it) == noteKey(v) } })).let { items ->
+                    if (entry != null && items == parseNoteItems(entry.notes)) entry.notes else items.joinToString("\n") { "- $it" }
+                },
+                dieselCansUsed = dieselCansUsed.toNum() ?: 0.0,
+                entered = buildSet {
+                    if (mortEnabled && mortality.trim().toCount() != null) add("M")
+                    if (feedEnabled && feedUse.any { it.bags.trim().toNum() != null }) add("F")
+                },
+                at = entryAt(),
+                penStartFt = penFrontFt.toNum()?.coerceAtLeast(0.0) ?: entry?.penStartFt?.let { 0.0 }
+            )
+        )
+        pickedAt = null
+        unlocked = false
     }
     val scrollState = rememberScrollState()
 
@@ -318,7 +368,7 @@ fun EntriesScreen(
                     Text("Unlock day $dayNumber")
                 }
             } else InfoBanner(icon = Icons.Default.LockOpen, tint = StatusWarn, wash = StatusWarnWash,
-                text = "Unlocked" + (savedHHmm?.let { " · time stays $it" } ?: "") + " · locks again once saved")
+                text = "Unlocked · locks again once saved")
         }
         if (isHardLocked) {
             InfoBanner(
@@ -327,21 +377,8 @@ fun EntriesScreen(
             )
         }
 
-        // when what is entered happened: now, or an earlier time picked (the weighing at 08:15, the lifting at 21:00)
-        if (openDay) Section(title = "Time of these entries") {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                com.example.flock.ui.components.TimePickerField(
-                    label = if (pickedAt == null && savedHHmm != null) "At (as saved)" else if (pickedAt == null && isToday) "At (now)" else "At", valueHHmm = shownHHmm,
-                    onPick = { picked -> if (!dayLocked) pickedAt = if (isToday && picked > nowHHmm) nowHHmm else picked },
-                    modifier = Modifier.weight(1f).testTag("entry_time"))
-                if (!dayLocked && pickedAt != null) OutlinedButton(onClick = { pickedAt = null }, shape = RoundedCornerShape(10.dp)) {
-                    Text(if (savedHHmm != null) "As saved" else if (isToday) "Use now" else "Reset", maxLines = 1, softWrap = false)
-                }
-            }
-        }
-
-        // SECTION 1: 5 Location Weight Samples
-        Section(title = "1. Weight samples (${locs.size} locations)", subtitle = "Zig-zag across ${locs.size} spots of the house") {
+        // (the time of the entries is picked at Save, v52: no separate box)
+        Section(title = "Weight samples") {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -420,8 +457,7 @@ fun EntriesScreen(
             }
         }
 
-        // SECTION 2: Mortality & Feed used (multi-type)
-        Section(title = "2. Mortality & feed used") {
+        Section(title = "Mortality and feed used") {
             OutlinedTextField(
                 colors = entryFieldColors(),
                 value = mortality,
@@ -487,15 +523,13 @@ fun EntriesScreen(
             }
         }
 
-        // SECTION 3: Feed received (stock)
-        Section(title = "3. Feed received today", subtitle = "Log delivery receipts for stock (up to 3 batches)") {
+        Section(title = "Feed received") {
             DeliveryRow("Delivery 1", feedRecB1, feedTypeB1, feedTypes, !isHardLocked, { feedRecB1 = it }, { feedTypeB1 = it })
             DeliveryRow("Delivery 2", feedRecB2, feedTypeB2, feedTypes, !isHardLocked, { feedRecB2 = it }, { feedTypeB2 = it })
             DeliveryRow("Delivery 3", feedRecB3, feedTypeB3, feedTypes, !isHardLocked, { feedRecB3 = it }, { feedTypeB3 = it })
         }
 
-        // SECTION 4: Lifting & culls
-        Section(title = "4. Lifting, culls & barricade", subtitle = "Birds lifted and the truck's kg: FCR counts them, and the birds left get their own average") {
+        Section(title = "Lifting, culls and barricades") {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     colors = entryFieldColors(),
@@ -550,8 +584,7 @@ fun EntriesScreen(
                 style = MaterialTheme.typography.labelMedium, color = Color.White)
         }
 
-        // SECTION 5: Notes & diesel (only miscellaneous section kept)
-        Section(title = "5. Notes & diesel") {
+        Section(title = "Notes and diesel") {
             OutlinedTextField(
                 colors = entryFieldColors(),
                 value = dieselCansUsed, onValueChange = { dieselCansUsed = it },
@@ -597,56 +630,13 @@ fun EntriesScreen(
             }
         }
 
-        // SAVE — press & hold ~1 s so it can't be tapped by accident; nothing locks after saving
+        // SAVE — press & hold ~1 s so it can't be tapped by accident; then the time of the entries is picked (as saved, or
+        // now) and saved; a locked day saves its notes and feed received at once, its time unchanged
         HoldButton(
             label = if (dayLocked) "Hold to save notes and feed received"
-                else (if (saved.isNotEmpty()) "Hold to update day $dayNumber" else "Hold to save day $dayNumber") + " · at $shownHHmm",
+                else if (saved.isNotEmpty()) "Hold to update day $dayNumber" else "Hold to save day $dayNumber",
             enabled = openDay,
-            onComplete = {
-                val rows = feedUse.filter { (it.bags.toNum() ?: 0.0) > 0.0 }
-                val breakdown = rows.joinToString(";") { "${it.type}=${it.bags.toNum() ?: 0.0}" }
-                val feedSum = rows.sumOf { it.bags.toNum() ?: 0.0 }
-                val firstType = rows.firstOrNull()?.type ?: (feedTypes.firstOrNull()?.code ?: "B1")
-                onSave(
-                    DailyInputs(
-                        w1 = locs.getOrNull(0)?.w?.toNum(), n1 = locs.getOrNull(0)?.n?.toCount(),
-                        w2 = locs.getOrNull(1)?.w?.toNum(), n2 = locs.getOrNull(1)?.n?.toCount(),
-                        w3 = locs.getOrNull(2)?.w?.toNum(), n3 = locs.getOrNull(2)?.n?.toCount(),
-                        w4 = locs.getOrNull(3)?.w?.toNum(), n4 = locs.getOrNull(3)?.n?.toCount(),
-                        w5 = locs.getOrNull(4)?.w?.toNum(), n5 = locs.getOrNull(4)?.n?.toCount(),
-                        moreSamples = com.example.flock.data.formatMoreSamples(locs.drop(5).map { it.w.toNum() to it.n.toCount() }),
-                        locCount = locs.size,
-                        indivWeights = PhysiologicalEngine.parseWeights(singles).joinToString(", ") { it.fmt() },
-                        mortality = mortality.trim().toCount(),
-                        feedBagsUsed = feedSum,
-                        feedUsedType = firstType,
-                        feedUsedBreakdown = breakdown,
-                        birdsLifted = birdsLifted.toCount() ?: 0,
-                        weightLifted = weightLifted.toNum() ?: 0.0,
-                        lameSeparated = lameSeparated.toCount() ?: 0,
-                        feedRecB1 = feedRecB1.toNum() ?: 0.0, feedTypeB1 = feedTypeB1,
-                        feedRecB2 = feedRecB2.toNum() ?: 0.0, feedTypeB2 = feedTypeB2,
-                        feedRecB3 = feedRecB3.toNum() ?: 0.0, feedTypeB3 = feedTypeB3,
-                        // the back barricade as ft from the front wall (0: the whole house); the front one as typed (0: none)
-                        broodingLength = penFt.toNum()?.takeIf { it > 0 }?.let { b -> if (houseLen != null) (houseLen - b).coerceAtLeast(10.0) else b }
-                            ?: entry?.broodingLength?.let { 0.0 }, actualFans = null, actualFanTime = null,
-                        outTemp = null, outRH = null,
-                        // the notes as saved when nothing in them was changed (an untouched note is not re-sent over another phone's)
-                        notes = (noteItems + listOfNotNull(cleanNote(newNote).takeIf { v -> v.isNotEmpty() && noteItems.none { noteKey(it) == noteKey(v) } })).let { items ->
-                            if (entry != null && items == parseNoteItems(entry.notes)) entry.notes else items.joinToString("\n") { "- $it" }
-                        },
-                        dieselCansUsed = dieselCansUsed.toNum() ?: 0.0,
-                        entered = buildSet {
-                            if (mortEnabled && mortality.trim().toCount() != null) add("M")
-                            if (feedEnabled && feedUse.any { it.bags.trim().toNum() != null }) add("F")
-                        },
-                        at = entryAt(),
-                        penStartFt = penFrontFt.toNum()?.coerceAtLeast(0.0) ?: entry?.penStartFt?.let { 0.0 }
-                    )
-                )
-                pickedAt = null
-                unlocked = false
-            }
+            onComplete = { if (dayLocked) doSave() else askTime = true }
         )
 
         HoldButton(
@@ -662,9 +652,33 @@ fun EntriesScreen(
     if (askUnlock) androidx.compose.material3.AlertDialog(
         onDismissRequest = { askUnlock = false },
         title = { Text("Unlock day $dayNumber?") },
-        text = { Text("Change the saved entries, then hold Update." + (savedHHmm?.let { " The time stays $it." } ?: "")) },
+        text = { Text("Change the saved entries, then hold Update.") },
         confirmButton = { androidx.compose.material3.TextButton(onClick = { unlocked = true; askUnlock = false }, modifier = Modifier.testTag("unlock_confirm")) { Text("Unlock") } },
         dismissButton = { androidx.compose.material3.TextButton(onClick = { askUnlock = false }) { Text("Keep locked") } }
+    )
+    // after the hold: when the entries happened — as first saved (an update), else now (a past day 08:00); it can be changed
+    if (askTime) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { askTime = false; pickedAt = null },
+        title = { Text(if (saved.isNotEmpty()) "Update day $dayNumber" else "Save day $dayNumber") },
+        text = {
+            // the time as plain text and a button to change it (no text box: nothing to type here)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(if (pickedAt == null && savedHHmm != null) "Time, as first saved" else if (pickedAt == null && isToday) "Time, now" else "Time",
+                        style = MaterialTheme.typography.labelLarge, color = Color.White)
+                    Text(shownHHmm, style = MaterialTheme.typography.headlineSmall.copy(fontFamily = com.example.ui.theme.NumberFont),
+                        color = Color.White, modifier = Modifier.testTag("entry_time"))
+                }
+                OutlinedButton(onClick = { pickTime = true }, shape = RoundedCornerShape(10.dp), modifier = Modifier.testTag("entry_time_change")) {
+                    Text("Change", maxLines = 1, softWrap = false)
+                }
+            }
+            if (pickTime) com.example.flock.ui.components.TimePickDialog("Time of the entries", shownHHmm,
+                { picked -> pickedAt = if (isToday && picked > nowHHmm) nowHHmm else picked; pickTime = false }, { pickTime = false })
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { askTime = false; doSave() }, modifier = Modifier.testTag("save_confirm")) {
+            Text(if (saved.isNotEmpty()) "Update" else "Save") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = { askTime = false; pickedAt = null }) { Text("Cancel") } }
     )
 }
 

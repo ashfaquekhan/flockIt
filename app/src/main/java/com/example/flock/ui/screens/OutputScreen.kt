@@ -291,7 +291,9 @@ fun OutputScreen(
     }, Modifier.align(Alignment.TopStart).onGloballyPositioned { tabsPx = it.size.height })
     // the time of the day: a rail down the right edge, opened by touching it
     TimeRail(minutes, if (isToday) nowZ.hour * 60 + nowZ.minute else null, entryMin, light, { pinned = it }, { pinned = null },
-        Modifier.align(Alignment.CenterEnd).padding(top = tabsDp))
+        Modifier.align(Alignment.CenterEnd).padding(top = tabsDp, bottom = 64.dp))
+    // back to the present in one tap, wherever the page is scrolled to
+    if (isToday && pinned != null) NowButton({ pinned = null }, Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 12.dp))
     }
     }
     if (confirmClose) {

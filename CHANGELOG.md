@@ -8,6 +8,24 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v52 — 2026-11-05 · The time at Save, plain entry headings, a Now button, one score on the radar, arrows green or red · no DB or sheet change
+- **The time of the entries is picked at Save**: no separate "Time of these entries" box. Hold Save (or Update), and a
+  small window shows the time — for a day updated again the time its data was first entered (its weighing, else its
+  lifting, else its first save that day), for a new entry now (a past day 08:00) — change it there if needed, then
+  Save / Update, or Cancel. A locked day's notes and feed received save straight away, their time unchanged.
+- **Entry headings without numbers**: Weight samples · Mortality and feed used · Feed received · Lifting, culls and
+  barricades · Notes and diesel; the sentences under them are gone.
+- **Back to the present in one tap**: while another time is picked, a **Now** button sits at the bottom right of the
+  page wherever it is scrolled; letting go of a drag on the rail within a quarter of an hour of now also goes back to
+  the clock. The rail stops above the button.
+- **The radar is minimal**: no sentence over it and no pair of scores under each name — the six names, the outlines and
+  one score in the middle (the six averaged, each as entered else as projected; green at or above the company, red
+  below). What the scores are is behind the glance's ⓘ.
+- **Arrows are only markers, colours say good or bad**: up / down / = against the company; green good, red bad, nothing
+  in between (no orange "a little off"), and no key with "good · a little off · far off". Good or bad follows the number,
+  not the direction: FCR, cFCR and mortality up is red, weight, gain, EPEF or live birds down is red; on par is green.
+  Ranges (CV, the air): inside green, outside red. The same two colours on the KPI lines and the projection check.
+
 ## v51 — 2026-11-05 · Two barricades, the tube counted in a line's fill, the model suite and the house map, one see-through radar, graphs like a market chart, lighter type · **DB 18 → 19**, sheet schema 8 → 9
 - **Fixed: Unlock day.** A day with only a lifting saved was locked with no banner and no Unlock button; now every locked
   day shows both. Unlocking holds through a reload, and what is typed after it is kept.

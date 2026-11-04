@@ -27,7 +27,7 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O19 | Day clock times are rules, not settings | Dark ends at 05:00 (O14); the hot window comes from the forecast or the season's typical day. Say if the farm needs a different dark period or feeding hours. |
 | O20 | Farm window draws up to 1,800 birds at once | A width that would hold more at today's density steps down to half or quarter width. |
 | O23 | True CV needs birds weighed one by one | Bulk (bucket) weighing can't give the bird-to-bird CV; enter 10+ single weights (50–100 is better) on sample days. |
-| O24 | Trend tolerance is ±3 % against the commercial standard (or ideal) | A guide; tell me if some KPIs need a tighter or wider band. |
+| O24 | Trend tolerance is ±3 % against the commercial standard (or ideal) | Within it the marker is "=" and green. Since v52 there are two colours only: worse than the company by more than 3 % is red (feed and water amounts: more than 6 % either way). The radar's one score is green from 97. A guide; tell me if some KPIs need a tighter or wider band. |
 | O22 | Sheet upgrade and repair are checked by unit tests, not yet against a live Google account | The layout logic is tested; the Drive/Sheets calls need a real run on the farm's sheet. |
 | O25 | Feed correction is advice only | Capped at +5 % / −3 %, none in week 1; birds eat to appetite, so check pans are cleared before adding feed. |
 | O26 | Breaths a minute in the animation box are typical resting rates, not measured | 30–50 in week 1, 20–40 later; panting over 60. |
@@ -67,6 +67,11 @@ is not made twice. Newest first. Open items at the top. Update together with
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v52 | The time of the entries was a separate box at the top of Entry | v47 put the time in its own card so it could be picked before saving | Picked after the hold, in the save window; an update offers the time first saved |
+| v52 | Entry cards numbered 1–5 with sentences under the headings | Kept from the early step-by-step entry | Plain headings, no sentences |
+| v52 | Hard to get back to the present on the time rail | The only ways were a small white dot on the rail and the Now pill on the glance, which scrolls away | A Now button at the bottom right while another time is picked; a drag let go near now snaps to it |
+| v52 | Radar too wordy | A sentence over it and two scores under every name | Names, outlines and one overall score in the middle |
+| v52 | Arrows read as "up = good"; three grades with a key | The key drew three up-arrows labelled good / a little off / far off; orange sat between green and red | Arrow = direction only, colour = good or bad by what the number is; green or red only, no key |
 | v51 | Could not unlock a saved day after updating | A day with only a lifting saved was locked, but the banner and Unlock button showed only for days with weights, deaths or feed saved | Every locked day shows the lock and Unlock; unlocking survives a reload |
 | v51 | "Couldn't load latest from Google Sheet" popped up over other apps | The 3-minute auto-load kept running in the background and its failure was shown as a toast (toasts float over other apps) | Auto-load only while on screen; its failures go to the sync chip; no toast while away |
 | v51 | Entry would not take some decimals | Fields read with toDouble: "3,5" and "12.0" (as a count) were dropped | A reader for numbers as typed |
@@ -215,3 +220,8 @@ is not made twice. Newest first. Open items at the top. Update together with
 - A Compose test that hangs can run for hours (v51: two hours in `performScrollTo` on a tab off the row's edge): unit
   tests time out after 20 minutes (`build.gradle.kts`); tap an off-screen chip with `SemanticsActions.OnClick`.
 - Read the day's figures (`OutputData`) on the main thread; only file writes go to `Dispatchers.IO`.
+- A text field inside an `AlertDialog` never lets Compose go idle in the screen tests (v52: `AppNotIdleException`,
+  "did not get idle after 84,863 attempts", with the clock paused): in a dialog show a value as text with a Change
+  button (the time picker opens from it), not a read-only text field.
+- The PC went to sleep in the middle of a test run (v52: 21 minutes, the build took 1 h 19 min): keep the machine awake
+  for long builds.

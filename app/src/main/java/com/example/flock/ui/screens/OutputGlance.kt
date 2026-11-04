@@ -103,9 +103,13 @@ fun radarsOf(d: OutputData, view: OutputData.NowView, hour: Int, pat: OutputData
         Radar.Group("floor", "Floor and litter", "vs ideal", floor))
 }
 
-/** A score's grade: on target, a little off, far off — birds against the company, the rest against their ideal band. */
-fun scoreGrade(score: Double, birds: Boolean): Grade = if (birds) when { score >= 97 -> Grade.GOOD; score >= 90 -> Grade.AVERAGE; else -> Grade.BAD }
-    else when { score >= 95 -> Grade.GOOD; score >= 60 -> Grade.AVERAGE; else -> Grade.BAD }
+/** A birds score's grade: at or above the company (within 3 %) good, below it bad — green or red, nothing between. */
+fun scoreGrade(score: Double): Grade = if (score >= 97) Grade.GOOD else Grade.BAD
+
+/** One score for the birds: the average of the six (each as entered, else as projected at the time shown). */
+fun overallScore(entered: List<Radar.Axis>, projected: List<Radar.Axis>): Double? =
+    projected.indices.mapNotNull { i -> (entered.getOrNull(i)?.score ?: projected[i].score)?.coerceAtMost(Radar.MAX) }
+        .takeIf { it.isNotEmpty() }?.average()
 
 /** One number of the glance: what, its value (coloured by what it is), the company's and the ideal, and the line. */
 private class Tile(
@@ -169,7 +173,6 @@ fun GlanceCard(d: OutputData, view: OutputData.NowView, entryHHmm: String?, live
             ColourKey(listOf(kindColor(P) to "entered " + (entryHHmm ?: "—"), kindColor(PR) to "projected " + view.hhmm,
                 kindColor(C) to "company", kindColor(I) to "ideal (Ross)"))
             BirdRadar(d, view)
-            GradeKey()
             tiles.chunked(3).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     row.forEach { t -> GlanceTile(t, Modifier.weight(1f)) }
@@ -190,21 +193,6 @@ fun ColourKey(items: List<Pair<Color, String>>, modifier: Modifier = Modifier) {
                 Spacer(Modifier.width(4.dp))
                 Text(t, style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont), color = c,
                     maxLines = 1, softWrap = false)
-            }
-        }
-    }
-}
-
-/** The arrows' and the scores' colours. */
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-@Composable
-fun GradeKey(modifier: Modifier = Modifier) {
-    FlowRow(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        listOf(Grade.GOOD to "good", Grade.AVERAGE to "a little off", Grade.BAD to "far off").forEach { (g, t) ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TrendIcon(TrendMark(1, g), 10.dp)
-                Spacer(Modifier.width(4.dp))
-                Text(t, style = MaterialTheme.typography.labelSmall, color = gradeColor(g), maxLines = 1, softWrap = false)
             }
         }
     }
@@ -232,21 +220,22 @@ fun birdScores(d: OutputData, view: OutputData.NowView): Triple<List<Radar.Axis>
  * The birds against the company, on six axes: every score is the flock's figure as a share of the company's for the
  * day (FCR and mortality the other way up, so further out is always better). Nothing is filled: the company is the
  * dashed ring (100), the ideal (Ross) the thin blue outline, the flock as entered green and as projected at the time
- * shown amber, so every outline shows through the others (an outline needs three scores; fewer are dots only). Under each name: the entered score (green) and the
- * projected one (amber).
+ * shown amber, so every outline shows through the others (an outline needs three scores; fewer are dots only).
+ * Minimal (v52): the axis names and one overall score in the middle (green at or above the company, red below);
+ * what the scores are lives behind the card's ⓘ.
  */
 @Composable
 fun BirdRadar(d: OutputData, view: OutputData.NowView) {
     val (entered, projected, ideal) = remember(d, view) { birdScores(d, view) }
+    val overall = remember(entered, projected) { overallScore(entered, projected) }
     val present = kindColor(P); val proj = kindColor(PR); val company = kindColor(C); val idealC = kindColor(I)
     Column(Modifier.fillMaxWidth().testTag("radar_birds"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("Birds against the company · 100 = the company today, further out is better", style = MaterialTheme.typography.labelLarge, color = Color.White)
-        Canvas(Modifier.fillMaxWidth().height(250.dp).testTag("radar")) {
+        Canvas(Modifier.fillMaxWidth().height(230.dp).testTag("radar")) {
             val px = density
             val n = projected.size
             val max = Radar.MAX
-            val cx = size.width / 2; val cy = size.height / 2 + 4f * px
-            val rMax = min(size.height / 2 - 34f * px, size.width / 2 - 74f * px)
+            val cx = size.width / 2; val cy = size.height / 2
+            val rMax = min(size.height / 2 - 22f * px, size.width / 2 - 64f * px)
             fun pt(i: Int, score: Double): Offset {
                 val a = -Math.PI / 2 + i * Math.PI * 2 / n
                 val r = (score.coerceIn(0.0, max) / max * rMax).toFloat()
@@ -268,28 +257,25 @@ fun BirdRadar(d: OutputData, view: OutputData.NowView) {
             if (entered.count { it.score != null } >= 3) drawPath(shape(entered), present, style = Stroke(1.6f * px))
             entered.forEachIndexed { i, a -> a.score?.let { drawCircle(present, 3f * px, pt(i, it)) } }
             projected.forEachIndexed { i, a -> a.score?.let { drawCircle(proj, 2.4f * px, pt(i, it)) } }
-            val label = Paint().apply { isAntiAlias = true; textSize = 12f * px; typeface = com.example.ui.theme.AppFonts.text; color = Color.White.toArgb() }
-            val num = Paint().apply { isAntiAlias = true; textSize = 11.5f * px; typeface = com.example.ui.theme.AppFonts.mono }
-            fun sc(x: Double?) = x?.let { if (it >= max) "150+" else Fmt.n(it, 0) } ?: "—"
+            // the axis names only, just outside the outer ring
+            val label = Paint().apply { isAntiAlias = true; textSize = 12.5f * px; typeface = com.example.ui.theme.AppFonts.text; color = Color.White.toArgb() }
             (0 until n).forEach { i ->
                 val ang = -Math.PI / 2 + i * Math.PI * 2 / n
-                val lr = rMax + 10f * px
+                val lr = rMax + 8f * px
                 val lx = cx + lr * cos(ang).toFloat(); val ly0 = cy + lr * sin(ang).toFloat()
                 val dx = lx - cx
                 val align = when { abs(dx) < rMax * 0.3f -> Paint.Align.CENTER; dx > 0 -> Paint.Align.LEFT; else -> Paint.Align.RIGHT }
                 val sy = sin(ang)
-                val ly = when { sy < -0.5 -> ly0 - 16f * px; sy > 0.5 -> ly0 + 12f * px; else -> ly0 }
+                val ly = when { sy < -0.5 -> ly0 - 4f * px; sy > 0.5 -> ly0 + 12f * px; else -> ly0 + 4f * px }
                 label.textAlign = align
                 drawContext.canvas.nativeCanvas.drawText(projected[i].label, lx, ly, label)
-                // the entered score (green), then the projected one (amber)
-                val e = sc(entered[i].score); val pj = sc(projected[i].score)
-                val we = num.measureText(e); val wsep = num.measureText(" · "); val wp = num.measureText(pj)
-                val total = we + wsep + wp
-                var x = when (align) { Paint.Align.CENTER -> lx - total / 2; Paint.Align.LEFT -> lx; else -> lx - total }
-                num.textAlign = Paint.Align.LEFT
-                num.color = (if (entered[i].score == null) Color.White.copy(alpha = 0.5f) else present).toArgb(); drawContext.canvas.nativeCanvas.drawText(e, x, ly + 14f * px, num); x += we
-                num.color = Color.White.copy(alpha = 0.5f).toArgb(); drawContext.canvas.nativeCanvas.drawText(" · ", x, ly + 14f * px, num); x += wsep
-                num.color = proj.toArgb(); drawContext.canvas.nativeCanvas.drawText(pj, x, ly + 14f * px, num)
+            }
+            // one score in the middle: green at or above the company, red below it
+            overall?.let { s ->
+                val big = Paint().apply { isAntiAlias = true; textSize = 20f * px; typeface = com.example.ui.theme.AppFonts.mono; textAlign = Paint.Align.CENTER
+                    color = gradeColor(scoreGrade(s)).toArgb() }
+                drawCircle(Color.Black.copy(alpha = 0.6f), 26f * px, Offset(cx, cy))
+                drawContext.canvas.nativeCanvas.drawText(Fmt.n(s, 1), cx, cy + 7f * px, big)
             }
         }
     }
@@ -338,63 +324,6 @@ fun MiniCompare(actual: Double?, kind: ValueKind, com: Double?, ideal: Double?) 
 }
 
 /**
- * A radar: the target is the dashed ring (100), the breed's ideal the thin blue shape (birds only), the flock the
- * filled green one; each score sits by its axis in its grade's colour. [max] is the outer ring (150 for the birds,
- * who can beat the company; 100 for the rest).
- */
-@Composable
-fun RadarChart(flock: List<Radar.Axis>, ideal: List<Radar.Axis>?, max: Double = Radar.MAX, birds: Boolean = true, compact: Boolean = false) {
-    val present = kindColor(P); val company = kindColor(C); val idealC = kindColor(I)
-    Canvas(Modifier.fillMaxWidth().height(if (compact) 150.dp else 220.dp)) {
-        val px = density
-        val labelPx = (if (compact) 10f else 11.5f) * px
-        val numPx = (if (compact) 11f else 12.5f) * px
-        val cx = size.width / 2; val cy = size.height / 2 + (if (compact) 2f else 4f) * px
-        val rMax = min(size.height / 2 - (if (compact) 30f else 34f) * px, size.width / 2 - (if (compact) 34f else 70f) * px)
-        fun pt(i: Int, score: Double): Offset {
-            val a = -Math.PI / 2 + i * Math.PI * 2 / flock.size
-            val r = (score / max * rMax).toFloat()
-            return Offset(cx + r * cos(a).toFloat(), cy + r * sin(a).toFloat())
-        }
-        fun ring(score: Double) = Path().apply { flock.indices.forEach { i -> val p = pt(i, score); if (i == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y) }; close() }
-        drawPath(ring(50.0), Color.White.copy(alpha = 0.14f), style = Stroke(1f))
-        if (max > 100) drawPath(ring(max), Color.White.copy(alpha = 0.14f), style = Stroke(1f))
-        flock.indices.forEach { i -> drawLine(Color.White.copy(alpha = 0.12f), Offset(cx, cy), pt(i, max), 1f) }
-        drawPath(ring(100.0), company.copy(alpha = 0.08f))
-        drawPath(ring(100.0), company, style = Stroke(1.6f * px, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f * px, 5f * px))))
-        // an axis with no score (nothing to judge it by) is left out of the shape, not drawn as nought
-        fun shape(axes: List<Radar.Axis>) = Path().apply {
-            var first = true
-            axes.forEachIndexed { i, a -> val sc = a.score ?: return@forEachIndexed; val p = pt(i, sc.coerceAtMost(max)); if (first) moveTo(p.x, p.y) else lineTo(p.x, p.y); first = false }
-            close()
-        }
-        if (ideal != null) drawPath(shape(ideal), idealC.copy(alpha = 0.8f), style = Stroke(1.2f * px))
-        drawPath(shape(flock), present.copy(alpha = 0.22f))
-        drawPath(shape(flock), present, style = Stroke((if (compact) 2f else 2.4f) * px))
-        val paint = Paint().apply { isAntiAlias = true; textSize = labelPx; typeface = com.example.ui.theme.AppFonts.text }
-        val num = Paint().apply { isAntiAlias = true; textSize = numPx; typeface = com.example.ui.theme.AppFonts.mono; isFakeBoldText = false }
-        flock.forEachIndexed { i, a ->
-            val s = a.score
-            val dot = pt(i, (s ?: 0.0).coerceAtMost(max))
-            val sc = if (s == null) Color.White.copy(alpha = 0.5f) else gradeColor(scoreGrade(s, birds))
-            if (s != null) drawCircle(sc, (if (compact) 3f else 3.5f) * px, dot)
-            // the name and the score just outside the outer ring: centred near the top and bottom, beside it at the sides
-            val ang = -Math.PI / 2 + i * Math.PI * 2 / flock.size
-            val lr = rMax + (if (compact) 6f else 10f) * px
-            val lx = cx + lr * cos(ang).toFloat(); val ly0 = cy + lr * sin(ang).toFloat()
-            val dx = lx - cx
-            val align = when { abs(dx) < rMax * 0.65f -> Paint.Align.CENTER; dx > 0 -> Paint.Align.LEFT; else -> Paint.Align.RIGHT }
-            paint.textAlign = align; num.textAlign = align
-            paint.color = Color.White.copy(alpha = 0.75f).toArgb(); num.color = sc.toArgb()
-            val sy = sin(ang)
-            val ly = when { sy < -0.5 -> ly0 - numPx * 1.05f - 2f * px; sy > 0.5 -> ly0 + labelPx; else -> ly0 }
-            drawContext.canvas.nativeCanvas.drawText(a.label, lx, ly, paint)
-            drawContext.canvas.nativeCanvas.drawText(s?.let { if (it >= Radar.MAX) "150+" else Fmt.n(it, 0) } ?: "—", lx, ly + numPx * 1.05f, num)
-        }
-    }
-}
-
-/**
  * The page's sections as tabs that stay at the top: the one being read is lit, and a tap scrolls to another.
  */
 @Composable
@@ -421,6 +350,24 @@ fun SectionTabs(items: List<Pair<String, String>>, current: String?, onJump: (St
  * is a thin line with the time on its handle; touched it opens out — the hours, the dark hours shaded, the entries'
  * time (green) and now (white, tap it to go back to the clock) — and the handle follows the finger.
  */
+/** A drag on the rail let go this close to now (minutes) goes back to the clock. */
+const val NOW_SNAP_MIN = 15
+
+/**
+ * Back to the time now, from anywhere on the page: a button at the bottom of the rail, shown only while another time
+ * is picked (v52: the white dot on the rail was too small a target to find the present).
+ */
+@Composable
+fun NowButton(onNow: () -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier.background(Color.Black, RoundedCornerShape(22.dp)).border(1.dp, Color.White, RoundedCornerShape(22.dp))
+        .clickable { onNow() }.padding(horizontal = 14.dp, vertical = 10.dp).testTag("rail_now"),
+        verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(8.dp).background(Color.White, CircleShape))
+        Spacer(Modifier.width(6.dp))
+        Text("Now", style = MaterialTheme.typography.labelLarge, color = Color.White, maxLines = 1, softWrap = false)
+    }
+}
+
 @Composable
 fun TimeRail(minutes: Int, nowMinutes: Int?, entryMinutes: Int?, light: LightProgram, onMinutes: (Int) -> Unit, onNow: () -> Unit, modifier: Modifier = Modifier) {
     var engaged by remember { mutableStateOf(false) }
@@ -446,16 +393,18 @@ fun TimeRail(minutes: Int, nowMinutes: Int?, entryMinutes: Int?, light: LightPro
                 // a tap on the "now" mark goes back to the clock
                 val onNowMark = n != null && abs(down.position.y - n / 1440f * size.height) < 18.dp.toPx()
                 var moved = false
-                if (!onNowMark) setMin(minAt(down.position.y))
+                var last = minAt(down.position.y)
+                if (!onNowMark) setMin(last)
                 while (true) {
                     val ev = awaitPointerEvent()
                     val ch = ev.changes.firstOrNull() ?: break
                     if (!ch.pressed) break
                     if (abs(ch.position.y - down.position.y) > 6.dp.toPx()) moved = true
-                    if (moved || !onNowMark) setMin(minAt(ch.position.y))
+                    if (moved || !onNowMark) { last = minAt(ch.position.y); setMin(last) }
                     ch.consume(); touch++
                 }
-                if (onNowMark && !moved) goNow()
+                // back to the clock: a tap on the now mark, or a drag let go within a quarter of an hour of now
+                if ((onNowMark && !moved) || (moved && n != null && abs(last - n) <= NOW_SNAP_MIN)) goNow()
             }
         }) {
         Canvas(Modifier.fillMaxWidth().fillMaxHeight()) {

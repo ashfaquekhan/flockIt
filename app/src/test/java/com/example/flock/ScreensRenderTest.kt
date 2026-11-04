@@ -242,6 +242,9 @@ class ScreensRenderTest {
         assertTrue(rule.onAllNodesWithText("Choose what shows", substring = true).fetchSemanticsNodes().isEmpty())
         assertTrue(rule.onAllNodesWithText("At a glance").fetchSemanticsNodes().isEmpty())
         assertTrue(rule.onAllNodesWithText("Half", substring = true).fetchSemanticsNodes().isEmpty())
+        // v52: no labels on the arrows (green good, red bad — no middle grade), no sentence over the radar
+        listOf("a little off", "far off", "Birds against the company").forEach {
+            assertTrue(it, rule.onAllNodesWithText(it, substring = true).fetchSemanticsNodes().isEmpty()) }
         rule.onRoot().captureRoboImage("src/test/screenshots/screen_output_all_open_bigtext.png")
     }
     /** The parts of the page drawn new: the litter from the side, the nipple line with its gauge, the floor plan and the feed with the barricade. */
@@ -306,9 +309,12 @@ class ScreensRenderTest {
         rule.onNodeWithTag("time_rail").performTouchInput { up() }
         rule.mainClock.advanceTimeBy(300)
         rule.onNodeWithTag("time_shown").assertTextEquals("06:00")
-        rule.onNodeWithTag("time_now").performClick()
+        // back to the present: the Now button at the bottom right, shown only while another time is picked
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_time_now_button.png")
+        rule.onNodeWithTag("rail_now").performClick()
         rule.mainClock.advanceTimeBy(600)
         assertTrue(rule.onAllNodesWithTag("time_now").fetchSemanticsNodes().isEmpty())
+        assertTrue(rule.onAllNodesWithTag("rail_now").fetchSemanticsNodes().isEmpty())
     }
     /** The graphs: one chart picked from the row, lifting days marked; opened full screen from its corner. */
     @Config(qualifiers = "w360dp-h780dp-xhdpi") @Test fun chartOpensFullScreen() {
@@ -378,12 +384,22 @@ class ScreensRenderTest {
     @Config(qualifiers = "w360dp-h2600dp-xhdpi") @Test fun outputWeatherOff() = shoot("output_weather_off") { output(weatherOn = false) }
     @Config(qualifiers = "w360dp-h3200dp-xhdpi") @Test fun entryNewDayLong() {
         shoot("entry_new_day") { entryNewDay() }
-        // a day not saved yet does not lock: no lock banner, no cut-off; the time of the entries can be picked
+        // a day not saved yet does not lock: no lock banner, no cut-off
         assertTrue(rule.onAllNodesWithText("locked", substring = true, ignoreCase = true).fetchSemanticsNodes().isEmpty())
         assertTrue(rule.onAllNodesWithText("cut-off", substring = true, ignoreCase = true).fetchSemanticsNodes().isEmpty())
-        rule.onNodeWithTag("entry_time").assertExists()
         // a new day's feed row starts with the variety entered last: B3 shows in the feed row as well as in the third delivery
         assertTrue(rule.onAllNodesWithText("B3", substring = true).fetchSemanticsNodes().size >= 2)
+        // v52: plain headings, no numbers; no separate box for the time — it is picked after the hold, at Save
+        rule.onAllNodesWithText("Weight samples")[0].assertExists()
+        assertTrue(rule.onAllNodesWithText("1. Weight", substring = true).fetchSemanticsNodes().isEmpty())
+        assertTrue(rule.onAllNodesWithTag("entry_time").fetchSemanticsNodes().isEmpty())
+        rule.onAllNodesWithTag("hold_button")[0].performTouchInput { down(center) }
+        rule.mainClock.advanceTimeBy(1200)
+        rule.onAllNodesWithTag("hold_button")[0].performTouchInput { up() }
+        rule.mainClock.advanceTimeBy(400)
+        rule.onNodeWithTag("entry_time").assertExists()
+        rule.onNodeWithTag("save_confirm").assertExists()
+        com.github.takahirom.roborazzi.captureScreenRoboImage("src/test/screenshots/screen_entry_save_time.png")
     }
     /** A dial turned by hand holds for 30 seconds, then the dials go back to the weather. */
     @Config(qualifiers = "w360dp-h12000dp-xhdpi") @Test fun dialsGoBackToTheWeather() {
@@ -430,6 +446,17 @@ class ScreensRenderTest {
         rule.onNodeWithTag("unlock_confirm").performClick(); rule.mainClock.advanceTimeBy(600)
         rule.onNodeWithTag("mortality_input").assertIsEnabled()
         rule.onAllNodesWithText("Unlocked", substring = true)[0].assertExists()
+        // updating it: after the hold the time offered is the one first saved (08:15), and that is what is saved
+        got = null
+        rule.onAllNodesWithTag("hold_button")[0].performTouchInput { down(center) }
+        rule.mainClock.advanceTimeBy(1200)
+        rule.onAllNodesWithTag("hold_button")[0].performTouchInput { up() }
+        rule.mainClock.advanceTimeBy(400)
+        rule.onAllNodesWithText("as first saved", substring = true)[0].assertExists()
+        rule.onNodeWithTag("entry_time").assertTextEquals("08:15")
+        rule.onNodeWithTag("save_confirm").performClick()
+        rule.mainClock.advanceTimeBy(400)
+        assertEquals(at, got?.at)
     }
     @Config(qualifiers = "w360dp-h1500dp-xhdpi") @Test fun stockSmall() = shoot("stock_small") { stock() }
     /** The quarter-width window and its stats grid. */
