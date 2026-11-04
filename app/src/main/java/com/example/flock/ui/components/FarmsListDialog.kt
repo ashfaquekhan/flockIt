@@ -272,7 +272,7 @@ fun FarmsListDialog(
                                                 onDismiss()
                                             }
                                         },
-                                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+                                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent, contentColor = androidx.compose.ui.graphics.Color.White),
                                         enabled = sharedIdInput.isNotBlank()
                                     ) {
                                         Text("Open Farm")
@@ -305,7 +305,7 @@ fun FarmsListDialog(
                             onCreateNewFarm()
                             onDismiss()
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent, contentColor = androidx.compose.ui.graphics.Color.White),
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(10.dp)
                     ) {

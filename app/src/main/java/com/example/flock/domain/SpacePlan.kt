@@ -55,7 +55,11 @@ object SpacePlan {
         /** the front barricade, ft from the front wall (0: none); [penFt] is the back one */
         val penStartFt: Double = 0.0,
         /** bags that fill a line with every pan shut: the tube alone, filled with the pans (0: not counted) */
-        val bagsShutLine: Double = 0.0
+        val bagsShutLine: Double = 0.0,
+        /** barricades the farm has (0: the floor is set by the pans alone) and how it likes a floor too big set:
+         *  "auto" (barricade on a cool day, pans on a warm one), "barricade" (pen the birds whenever the floor is roomy),
+         *  "pans" (never a barricade: shut pans instead) */
+        val barricades: Int = 2, val spaceBy: String = "auto"
     )
 
     data class Option(
@@ -158,15 +162,21 @@ object SpacePlan {
         if (few && !young) seriesFor(i.houseLenFt)?.let { (on, off) ->
             opts += option("pans", "Whole house, $on pan on · $off off", i.houseLenFt, on, off)
         }
-        // C: the barricade where the birds have a comfortable floor (34 kg/m² at most; 5 ft steps; never under 40 % of the house)
+        // C: barricades where the birds have a comfortable floor (34 kg/m² at most; 5 ft steps; never under 40 % of the house) —
+        // only with barricades on the farm and not when it sets its floor by the pans: one barricade pens the birds from the
+        // front wall, two leave the same empty floor at both ends (away from the pads' end and the fans' end)
+        val canPen = i.barricades > 0 && i.spaceBy != "pans"
         val penTarget = min(target, 34.0)
         val penNeed = ceil(live * i.avgKg / penTarget * FT2_PER_M2 / max(1.0, i.widthFt) / 5.0) * 5.0
-        val pen = penNeed.coerceIn(i.houseLenFt * 0.4, i.houseLenFt)
-        if (pen < i.houseLenFt - 10 && !young) {
-            val inPen = pansUpTo(pen)
+        val penLen = penNeed.coerceIn(i.houseLenFt * 0.4, i.houseLenFt)
+        if (canPen && penLen < i.houseLenFt - 10 && !young) {
+            val start = if (i.barricades >= 2) floor((i.houseLenFt - penLen) / 2 / 5.0) * 5.0 else 0.0
+            val end = start + penLen
+            val inPen = pansIn(start, end)
             val penFew = live.toDouble() / (lines * inPen) < FEW_BIRDS_PER_PAN
-            val (on, off) = if (penFew) seriesFor(pen) ?: (1 to 0) else 1 to 0
-            opts += option("pen", "Barricade at ${pen.toInt()} ft" + if (off > 0) ", $on on · $off off" else "", pen, on, off)
+            val (on, off) = if (penFew) seriesFor(end, start) ?: (1 to 0) else 1 to 0
+            opts += option("pen", (if (start > 0.5) "Barricades at ${start.toInt()} and ${end.toInt()} ft" else "Barricade at ${end.toInt()} ft") +
+                if (off > 0) ", $on on · $off off" else "", end, on, off, start)
         }
 
         // D: the floor as the farm set it (a front and / or a back barricade): the pans and feedings for that floor
@@ -185,8 +195,10 @@ object SpacePlan {
             isSet && idx("set") != null -> idx("set")!! to (if (opts[idx("set")!!].off > 0) "Floor as set: shut some pans in it" else "Floor as set: every pan in it on")
             room == Room.TIGHT && i.penFt != null -> (idx("house") ?: 0) to "Too tight: open the barricade"
             room == Room.TIGHT -> (idx("house") ?: 0) to "Too tight: lift or thin soon"
-            brooding -> (idx("house") ?: 0) to "Brooding: open the floor as planned"
+            brooding -> (idx("house") ?: 0) to (if (canPen) "Brooding: open the floor as planned" else "Brooding: whole house, trays and every pan")
             young -> (idx("house") ?: 0) to "Growing birds: nothing to change"
+            // the farm's own way: pen the birds whenever the floor is roomy (or few birds a pan), whatever the weather
+            i.spaceBy == "barricade" && idx("pen") != null && (room == Room.ROOMY || few) -> idx("pen")!! to "Roomy: pen the birds"
             i.hotC >= 30 && few && idx("pans") != null -> idx("pans")!! to "Warm day: whole house, shut some pans"
             i.hotC >= 30 -> (idx("house") ?: 0) to "Warm day: keep the whole house"
             room == Room.ROOMY && i.coolC < 20 && idx("pen") != null -> idx("pen")!! to "Cool and roomy: pen the birds"

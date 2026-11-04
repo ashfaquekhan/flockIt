@@ -62,11 +62,20 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O60 | The tube is counted only once "Bags to fill 1 line, pans shut" is entered | Without it every pan takes its share of the whole line (as before v51), which overstates how far a pour reaches when many pans are shut. Fill a line once with every pan shut and enter the bags; the settings box shows about 0.72 kg a metre of line as a guide. Whether the tube stays full between feedings (so later pours fill pans only) is not modelled: every feeding is planned as a fill. |
 | O61 | The model log grows on the phone only | One line a day and model in the app's files; export it from the flock book. A sheet tab or a server copy can come later. |
 | O62 | Sensor readings have a place but no source yet | `models/SensorReading`; the house map pulls its field to a reading near it. Nothing reads sensors yet. |
+| O63 | The kept weather is the weather service's, not a reading at the house | Each finished day's lowest / average / highest °C and % RH come from Open-Meteo's hours for the farm's location (modelled past weather). A thermometer outside the house or a sensor would firm it up; the columns can be typed over in the sheet. |
+| O64 | The farm views are drawn, not measured | Pans, lines and barricades follow the farm settings and the plan; fans, pads, air and litter follow the models. Walls are drawn 1.5 × their height to read at this size. Pad length is worked out from the pad area (5 ft tall pads assumed). |
+| O65 | The edge margin is a guess for the phone | 8 dp more than the phone reports; if outlines are still cut at the sides, raise it in the account menu (Screen edges); if the page feels narrow, lower it. |
 | O58 | Water has no company standard | The company's chart has no water column, so water shows "co NA"; the ideal is 1.8 × the breed's feed (Ross: 1.6–2.0 at 21 °C). |
 
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v53 | Farm settings' Save button showed no words (also Open farm, Add new batch, Create farm, Share) | The theme's text on a button is near-black (onPrimary) and those buttons were made see-through: black on black | Their words are white; Save is a white button with black words |
+| v53 | Barricades not seen in the farm window, its map or the pan drawing | The window shows 10 ft of the house and a barricade far from it never came into view; the map's barricade was a thin line; the plan's barricade was only on the old top view | A barricade out of view is named at the window's edge with its place; fences with posts and their ft on the map; the whole-house feed view draws the plan's barricades |
+| v53 | The plan could suggest a barricade on a farm that has none, and always from the front wall | The farm's barricades were not known | Farm setting: barricades the farm has, and Auto · Barricades · Pans; two barricades leave the same floor empty at both ends |
+| v53 | Past days' weather lost after about 80 days, and never on the sheet | Only the phone kept the hours | Each finished day's min / average / max kept in the day row and on the sheet; the models use it |
+| v53 | Outlines cut at the edges of a curved / rounded screen | Pages drew their outlines 14 dp from the very edge, with no curved-edge insets | The curved-edge and cut-out insets plus a margin (account menu: Screen edges) |
+| v53 | Output page long and wordy, numbers in many cards, no pictures of the whole house | v48–v52 grew card by card | Six sections in the farm's order, every number a tile with a game-style sign, whole-house views for feed, air and water |
 | v52 | The time of the entries was a separate box at the top of Entry | v47 put the time in its own card so it could be picked before saving | Picked after the hold, in the save window; an update offers the time first saved |
 | v52 | Entry cards numbered 1–5 with sentences under the headings | Kept from the early step-by-step entry | Plain headings, no sentences |
 | v52 | Hard to get back to the present on the time rail | The only ways were a small white dot on the rail and the Now pill on the glance, which scrolls away | A Now button at the bottom right while another time is picked; a drag let go near now snaps to it |
@@ -223,5 +232,10 @@ is not made twice. Newest first. Open items at the top. Update together with
 - A text field inside an `AlertDialog` never lets Compose go idle in the screen tests (v52: `AppNotIdleException`,
   "did not get idle after 84,863 attempts", with the clock paused): in a dialog show a value as text with a Change
   button (the time picker opens from it), not a read-only text field.
+- A plain `Button` with a see-through container takes the theme's near-black text colour: always give it a `contentColor`
+  (v53: Farm settings' Save had no visible words).
+- Python edit scripts with `'''` strings break the Bash heredoc: write them to a file with the Write tool and run that.
+- In a two-to-a-row tile grid the rows use `IntrinsicSize.Max`: never put a `BoxWithConstraints` / `ValueRow` inside such a
+  tile (sub-composition has no intrinsic size and crashes); wide tiles sit alone in their row.
 - The PC went to sleep in the middle of a test run (v52: 21 minutes, the build took 1 h 19 min): keep the machine awake
   for long builds.

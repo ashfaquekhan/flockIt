@@ -133,7 +133,7 @@ fun ShareFarmDialog(
                                 onDismiss()
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent, contentColor = androidx.compose.ui.graphics.Color.White),
                         enabled = email.contains("@")
                     ) {
                         Text("Share via Drive")

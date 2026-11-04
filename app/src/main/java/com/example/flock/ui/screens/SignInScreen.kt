@@ -73,7 +73,7 @@ fun SignInScreen(
                     .height(52.dp)
                     .testTag("btn_sign_in_google"),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
+                colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent, contentColor = androidx.compose.ui.graphics.Color.White)
             ) {
                 Icon(Icons.Default.Login, contentDescription = null, tint = Color.White)
                 Spacer(Modifier.height(0.dp))

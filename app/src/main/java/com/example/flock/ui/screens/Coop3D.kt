@@ -829,7 +829,7 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
 
 /** The colours of a house-map layer: up to the ideal, past it, past the most — with the values where they turn. */
 @Composable
-private fun LayerKey(map: com.example.flock.models.HouseMap.Field, layer: com.example.flock.models.HouseMap.Layer) {
+internal fun LayerKey(map: com.example.flock.models.HouseMap.Field, layer: com.example.flock.models.HouseMap.Layer) {
     val lim = map.limits(layer)
     val (lo, hi) = map.range(layer)
     fun f(x: Double) = Fmt.n(x, layer.decimals)
@@ -956,9 +956,22 @@ private fun FarmMiniMap(L: FarmLayout, x0: Double, y0: Double, lenFt: Double, wi
                 val cw = size.width / grid.size; val ch = size.height / grid[0].size
                 grid.forEachIndexed { a, col -> col.forEachIndexed { b, v -> drawRect(heatColor(v, lim.first, lim.second), Offset(a * cw, b * ch), Size(cw + 0.5f, ch + 0.5f)) } }
             } else drawRect(Color.White.copy(alpha = 0.06f), Offset((L.penStartFt * sx).toFloat(), 0f), Size(((L.barricadeFt - L.penStartFt) * sx).toFloat(), size.height))
-            // the barricades: white fences (things in the house, not kinds of value)
-            if (L.barricadeFt < L.lengthFt - 0.5) drawLine(Color.White, Offset((L.barricadeFt * sx).toFloat(), 0f), Offset((L.barricadeFt * sx).toFloat(), size.height), 2.5f)
-            if (L.penStartFt > 0.5) drawLine(Color.White, Offset((L.penStartFt * sx).toFloat(), 0f), Offset((L.penStartFt * sx).toFloat(), size.height), 2.5f)
+            // the barricades: white fences with posts (things in the house, not kinds of value), the floor past them dark
+            fun fence(ft: Double) {
+                val x = (ft * sx).toFloat()
+                drawLine(Color.White, Offset(x, 0f), Offset(x, size.height), 3f * density)
+                var y = 0f
+                while (y <= size.height) { drawLine(Color.White, Offset(x - 3f * density, y), Offset(x + 3f * density, y), 1.5f * density); y += 7f * density }
+                // its place, ft from the front wall
+                val p = Paint().apply { isAntiAlias = true; textSize = 10f * density; typeface = com.example.ui.theme.AppFonts.mono; color = Color.White.toArgb()
+                    textAlign = if (ft > L.lengthFt / 2) Paint.Align.RIGHT else Paint.Align.LEFT }
+                val tx = if (ft > L.lengthFt / 2) x - 6f * density else x + 6f * density
+                val w = p.measureText(Fmt.n(ft, 0) + " ft")
+                drawRect(Color.Black.copy(alpha = 0.75f), Offset(if (ft > L.lengthFt / 2) tx - w - 2f else tx - 2f, 2f * density), Size(w + 4f, 12f * density))
+                drawContext.canvas.nativeCanvas.drawText(Fmt.n(ft, 0) + " ft", tx, 12f * density, p)
+            }
+            if (L.barricadeFt < L.lengthFt - 0.5) { drawRect(Color.Black.copy(alpha = 0.55f), Offset((L.barricadeFt * sx).toFloat(), 0f), Size(((L.lengthFt - L.barricadeFt) * sx).toFloat(), size.height)); fence(L.barricadeFt) }
+            if (L.penStartFt > 0.5) { drawRect(Color.Black.copy(alpha = 0.55f), Offset.Zero, Size((L.penStartFt * sx).toFloat(), size.height)); fence(L.penStartFt) }
             L.lineOrder.forEachIndexed { i, k ->
                 val y = (L.lineY(i) * sy).toFloat()
                 if (k == 'F') {
@@ -1128,6 +1141,13 @@ private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: 
     seg(listOf((if (inp.atMs == null) "Now " else "At ") to grey, String.format("%02d:%02d", now.hour, now.minute) to Color.White), rx, pad + lh, true)
     val by = size.height - pad
     seg(listOf(if (awake) "Lights on (woken)" to grey else ("Dark " to grey), if (awake) "" to grey else "${hhmm(inp.light.darkStartHour)}–${hhmm(inp.light.darkEndHour)}" to ValueIdeal), pad, by, false)
+    // the barricades the window does not reach: where they are, ft from the front wall, and which way
+    val L = sim.layout
+    val marks = buildList {
+        if (L.penStartFt > 0.5 && L.penStartFt < sim.x0Ft - 0.01) add("◀ barricade " + Fmt.n(L.penStartFt, 0) + " ft")
+        if (L.barricadeFt < L.lengthFt - 0.5 && L.barricadeFt > sim.x0Ft + sim.lenFt + 0.01) add("barricade " + Fmt.n(L.barricadeFt, 0) + " ft ▶")
+    }
+    marks.forEachIndexed { i, m -> seg(listOf(m to Color.White), rx, by - lh * i, true) }
 }
 
 private fun hhmm(h: Double): String { val m = ((h % 24 + 24) % 24 * 60).toInt(); return String.format("%02d:%02d", m / 60, m % 60) }

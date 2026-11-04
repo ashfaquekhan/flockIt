@@ -86,23 +86,6 @@ fun litterOf(d: OutputData, hour: Int): Litter.Out {
         airC = h?.air?.tempC ?: d.e.tempIdeal, rhPct = h?.air?.rhPct ?: d.e.rhIdeal, airSpeedMs = fpm * 0.00508))
 }
 
-@Composable
-fun LitterCard(d: OutputData, hour: Int) {
-    val l = remember(d, hour) { litterOf(d, hour) }
-    OutputCard(title = "Litter", info = "litter") {
-        LitterSideView(l, d.litterTemp.second)
-        RangeKey()
-        RangeParam("Depth", "cm", null, null, null, null, idealBand = Litter.IDEAL_DEPTH_LO to Litter.IDEAL_DEPTH_HI, projected = l.depthCm)
-        RangeParam("Moisture", "%", null, null, Litter.MOIST_MAX, null, idealBand = Litter.IDEAL_MOIST_LO to Litter.IDEAL_MOIST_HI, projected = l.moisturePct)
-        RangeParam("Moisture under drinkers", "%", null, null, Litter.MOIST_MAX, null, idealBand = Litter.IDEAL_MOIST_LO to Litter.IDEAL_MOIST_HI,
-            projected = l.underDrinkersPct)
-        RangeParam("Temperature", "°C", d.litterTemp.first, d.litterTemp.second, d.litterTemp.third, null, projected = l.tempC)
-        RangeParam("Ammonia", "ppm", null, null, Litter.NH3_MAX, null, idealBand = 0.0 to Litter.NH3_IDEAL, projected = l.nh3Ppm)
-        RangeParam("Caked floor", "%", null, 0.0, 20.0, null, projected = l.cakedPct)
-        Param("Bedding", "cm", v(l.beddingCm, 1, NE, "Assumed"))
-    }
-}
-
 /**
  * The litter cut open from the side: the concrete, the bed of litter (coloured by how wet it is, darker and caked
  * under the drinker line), the ideal bedding depth as dashed lines, a pan, a drop falling from a nipple, and ammonia

@@ -140,7 +140,7 @@ fun FlockManagementDialog(
                     Button(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
                         onClick = { showCreateForm = true },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
+                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent, contentColor = androidx.compose.ui.graphics.Color.White)
                     ) {
                         Icon(imageVector = Icons.Default.Add, contentDescription = null)
                         Spacer(modifier = Modifier.width(6.dp))
@@ -205,7 +205,7 @@ fun FlockManagementDialog(
                         onCreateFlock(name, breed, startDate, placedInt, targetDbl, harvestInt, season)
                         onDismiss()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
+                    colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent, contentColor = androidx.compose.ui.graphics.Color.White)
                 ) {
                     Text("Create Batch")
                 }
@@ -384,7 +384,7 @@ fun FarmSettingsDialog(
                     )
                     onDismiss()
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
+                colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent, contentColor = androidx.compose.ui.graphics.Color.White)
             ) {
                 Text("Save Profile")
             }

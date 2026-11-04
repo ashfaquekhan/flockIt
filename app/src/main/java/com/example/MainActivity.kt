@@ -11,6 +11,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.waterfall
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -121,8 +127,14 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
         }
     }
 
+    // room kept clear at the screen's sides (a curved or rounded screen cuts outlines drawn at its very edge): the
+    // phone's own curved-edge insets, and the margin chosen in the account menu
+    var edgeDp by remember { mutableStateOf(com.example.flock.network.ViewPrefs.edgeDp(context)) }
     androidx.compose.runtime.CompositionLocalProvider(com.example.flock.ui.components.LocalBusy provides busy) {
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)
+        .windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.waterfall)
+        .windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.displayCutout.only(androidx.compose.foundation.layout.WindowInsetsSides.Horizontal))
+        .padding(horizontal = edgeDp.dp)) {
         // Screens without their own Scaffold get the system-bar insets here; the dashboard
         // (which has its own Scaffold + bottom nav) handles insets itself to avoid a double gap.
         val content = Modifier.fillMaxSize().systemBarsPadding()
@@ -217,6 +229,8 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
             email = authState.email,
             isDemo = authState.isDemoMode,
             appVersion = BuildConfig.VERSION_NAME,
+            edgeDp = edgeDp,
+            onEdge = { edgeDp = it; com.example.flock.network.ViewPrefs.setEdgeDp(context, it) },
             onOpenRecycleBin = { showRecycleBin = true },
             onSignOut = { viewModel.signOut() },
             onDismiss = { showAccount = false }

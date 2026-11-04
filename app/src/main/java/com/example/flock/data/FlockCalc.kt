@@ -294,7 +294,11 @@ object FlockCalc {
             r.broodingLength?.let { penFt = if (it <= 0 || it >= farm.usableLengthFt) null else it }
             r.penStartFt?.let { penStart = it.coerceIn(0.0, max(0.0, farm.usableLengthFt - 10)) }
             // the birds' floor runs from the front barricade to the back one (the back wall when there is none)
-            val penLen = if (penStart > 0 || penFt != null) ((penFt ?: farm.usableLengthFt) - penStart).coerceAtLeast(10.0) else null
+            // with no barricade at all (none on the farm, or the farm sets its floor by the pans alone) the chicks have the whole
+            // house from the start: no brooding pen is assumed (v53)
+            val noPen = farm.barricades <= 0 || farm.spaceBy == "pans"
+            val penLen = if (penStart > 0 || penFt != null) ((penFt ?: farm.usableLengthFt) - penStart).coerceAtLeast(10.0)
+                else if (noPen) farm.usableLengthFt else null
             val areaRes = PhysiologicalEngine.computeAreaAndDensity(
                 liveBirds = live,
                 avgKg = avgAfterKg,

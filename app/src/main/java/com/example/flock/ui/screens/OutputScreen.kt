@@ -231,7 +231,7 @@ fun OutputScreen(
         densityKgFt2 = d.live * d.bwNow / 1000.0 / d.areaInUseFt2, cvEstimated = !d.cvMeasured, compact = false,
         hungry = needsNow.hungry, thirsty = needsNow.thirsty, panting = needsNow.panting,
         atMs = if (live) null else viewMs, ft2PerBird = d.space.ft2PerBird, roam = d.roam,
-        map = houseMap, facts = coopFacts(d, view, air)
+        map = houseMap, facts = emptyList()
     )
     var confirmClose by remember { mutableStateOf(false) }
 
@@ -239,10 +239,10 @@ fun OutputScreen(
     fun minutesOf(ms: Long) = java.time.Instant.ofEpochMilli(ms).atZone(zone).let { it.hour * 60 + it.minute }
     val entryMin = listOf(entry.weighedAt, entry.liftedAt).firstOrNull { it > 0 }?.let { minutesOf(it) }
 
-    // the page's sections, in the order a day is worked: what to do first (feed, water, air), then how the flock is doing
-    // the order of urgency: air can kill in minutes, water in hours, feed over the day; then the birds, their floor, the records
-    val tabs = listOf("coop" to "Farm", "glance" to "Glance", "air" to "Air", "water" to "Water", "feed" to "Feed", "birds" to "Birds",
-        "floor" to "Floor", "walk" to "Walk", "litter" to "Litter", "fcr" to "FCR", "graphs" to "Graphs", "book" to "Book")
+    // the page's sections in the farm's order (v53): the birds (the window and their numbers), feed and floor, air and
+    // ventilation, lifting, water, then the graphs and the records
+    val tabs = listOf("birds" to "Birds", "feed" to "Feed", "air" to "Air", "lift" to "Lifting", "water" to "Water", "graphs" to "Graphs")
+    val tabIcons = mapOf("birds" to GIcon.BIRDS, "feed" to GIcon.BAGS, "air" to GIcon.FAN, "lift" to GIcon.TRUCK, "water" to GIcon.WATER, "graphs" to GIcon.GRAPH)
     val dens = androidx.compose.ui.platform.LocalDensity.current
     var tabsPx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     val tabsDp = with(dens) { tabsPx.toDp() }
@@ -257,26 +257,26 @@ fun OutputScreen(
         modifier = Modifier.fillMaxSize().verticalScroll(scroll).padding(start = 14.dp, end = 14.dp, top = tabsDp + 10.dp, bottom = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // the house and the birds in it, at the time on the rail
-        Anchored("coop") { GlassBox(Modifier.fillMaxWidth()) {
-            Coop3D(coop.copy(feedTimes = d.modelFeedTimes(d.feedOptions[feedPick.coerceIn(0, d.feedOptions.size - 1)].feedings)))
-        } }
-        // the day at a glance: the four radars and the twelve numbers that matter
-        Anchored("glance") {
-            GlanceCard(d, view, entryHHmm, live, { pinned = null }, hour, pat)
+        // 1. the birds: the house and the birds in it at the time on the rail, then their seven numbers and the radar
+        Anchored("birds") {
+            GlassBox(Modifier.fillMaxWidth()) {
+                Coop3D(coop.copy(feedTimes = d.modelFeedTimes(d.feedOptions[feedPick.coerceIn(0, d.feedOptions.size - 1)].feedings)))
+            }
+            BirdsSection(d, view, entryHHmm, live, { pinned = null }, hour)
             AlertList(d.allAlerts)
         }
-        Anchored("air") { VentTab(d, hour, needsNow, weatherOn, onWeatherOn) }
-        Anchored("water") { WaterCard(d, onFarmChange) }
-        // the feedings are the model's (shown in the farm window); nothing to log by hand
-        Anchored("feed") { FeedTodayCard(d, feedPick, { feedPick = it }) }
-        Anchored("birds") { BirdsTab(d, onFlockPlan) }
-        Anchored("floor") { SpaceCard(d) }
-        Anchored("walk") { WalkCard(d, pat) }
-        Anchored("litter") { LitterCard(d, hour) }
-        Anchored("fcr") { LiftingCard(d) }
-        Anchored("graphs") { GraphsCard(d) }
-        Anchored("book") { FlockBookCard(d, onSelectDay) }
+        // 2. feed and floor: the bags, the pans and the barricades on the whole house (the feedings are the model's)
+        Anchored("feed") { FeedSection(d, feedPick, { feedPick = it }, needsNow, onFarmChange) }
+        // 3. air and ventilation: the house in four views, no sensors yet
+        Anchored("air") { AirSection(d, hour, needsNow, weatherOn, onWeatherOn, houseMap) }
+        // 4. lifting, 5. water, 6. the graphs, the trends and the book
+        Anchored("lift") { LiftSection(d, onFlockPlan) }
+        Anchored("water") { WaterSection(d, needsNow, onFarmChange) }
+        Anchored("graphs") {
+            GraphsCard(d)
+            TrendsSection(d)
+            FlockBookCard(d, onSelectDay)
+        }
         if (onCloseBatch != null && flock?.status != "closed") {
             OutlinedButton(onClick = { confirmClose = true }, modifier = Modifier.fillMaxWidth(),
                 border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine)) {
@@ -286,9 +286,9 @@ fun OutputScreen(
         Spacer(modifier = Modifier.height(32.dp))
     }
     // the sections, always at the top: the one being read is lit, a tap goes to another
-    SectionTabs(tabs, reading, { key ->
+    SectionTabs(tabs, reading, icons = tabIcons, onJump = { key ->
         anchors.topOf(key)?.let { y -> scope.launch { scroll.animateScrollTo((y - tabsPx - with(dens) { 8.dp.toPx() }.toInt()).coerceAtLeast(0)) } }
-    }, Modifier.align(Alignment.TopStart).onGloballyPositioned { tabsPx = it.size.height })
+    }, modifier = Modifier.align(Alignment.TopStart).onGloballyPositioned { tabsPx = it.size.height })
     // the time of the day: a rail down the right edge, opened by touching it
     TimeRail(minutes, if (isToday) nowZ.hour * 60 + nowZ.minute else null, entryMin, light, { pinned = it }, { pinned = null },
         Modifier.align(Alignment.CenterEnd).padding(top = tabsDp, bottom = 64.dp))
@@ -642,29 +642,6 @@ fun houseMapOf(d: OutputData, hour: Int, params: com.example.flock.models.ModelP
         litterMoistPct = litterOf(d, hour).moisturePct,
         densityIdeal = d.space.targetKgM2, densityMost = d.farm.densityCapDefault, rhIdeal = d.e.rhMax, rhMost = d.e.rhMax + 10,
         sources = com.example.flock.models.Sources(sky?.outC, sky?.outRh), params = params))
-}
-
-/** The small numbers under the farm window: the flock now, and what the house should be today. */
-fun coopFacts(d: OutputData, view: OutputData.NowView, air: com.example.flock.domain.BirdEnvironment.Hour?): List<Triple<String, String, ValueKind>> {
-    val m = d.mass
-    val e = d.e
-    val ach = if (d.houseVolFt3 > 0) d.minVentCfmBird * d.liveSafe * 60 / d.houseVolFt3 else null
-    return listOf(
-        Triple("avg wt", Fmt.n(if (d.vk == ValueKind.PRESENT) d.bwNow else view.weightG, 1) + " g", d.vk),
-        Triple("CV", Fmt.n(d.cvEst, 1) + " %", if (d.cvMeasured) ValueKind.PRESENT else ValueKind.PREDICTED),
-        Triple("area", Fmt.n(d.space.ft2PerBird, 2) + " ft²/bird", ValueKind.PREDICTED),
-        Triple("density", Fmt.n(d.space.kgM2, 1) + " kg/m²", ValueKind.PREDICTED),
-        Triple("mortality", Fmt.n(d.mortTDPct, 2) + " %", d.mk),
-        Triple("FCR", Fmt.n(m?.fcr ?: view.fcr, 3), d.fcrKind),
-        Triple("cFCR", Fmt.n(m?.cFcrCompany, 3), d.fcrKind),
-        Triple("feels", air?.r?.feltC?.let { Fmt.n(it, 1) + " °C" } ?: "—", ValueKind.PREDICTED),
-        Triple("ideal temp", Fmt.n(e.tempIdeal, 1) + " °C", ValueKind.IDEAL),
-        Triple("ideal RH", Fmt.n(e.rhIdeal, 1) + " %", ValueKind.IDEAL),
-        Triple("ideal air", Fmt.n(d.minVentCfmBird, 3) + " cfm/bird", ValueKind.IDEAL),
-        Triple("air changes", ach?.let { Fmt.n(it, 1) + " /h" } ?: "—", ValueKind.IDEAL),
-        Triple("ideal pressure", "20.0–25.0 Pa", ValueKind.IDEAL),
-        Triple("light", Fmt.n(e.lightHours, 1) + " h", ValueKind.IDEAL)
-    )
 }
 
 /** The day as the models saw it: what was entered, the weather, and what was projected — one line a day in the model log. */

@@ -76,7 +76,7 @@ class LiftingSpaceTest {
     private fun spaceIn(live: Int, kg: Double, hot: Double, cool: Double, day: Int = 44, area: Double = 299.0 * 39, lifted: Boolean = true) = SpacePlan.In(
         live = live, avgKg = kg, day = day, houseLenFt = 299.0, widthFt = 39.0, areaFt2 = area, penFt = null,
         feederLines = 4, pansPerLine = 114, panSpacingFt = 2.5, lineStartFt = 5.0, feederGapFt = 39.0 / 4, drinkerGapFt = 39.0 / 5,
-        capKgM2 = 38.97, hotC = hot, coolC = cool, lifted = lifted)
+        capKgM2 = 38.97, hotC = hot, coolC = cool, lifted = lifted, barricades = 1)
 
     @Test fun afterLiftingPansOrBarricadeFollowTheWeather() {
         // day 44: 7,222 birds of about 3.1 kg in the whole house — 16 birds a pan
@@ -157,6 +157,43 @@ class LiftingSpaceTest {
         // too few bags to fill the open pans even once: the plan says so
         val short = SpacePlan.plan(spaceIn(7222, 3.1, 31.0, 24.0).copy(dayBags = 3.0, bagsFullLine = 3.0, birdsPerPanMax = 71.0))
         assertTrue(short.options.first().let { !it.feedReaches })
+    }
+
+    /**
+     * v53: only the barricades the farm has. Two leave the same empty floor at both ends; none (or "pans") never pens the
+     * birds; "barricade" pens them whenever the floor is roomy, warm or not; with no barricade the chicks have the whole house.
+     */
+    @Test fun barricadesTheFarmHas() {
+        val coolIn = spaceIn(7222, 3.1, hot = 24.0, cool = 15.0)
+        val two = SpacePlan.plan(coolIn.copy(barricades = 2)).let { it.options[it.best] }
+        println("two barricades: ${two.title}")
+        assertEquals("pen", two.key)
+        assertTrue("front ${two.penStartFt}", two.penStartFt > 0)
+        assertEquals(two.penStartFt, 299.0 - two.penFt, 5.0)
+        assertTrue(SpacePlan.plan(coolIn.copy(barricades = 0)).options.none { it.key == "pen" })
+        val pans = SpacePlan.plan(coolIn.copy(spaceBy = "pans"))
+        assertTrue(pans.options.none { it.key == "pen" })
+        assertEquals("pans", pans.options[pans.best].key)
+        val warmBar = SpacePlan.plan(spaceIn(7222, 3.1, hot = 31.0, cool = 21.0).copy(spaceBy = "barricade"))
+        assertEquals("pen", warmBar.options[warmBar.best].key)
+        val plain = rows.map { it.copy(broodingLength = null, penStartFt = null) }
+        val c0 = FlockCalc.compute(KgfFlock.flock, KgfFlock.farm.copy(barricades = 0), KgfFlock.config, plain, KgfFlock.kgOf)
+        assertEquals(KgfFlock.farm.usableLengthFt * KgfFlock.farm.usableWidthFt, c0.first { it.dayNumber == 2 }.occupiedFt2, 1e-6)
+        val c2 = FlockCalc.compute(KgfFlock.flock, KgfFlock.farm, KgfFlock.config, plain, KgfFlock.kgOf)
+        assertTrue(c2.first { it.dayNumber == 2 }.occupiedFt2 < KgfFlock.farm.usableLengthFt * KgfFlock.farm.usableWidthFt * 0.6)
+    }
+
+    /** v53: the weather of every finished day of the flock (24 hours known), lowest, average and highest. */
+    @Test fun eachFinishedDayKeepsItsWeather() {
+        val hours = (0 until 72).map { i ->
+            val date = java.time.LocalDate.parse("2026-11-01").plusDays((i / 24).toLong()).toString()
+            com.example.flock.network.HourPoint(String.format("%sT%02d:00", date, i % 24), 22.0 + (i % 24) * 0.5, 90.0 - (i % 24))
+        } + com.example.flock.network.HourPoint("2026-10-31T23:00", 20.0, 95.0)
+        val w = com.example.flock.ui.dayWeatherOf(hours, "2026-10-31", "2026-11-03")
+        assertEquals(setOf("2026-11-01", "2026-11-02"), w.keys)       // 31 Oct has one hour, 3 Nov is today
+        val d = w["2026-11-01"]!!
+        assertEquals(22.0, d.tMin, 1e-9); assertEquals(33.5, d.tMax, 1e-9); assertEquals(27.8, d.tAvg, 1e-9)
+        assertEquals(67.0, d.rhMin, 1e-9); assertEquals(90.0, d.rhMax, 1e-9)
     }
 
     @Test fun theLitterGetsDeeperWetterAndGivesOffAmmoniaWithAge() {

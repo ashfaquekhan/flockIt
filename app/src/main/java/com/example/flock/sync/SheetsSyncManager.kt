@@ -374,7 +374,7 @@ class SheetsSyncManager(
                 // a feed variety, an extra sample location or a newer column with no column yet gets one at the end of
                 // the header (the next layout check moves it beside its neighbours)
                 val missing = (SheetSchema.usedSplit(day).keys.map { SheetSchema.usedHeader(it) } + SheetSchema.sampleColumns(day).keys +
-                        listOf("LiftedAt", "Feedings", "PenStartFt").filter { k -> values[SheetSchema.norm(k)].let { it != null && it.toString().isNotBlank() } })
+                        (listOf("LiftedAt", "Feedings", "PenStartFt") + SheetSchema.WEATHER_HEADERS).filter { k -> values[SheetSchema.norm(k)].let { it != null && it.toString().isNotBlank() } })
                     .filter { name -> header.none { SheetSchema.norm(it) == SheetSchema.norm(name) } }
                 if (missing.isNotEmpty()) {
                     growColumns(authHeader, spreadsheetId, "DailyData", header.size + missing.size)

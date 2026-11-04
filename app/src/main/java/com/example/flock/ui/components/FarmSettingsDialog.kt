@@ -1,5 +1,8 @@
 package com.example.flock.ui.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -99,6 +102,10 @@ fun FarmSettingsDialog(
     var manualDrinkers by remember { mutableStateOf(farm.manualDrinkers.toString()) }
     var nipplesPerLine by remember { mutableStateOf(farm.nipplesPerLine.toString()) }
     var panLipCm by remember { mutableStateOf(farm.panLipCm.toString()) }
+    // barricades the farm has, how a floor too big for the birds is set, how the cooling pads sit (v53)
+    var barricades by remember { mutableStateOf(farm.barricades.toString()) }
+    var spaceBy by remember { mutableStateOf(farm.spaceBy) }
+    var padLayout by remember { mutableStateOf(farm.padLayout) }
 
     var waterRefillFactor by remember { mutableStateOf(farm.waterRefillFactor.toString()) }
     var minVentFactor by remember { mutableStateOf(farm.minVentFactor.toString()) }
@@ -282,6 +289,16 @@ fun FarmSettingsDialog(
                             OutlinedTextField(padAreaFt2, { padAreaFt2 = it }, label = { Text("Pad area (ft²)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
                             OutlinedTextField(padCount, { padCount = it }, label = { Text("Number of pads") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
                         }
+                        Text("Honeycomb pads", style = MaterialTheme.typography.labelLarge, color = Color.White)
+                        ChoiceRow(listOf("side" to "Side by side", "c" to "C-type"), padLayout, { padLayout = it }, "pad_layout")
+
+                        Divider(modifier = Modifier.padding(vertical = 4.dp))
+
+                        Text("Barricades", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium))
+                        OutlinedTextField(barricades, { barricades = it.filter { c -> c.isDigit() } }, label = { Text("Barricades you have (0–4)") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth().testTag("barricades_input"))
+                        Text("When the floor is too big for the birds", style = MaterialTheme.typography.labelLarge, color = Color.White)
+                        ChoiceRow(listOf("auto" to "Auto", "barricade" to "Barricades", "pans" to "Feeder pans"), spaceBy, { spaceBy = it }, "space_by_setting")
 
                         Divider(modifier = Modifier.padding(vertical = 4.dp))
 
@@ -501,7 +518,8 @@ fun FarmSettingsDialog(
                                             newFeedName = ""
                                         }
                                     },
-                                    colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Color.White,
+                                        disabledContainerColor = Color.Transparent, disabledContentColor = Color.White.copy(alpha = 0.4f)),
                                     enabled = newFeedCode.isNotBlank() && newFeedName.isNotBlank()
                                 ) {
                                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -559,7 +577,9 @@ fun FarmSettingsDialog(
                                 manualFeeders = manualFeeders.toIntOrNull() ?: farm.manualFeeders,
                                 manualDrinkers = manualDrinkers.toIntOrNull() ?: farm.manualDrinkers,
                                 nipplesPerLine = nipplesPerLine.toIntOrNull() ?: farm.nipplesPerLine,
-                                panLipCm = panLipCm.toDoubleOrNull() ?: farm.panLipCm
+                                panLipCm = panLipCm.toDoubleOrNull() ?: farm.panLipCm,
+                                barricades = barricades.toIntOrNull()?.coerceIn(0, 4) ?: farm.barricades,
+                                spaceBy = spaceBy, padLayout = padLayout
                             )
                             val updatedConfig = config.copy(
                                 tempBand = tempBand.toDoubleOrNull() ?: config.tempBand,
@@ -571,12 +591,28 @@ fun FarmSettingsDialog(
                             onSaveFarmSettings(updatedFarm, updatedConfig)
                             onDismiss()
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+                        modifier = Modifier.testTag("farm_settings_save")
                     ) {
-                        Text("Save Settings")
+                        Text("Save settings", color = Color.Black)
                     }
                 }
             }
+        }
+    }
+}
+
+/** A row of choices, the chosen one white. */
+@Composable
+private fun ChoiceRow(items: List<Pair<String, String>>, current: String, onPick: (String) -> Unit, tag: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        items.forEach { (k, label) ->
+            val on = k == current
+            Text(label, style = MaterialTheme.typography.labelLarge, color = if (on) Color.Black else Color.White, maxLines = 1,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.weight(1f).background(if (on) Color.White else Color.Transparent, RoundedCornerShape(10.dp))
+                    .border(1.dp, Color.White.copy(alpha = if (on) 1f else 0.45f), RoundedCornerShape(10.dp))
+                    .clickable { onPick(k) }.padding(vertical = 8.dp).testTag("${tag}_$k"))
         }
     }
 }

@@ -84,106 +84,7 @@ fun AlertList(alerts: List<TopicAlert>) {
     }
 }
 
-/** A compact number tile. */
-@Composable
-fun StatTile(label: String, value: V, sub: String?, modifier: Modifier = Modifier) {
-    GlassBox(modifier) {
-        Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-            Text(label, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), maxLines = 1)
-            Text(value.text, style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium),
-                color = kindColor(if (value.text == "—") ValueKind.NEUTRAL else value.kind), maxLines = 1, softWrap = false)
-            if (sub != null) Text(sub, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.55f), maxLines = 2)
-        }
-    }
-}
-
 // =================================== TABS ===================================
-
-/**
- * Birds, in two cards: the birds in and out (start, removals, livability), the trends and the last 3 and 7 days; then
- * growth and evenness (target and forecast, uniformity, the projection check).
- */
-@Composable
-fun BirdsTab(d: OutputData, onFlockPlan: ((Double, Int) -> Unit)? = null) {
-    val e = d.e
-    OutputCard(title = "Birds", info = "reception") {
-        Param("Placed", "", vi(d.placed, P, "Chicks placed"), vi(d.reception, P, "Reception deaths"), v(d.receptionPct, 2, P, "% of placed"))
-        Param("Started", "", vi(d.entryBirds, P, "Birds"), v(d.mortWithReceptionPct, 2, d.mk, "Mortality incl. reception %"))
-        Param("Removed till date", "", vi(d.mortTD, d.mk, "Deaths"), vi(d.lameTD, P, "Culls"), vi(d.mortToday, d.mk, "Deaths today"))
-        KpiLine(Kpi("Livability", "%", e.livability, d.mk, 100 - d.comCumPct, 100 - d.ceilingPct, Better.HIGHER, 2))
-        TrendsCard(d)
-        SuggestCard(d)
-    }
-    OutputCard(title = "Growth and evenness", info = "forecast") {
-        ForecastCard(d, onFlockPlan)
-        UniformityCard(d)
-        AccuracyCard(d)
-    }
-}
-
-/** Trends worked out from the flock's own weights, feed and deaths. */
-@Composable
-internal fun TrendsCard(d: OutputData) {
-    val k = d.kpis
-    Part("Trends", "trends") {
-        KpiLine(Kpi("Average daily gain", "g/day", k.adg, d.vk, d.adgCom, d.adgIdeal, Better.HIGHER, 1))
-        KpiLine(Kpi("FCR, last 7 days", "", k.fcr7, d.fcr7Kind, d.fcr7Com, d.fcr7Ideal, Better.LOWER, 3))
-        // growth in days: + ahead of the standard, − behind it
-        Param("Days ahead (+) or behind (−)", "", vt(Fmt.signed(d.daysAheadCom, 1), d.vk, "vs commercial"), vt(Fmt.signed(d.daysAheadIdeal, 1), d.vk, "vs ideal"))
-        KpiLine(Kpi("First-week mortality", "%", k.firstWeekMortPct, if (k.firstWeekComplete) P else PR, d.firstWeekMortCom, d.firstWeekMortIdeal, Better.LOWER, 2,
-            settling = !k.firstWeekComplete))
-        KpiLine(Kpi("Mortality, last 7 days", "%", k.mort7Pct, d.mk, d.mort7Com, null, Better.LOWER, 2))
-    }
-}
-
-/** The target the flock is grown to, when the flock's own weighings say it will get there, and what it will weigh at harvest. */
-@Composable
-internal fun ForecastCard(d: OutputData, onFlockPlan: ((Double, Int) -> Unit)?) {
-    val g = d.growth
-    var edit by remember { androidx.compose.runtime.mutableStateOf(false) }
-    val start = remember(d.flock?.startDate) { try { java.time.LocalDate.parse(d.flock?.startDate) } catch (e: Exception) { null } }
-    fun dateOf(day: Int?) = if (day == null || start == null) null else start.plusDays(day.toLong()).format(java.time.format.DateTimeFormatter.ofPattern("dd MMM", java.util.Locale.US))
-    Part("Target and forecast") {
-        ValueRow(listOf(v(d.targetG, 1, I, "Target g"), vi(d.harvestAge, I, "Harvest"), v(g.share * 100, 1, if (g.samples > 0) P else PR, "% of com")), "plan")
-        // when the target weight is reached: the likely day, with the earliest and the latest it may be
-        ValueRow(listOf(
-            vt(g.targetDay?.let { "day $it" } ?: "—", PR, dateOf(g.targetDay) ?: "Likely"),
-            vt(g.targetDayEarly?.let { "day $it" } ?: "—", MN, "Earliest"),
-            vt(g.targetDayLate?.let { "day $it" } ?: "—", MX, "Latest")), "target")
-        g.atHarvest?.let { h ->
-            ValueRow(listOf(v(h.mean, 1, PR, "Weight g"), v(h.low, 1, MN, "Low"), v(h.high, 1, MX, "High")), "harvest")
-            ValueRow(listOf(v((g.chanceTargetAtHarvest ?: 0.0) * 100, 1, PR, "Target chance %"), vi(g.samples, P, "Weighings used")), "chance")
-        }
-        if (onFlockPlan != null) androidx.compose.material3.OutlinedButton(onClick = { edit = true },
-            border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine), modifier = Modifier.fillMaxWidth()) {
-            Text("Set target weight and harvest day", color = Color.White)
-        }
-    }
-    if (edit && onFlockPlan != null) {
-        var w by remember { androidx.compose.runtime.mutableStateOf(Fmt.n(d.targetG, 0).replace(",", "")) }
-        var h by remember { androidx.compose.runtime.mutableStateOf(d.harvestAge.toString()) }
-        val wv = w.replace(",", "").toDoubleOrNull(); val hv = h.toIntOrNull()
-        val ok = wv != null && wv in 500.0..6000.0 && hv != null && hv in 14..PhysiologicalEngine.MAX_FLOCK_DAY
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { edit = false },
-            title = { Text("Target for this flock") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    androidx.compose.material3.OutlinedTextField(value = w, onValueChange = { w = it.filter { c -> c.isDigit() || c == '.' } }, singleLine = true,
-                        label = { Text("Target weight, g (500 – 6,000)") },
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
-                    androidx.compose.material3.OutlinedTextField(value = h, onValueChange = { h = it.filter { c -> c.isDigit() } }, singleLine = true,
-                        label = { Text("Planned harvest day (14 – ${PhysiologicalEngine.MAX_FLOCK_DAY})") },
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
-                    Text("The flock can run past the harvest day: the day bar grows by a day at a time, up to day ${PhysiologicalEngine.MAX_FLOCK_DAY}.",
-                        style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
-                }
-            },
-            confirmButton = { androidx.compose.material3.TextButton(enabled = ok, onClick = { onFlockPlan(wv!!, hv!!); edit = false }) { Text("Save") } },
-            dismissButton = { androidx.compose.material3.TextButton(onClick = { edit = false }) { Text("Cancel") } }
-        )
-    }
-}
 
 /** How close the app's projections were to what was then entered: the latest check and the average miss. */
 @Composable
@@ -221,44 +122,7 @@ internal fun AccuracyCard(d: OutputData) {
     }
 }
 
-/**
- * Uniformity: CV and the share of even birds, with the weight distribution — from birds weighed one by
- * one when there are 10 or more, otherwise the spread to expect at a typical CV (marked as not measured).
- */
-@Composable
-internal fun UniformityCard(d: OutputData) {
-    val e = d.e
-    val singles = PhysiologicalEngine.parseWeights(e.indivWeights)
-    val measured = singles.size >= PhysiologicalEngine.MIN_BIRDS_FOR_CV
-    val mean = if (measured) singles.average() else d.bw
-    val cvFrac = ((d.cvEst?.coerceIn(3.0, 25.0) ?: 8.0) / 100.0).coerceAtLeast(0.01)
-    // share of birds in 5 % steps from −25 % to +25 % of the average
-    val edges = (-5..5).map { it * 0.05 }
-    val bins: List<Double> = if (measured) {
-        val c = DoubleArray(10)
-        singles.forEach { w -> val dev = (w - mean) / mean; val i = ((dev + 0.25) / 0.05).toInt().coerceIn(0, 9); c[i] += 1.0 }
-        c.map { it / singles.size }
-    } else (0 until 10).map { i ->
-        val lo = if (i == 0) -10.0 else edges[i] / cvFrac; val hi = if (i == 9) 10.0 else edges[i + 1] / cvFrac
-        normCdf(hi) - normCdf(lo)
-    }
-    val light = if (measured) singles.count { it < mean * 0.9 } * 100.0 / singles.size else normCdf(-0.1 / cvFrac) * 100
-    val heavy = if (measured) singles.count { it > mean * 1.1 } * 100.0 / singles.size else (1 - normCdf(0.1 / cvFrac)) * 100
-    val even = 100 - light - heavy
-    Part("Uniformity", "uniformity") {
-        RangeParam("Even birds", "%", 80.0, null, null, e.uniformityPct ?: (if (measured) even else null), 1)
-        Text(if (measured) "${singles.size} birds weighed one by one" else "Expected at CV ${Fmt.n(cvFrac * 100, 1)} % · weigh 10 birds one by one",
-            style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.65f))
-        WeightHistogram(bins, mean, measured)
-        ValueRow(listOf(v(light, 1, if (measured) P else PR, "Light"), v(even, 1, if (measured) P else PR, "Even"),
-            v(heavy, 1, if (measured) P else PR, "Heavy")), "birds %")
-        if (measured) ValueRow(listOf(v(singles.min(), 1, P, "Lightest"), v(mean, 1, P, "Average"), v(singles.max(), 1, P, "Heaviest")), "weight g")
-        else ValueRow(listOf(vi(singles.size, P, "Weighed"), vi(PhysiologicalEngine.MIN_BIRDS_FOR_CV, MN, "Needed")), "singles")
-        if (e.locSpreadPct != null) Param("Spread between locations", "%", v(e.locSpreadPct, 2, P, "Bulk weighing"))
-    }
-}
-
-private fun normCdf(z: Double): Double {
+internal fun normCdf(z: Double): Double {
     // Abramowitz & Stegun 7.1.26
     val t = 1 / (1 + 0.3275911 * kotlin.math.abs(z) / Math.sqrt(2.0))
     val y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-z * z / 2)
@@ -267,7 +131,7 @@ private fun normCdf(z: Double): Double {
 
 /** Bars of the share of birds in each 5 % step around the average; the even band (±10 %) stands out. */
 @Composable
-private fun WeightHistogram(bins: List<Double>, mean: Double, measured: Boolean) {
+internal fun WeightHistogram(bins: List<Double>, mean: Double, measured: Boolean) {
     val top = bins.maxOrNull()?.takeIf { it > 0 } ?: 1.0
     val evenCol = if (measured) ValuePresent else ValueIdeal
     androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(130.dp)) {
@@ -293,205 +157,9 @@ private fun WeightHistogram(bins: List<Double>, mean: Double, measured: Boolean)
     }
 }
 
-/**
- * Air: outside and what the birds feel at the time shown, how likely they are hungry, thirsty or panting, the weather
- * switch, the house air against its ranges, the birds' comfort and what the weather does to the day — then the fans.
- */
-@Composable
-fun VentTab(d: OutputData, hour: Int, needs: com.example.flock.domain.FlockNeeds.State, weatherOn: Boolean, onWeatherOn: (Boolean) -> Unit) {
-    val e = d.e
-    val h = d.envAt(hour)
-    val sky = d.env?.at(hour)
-    OutputCard(title = "Air", info = "air") {
-        fun pct(x: Double, tag: String) = vt(Fmt.n(x * 100, 1), PR, tag)
-        ValueRow(listOf(
-            v(sky?.outC ?: d.outsideHours.getOrNull(hour)?.second, 1, if (d.outsideSource == com.example.flock.domain.BirdEnvironment.Source.WEATHER) ValueKind.NEUTRAL else PR, "Outside °C"),
-            h?.let { v(it.r.feltC, 1, stateKind(it.r.state), "Feel °C " + it.r.state.short) } ?: vt("—", ValueKind.NEUTRAL, "Feel °C"),
-            pct(needs.hungry, "Hungry %"), pct(needs.thirsty, "Thirsty %"), pct(needs.panting, "Panting %")))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Weather acts on the house", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.75f), modifier = Modifier.weight(1f))
-            androidx.compose.material3.Switch(checked = weatherOn, onCheckedChange = onWeatherOn, modifier = Modifier.testTag("weather_switch"),
-                colors = androidx.compose.material3.SwitchDefaults.colors(checkedThumbColor = Color.Black, checkedTrackColor = Color.White,
-                    uncheckedThumbColor = Color.White.copy(alpha = 0.7f), uncheckedTrackColor = Color.Black, uncheckedBorderColor = Color.White.copy(alpha = 0.5f)))
-        }
-        RangeKey()
-        RangeParam("Temperature", "°C", e.tempMin, e.tempIdeal, e.tempMax, null, projected = h?.air?.tempC)
-        RangeParam("Humidity", "%", e.rhMin, e.rhIdeal, e.rhMax, null, projected = h?.air?.rhPct)
-        RangeParam("Static pressure", "Pa", 20.0, null, 25.0, e.measuredPressure)
-        RangeParam("CO₂", "ppm", null, null, e.co2Max, e.measuredCo2)
-        Part("The birds", "comfort") {
-            RangeParam("Body temp", "°C", d.bodyTemp.first, d.bodyTemp.second, d.bodyTemp.third, null, projected = h?.r?.bodyTempC)
-            RangeParam("Feet", "°C", d.footTemp.first, d.footTemp.second, d.footTemp.third, null)
-            Param("Light", "h", v(e.lightHours, 1, ValueKind.IDEAL, "Light"), v(24.0 - e.lightHours, 1, ValueKind.IDEAL, "Dark"))
-            RangeParam("Light intensity", "lux", d.lightLux.first, null, d.lightLux.second, e.luxPerFt2, idealBand = d.lightLux)
-        }
-        WeatherEffects(d)
-    }
-    VentSection(d, hour)
-}
-
-/** What the range lines' colours are. */
-@Composable
-fun RangeKey() = ColourKey(listOf(kindColor(ValueKind.PRESENT) to "entered", kindColor(PR) to "projected", kindColor(ValueKind.IDEAL) to "ideal",
-    kindColor(ValueKind.MIN) to "min", kindColor(ValueKind.MAX) to "max"))
-
-/** Boxes joined by arrows, two to a row: the plan read left to right. */
-@Composable
-fun PlanFlow(steps: List<Triple<String, V, String?>>) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        steps.chunked(2).forEachIndexed { r, row ->
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                if (r > 0) Text("→ ", style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.5f))
-                row.forEachIndexed { i, (label, value, sub) ->
-                    if (i > 0) Text(" → ", style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.5f))
-                    Column(Modifier.weight(1f).border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 5.dp)) {
-                        Text(label, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f), maxLines = 1)
-                        Text(value.text, style = (if (value.text.length > 7) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleMedium)
-                                .copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium),
-                            color = kindColor(value.kind), maxLines = 1, softWrap = false)
-                        if (sub != null) Text(sub, style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont), color = Color.White.copy(alpha = 0.6f), maxLines = 1)
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * How today's bags were worked out, left to right: the chart's ration for birds of this weight → what this
- * flock eats of it → what it will likely eat → less the feed still in the lines → bags to pour.
- */
-@Composable
-internal fun BagsWorkedOut(d: OutputData) {
-    val f = d.intake
-    val a = d.intakeAdvice
-    Text("How the bags were worked out", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium))
-    if (f.learning) {
-        // not enough entries yet: the chart's ration, in whole bags
-        PlanFlow(listOf(
-            Triple("Company ration", v(d.giveBags, 2, C), "for ${Fmt.n(d.bw, 0)} g birds"),
-            Triple("Pour, whole bags", v(d.dayBags, 2, PR), "learning: ${f.days} of ${com.example.flock.domain.IntakeForecast.MIN_DAYS} days")
-        ))
-        return
-    }
-    PlanFlow(listOfNotNull(
-        Triple("Company ration", v(d.giveBags, 2, C), if (d.envFeedF != 1.0) "weather ${Fmt.signed((d.envFeedF - 1) * 100, 1)} %" else "for ${Fmt.n(d.bw, 0)} g birds"),
-        Triple("Flock eats", vt(Fmt.n(f.ratio * 100, 1) + " %", P, null), "of the company's"),
-        Triple("Likely eaten", v(a.likelyBags, 2, PR), "${Fmt.n(a.lowBags, 1)} – ${Fmt.n(a.highBags, 1)}"),
-        Triple("In the lines", vt(Fmt.signed(a.inLinesBags, 1), PR, null), if (a.inLinesBags >= 0) "left over" else "run low")
-    ))
-    // the check behind it: what the plan said against what was entered, over the last days
-    val w3 = f.last3; val w7 = f.last7
-    if (w3 != null) ValueRow(listOfNotNull(
-        vt(Fmt.n(w3.pct, 1) + " %", P, "Last 3 days"),
-        w7?.let { vt(Fmt.n(it.pct, 1) + " %", P, "Last 7 days") },
-        f.dayScatterPct?.let { v(it, 1, PR, "One day ± %") }), "entered")
-    // weight / FCR correction: only when it asks for something
-    val c = d.correction
-    if (c.pct != 0.0) {
-        val why = when (c.why) {
-            com.example.flock.domain.FeedCorrection.Why.UNDER_WEIGHT -> "Under weight"
-            com.example.flock.domain.FeedCorrection.Why.HIGH_FCR -> "High FCR"
-            else -> "Correction"
-        }
-        ValueRow(listOf(vt((if (c.pct > 0) "+" else "") + Fmt.n(c.pct, 1) + " %", PR, why), v(d.correctedBags, 2, PR, "Bags with it")), "correct")
-    }
-}
 
 /** The farm's time zone (the phone's if the setting can't be read). */
 fun farmZone(f: com.example.flock.data.FarmEntity): java.time.ZoneId = try { java.time.ZoneId.of(f.timeZone) } catch (e: Exception) { java.time.ZoneId.systemDefault() }
-
-@Composable
-internal fun FirstWeekCard(d: OutputData) {
-    val f = d.farm
-    Part("First week") {
-        Param("Feeder trays", "", listOf(
-            "today" to listOf(v(kotlin.math.ceil(f.manualFeeders * d.trayKeepFrac), 1, PR, "Keep"), v(d.traysKeepIdeal, 1, I, "Ideal")),
-            "total" to listOf(vi(f.manualFeeders, P, "Yours"), v(d.traysIdeal, 1, I, "1 / 100"))
-        ))
-        if (d.day <= 4) Param("Feed paper", "ft²", v(d.paperFt2, 1, I, "Min"))
-        Param("Manual drinkers", "", listOf(
-            "today" to listOf(v(kotlin.math.ceil(f.manualDrinkers * d.drinkerKeepFrac), 1, PR, "Keep"), v(kotlin.math.ceil(d.miniDrinkersIdeal * d.drinkerKeepFrac), 1, I, "Ideal")),
-            "total" to listOf(vi(f.manualDrinkers, P, "Yours"), v(d.miniDrinkersIdeal, 1, I, "12 / 1,000"))
-        ))
-        Param("Pan reach", "cm", v(d.breastNowCm, 1, PR, "Breast"), v(f.panLipCm, 1, MX, "Pan lip"), vi(d.panReachDay, PR, "From day"))
-    }
-}
-
-/** Feed used: per bird (yesterday and till date, against the standards) and bags till date by type. */
-@Composable
-internal fun EatenCard(d: OutputData) {
-    val yLive = (d.byDay[d.day - 1]?.liveBirds ?: d.live).toDouble()
-    val order = d.feedTypes.sortedBy { it.sortOrder }.map { it.code }
-    val codes = (order + d.usedByCode.keys.sorted()).distinct().filter { (d.usedByCode[it] ?: 0.0) > 0 }
-    Part("Eaten", "eaten") {
-        KpiLine(Kpi("Yesterday", "g/bird", d.usedPerBirdY, P, d.comPerBirdY, d.idealPerBirdY, Better.CLOSER, 1, totalFactor = yLive / 1000, totalUnit = "kg"))
-        KpiLine(Kpi("Till date", "g/bird", d.cumPerBird, d.fk, d.cumPerBirdCom, d.cumPerBirdIdeal, Better.CLOSER, 1, totalFactor = d.live / 1000.0, totalUnit = "kg"))
-        Text("Used till date, by feed type", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.65f))
-        ValueRow(codes.map { v(d.usedByCode[it], 2, P, it) } + v(d.usedBagsTD, 2, P, "Total"), "bags")
-        ValueRow(codes.map { v((d.usedByCode[it] ?: 0.0) * d.kgPerBag(it), 1, P, it) } + v(d.usedKgTD, 1, P, "Total"), "kg")
-    }
-}
-
-/** A small tank with the water level the day needs, and "× n" for the refills. */
-@Composable
-private fun TankPicture(tankL: Double, refills: Int, needL: Double) {
-    val holds = tankL * refills
-    val frac = if (holds > 0) (needL / holds).coerceIn(0.05, 1.0) else 0.0
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        androidx.compose.foundation.Canvas(Modifier.size(width = 54.dp, height = 66.dp)) {
-            val w = size.width; val h = size.height; val ry = h * 0.09f
-            val water = kindColor(MN)
-            // water inside (filled to the share of the day's refills it needs)
-            val top = ry + (h - 2 * ry) * (1 - frac).toFloat()
-            drawRect(water.copy(alpha = 0.35f), androidx.compose.ui.geometry.Offset(2f, top), androidx.compose.ui.geometry.Size(w - 4f, h - ry - top))
-            drawOval(water.copy(alpha = 0.6f), androidx.compose.ui.geometry.Offset(2f, top - ry), androidx.compose.ui.geometry.Size(w - 4f, ry * 2))
-            // tank outline
-            val line = Color.White.copy(alpha = 0.75f)
-            drawOval(line, androidx.compose.ui.geometry.Offset(0f, 0f), androidx.compose.ui.geometry.Size(w, ry * 2), style = androidx.compose.ui.graphics.drawscope.Stroke(1.6f * density))
-            drawLine(line, androidx.compose.ui.geometry.Offset(0f, ry), androidx.compose.ui.geometry.Offset(0f, h - ry), 1.6f * density)
-            drawLine(line, androidx.compose.ui.geometry.Offset(w, ry), androidx.compose.ui.geometry.Offset(w, h - ry), 1.6f * density)
-            drawArc(line, 0f, 180f, false, androidx.compose.ui.geometry.Offset(0f, h - 2 * ry), androidx.compose.ui.geometry.Size(w, ry * 2), style = androidx.compose.ui.graphics.drawscope.Stroke(1.6f * density))
-        }
-        Column {
-            Text("× $refills", style = MaterialTheme.typography.headlineSmall.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium), color = kindColor(MN))
-            Text("refills of ${Fmt.n(tankL, 1)} L", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.65f))
-        }
-        Spacer(Modifier.weight(1f))
-        Column(horizontalAlignment = Alignment.End) {
-            Text(Fmt.n(needL, 1) + " L", style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium), color = kindColor(PR))
-            Text("needed of ${Fmt.n(holds, 1)} L", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.65f))
-        }
-    }
-}
-
-@Composable
-internal fun WaterCard(d: OutputData, onFarmChange: ((com.example.flock.data.FarmEntity) -> Unit)? = null) {
-    val e = d.e
-    val live = d.liveSafe.toDouble()
-    val factor = if (d.refillF > 0) d.refillF else 1.0
-    val refills = d.waterRefills
-    OutputCard(title = "Water", info = "water") {
-        TankPicture(d.tankL, refills, d.waterL)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            LeadLabel("refill ×")
-            listOf(1.0, 2.0, 3.0, 4.0).forEach { m ->
-                val on = abs(factor - m) < 0.01
-                ValueChip(vt(Fmt.n(m, 1) + "×", if (on) P else PR, if (on) "Set" else ""), Modifier.weight(1f)
-                    .border(if (on) 2.dp else 0.dp, if (on) Color.White else Color.Transparent, RoundedCornerShape(8.dp))
-                    .clickable(enabled = onFarmChange != null) { onFarmChange?.invoke(d.farm.copy(waterRefillFactor = m)) })
-            }
-        }
-        KpiLine(Kpi("Water a bird", "mL", d.waterPerBird, PR, null, d.waterIdealPerBird, Better.CLOSER, 1), plan = true)
-        Param("Water", "", v(d.waterL / max(0.5, e.lightHours), 1, PR, "L an hour, lit"))
-        Param("Nipple line", "", v(e.drinkerPressureIn.takeIf { it > 0 }, 2, I, "Pressure in"), v(d.drinkerHtIn, 1, I, "Height in"),
-            v(e.drinkerFlowLHrLine.takeIf { it > 0 }, 1, I, "L/h per line"))
-        if (d.birdsPerNipple != null) RangeParam("Birds / nipple", "", null, null, d.birdsPerNippleMax, d.birdsPerNipple, 1, PR)
-        RangeParam("Nipple flow", "mL/min", d.nippleFlow.first, null, d.nippleFlow.second, null, idealBand = d.nippleFlow)
-        RangeParam("Water temp", "°C", 18.0, null, 21.0, e.waterTempC, idealBand = 18.0 to 21.0)
-        RangeParam("Water pH", "", 6.0, null, 6.8, e.waterPh, 2, idealBand = 6.0 to 6.8)
-    }
-}
 
 @Composable
 fun StockBlock(d: OutputData) {
@@ -569,37 +237,17 @@ fun VentSection(d: OutputData, hour: Int = d.hour) {
     }
     val tC = manual?.first ?: autoT
     val rh = manual?.second ?: autoRh
-    FanFinderCard(d, tC, rh, if (manual != null) left else null, { manual = it to rh }, { manual = tC to it })
-    OutputCard(title = "Fan settings", info = "controller") {
-        MinVentCard(d)
+    FanFinderCard(d, tC, rh, if (manual != null) left else null, { manual = it to rh }, { manual = tC to it }) {
         CoolingGridCard(d) { t, h -> manual = t to h }
-        ControllerCard(d)
     }
 }
 
 /** how long a temperature or humidity set by hand holds before the dials go back to the weather */
 const val MANUAL_HOLD_S = 30
 
-@Composable
-private fun MinVentCard(d: OutputData) {
-    val f = d.farm
-    val l = d.minLevel
-    val live = d.liveSafe.toDouble()
-    Part("Minimum ventilation", "minvent") {
-        HouseAirflow(l, f.fanCount, f.hasEC, false, false, d.airFpm(l.avgFans))
-        Param("Timer", "s", vt(l.cyc.joinToString(",").ifEmpty { l.cont.joinToString(",") }, I, "Fan"), vi(if (l.isTimer) l.on else 0, I, "On"),
-            vi(if (l.isTimer) l.off else 0, I, "Off"), v(l.avgFans, 2, PR, "Avg fans"), strong = true)
-        Param("Air", "cfm", listOf(
-            "per bird" to listOf(v(d.plan.needCfm / live, 3, I, "Needed"), v(d.minAvgCfm / live, 3, PR, "Delivered")),
-            "house" to listOf(v(d.plan.needCfm, 1, I, "Needed"), v(d.minAvgCfm, 1, PR, "Delivered"))
-        ))
-        RangeParam("Air speed", "ft/min", null, null, if (d.day <= 14) 29.5 else null, null, projected = d.airFpm(l.avgFans))
-    }
-}
-
 /** The fans for an outside temperature and humidity: the weather at the farm, or what the dials are set to for a moment. */
 @Composable
-private fun FanFinderCard(d: OutputData, tC: Double, rh: Double, heldS: Int?, setT: (Double) -> Unit, setRh: (Double) -> Unit) {
+private fun FanFinderCard(d: OutputData, tC: Double, rh: Double, heldS: Int?, setT: (Double) -> Unit, setRh: (Double) -> Unit, more: @Composable () -> Unit = {}) {
     val f = d.farm
     val e = d.e
     val live = d.liveSafe.toDouble()
@@ -621,6 +269,7 @@ private fun FanFinderCard(d: OutputData, tC: Double, rh: Double, heldS: Int?, se
         Param("Air", "cfm", listOf("per bird" to listOf(v(cfm / live, 3, PR)), "house" to listOf(v(cfm, 1, PR))))
         RangeParam("Air speed", "ft/min", null, null, PhysiologicalEngine.maxAirSpeedFpm(d.day), null, projected = d.airFpm(s.fans))
         Param("Heat and pads", "", v(s.heaterKw, 1, PR, "Heat kW"), v(s.padEff * 100, 1, PR, "Pads %"))
+        more()
     }
 }
 
@@ -648,15 +297,6 @@ private fun CoolingGridCard(d: OutputData, onPick: (Double, Double) -> Unit) {
             }
         }
         KeyLine(ValuePresent to "comfy", StatusWarn to "warm", StatusCrit to "hot", ValueIdeal to "cool")
-    }
-}
-
-@Composable
-private fun ControllerCard(d: OutputData) {
-    Part("Controller · day ${d.day}") {
-        Param("Temperature", "°C", v(d.plan.set, 1, I, "SET"), v(d.plan.heat, 1, I, "Heat on"), v(d.plan.comfort, 1, I, "Comfort"), strong = true)
-        Param("Limits", "", vi(d.plan.maxFans, MX, "Fans"), v(PhysiologicalEngine.maxAirSpeedFpm(d.day), 1, MX, "ft/min"), vi(d.plan.minLevel, I, "Min level"))
-        Param("Fan", "cfm", v(d.fanCfm, 1, I, "One"), v(d.allFansCfm, 1, I, "All"))
     }
 }
 

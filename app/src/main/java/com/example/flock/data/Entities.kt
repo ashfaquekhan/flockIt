@@ -89,7 +89,12 @@ data class FarmEntity(
     val panSpacingFt: Double = 2.5,        // pan to pan on a line
     val feederLineGapFt: Double = 0.0,     // feeder line to feeder line (0 = usable width ÷ lines)
     // Bags that fill one line with every pan shut — the tube alone (0 = not known: worked out from the line's length) (v51)
-    val lineFillBagsShut: Double = 0.0
+    val lineFillBagsShut: Double = 0.0,
+    // Barricades the farm has (0 = none: the floor is set by the pans alone), how a floor too big for the birds is set
+    // ("auto" · "barricade" · "pans"), and how the cooling pads sit ("side": both side walls · "c": the end wall and both sides) (v53)
+    val barricades: Int = 2,
+    val spaceBy: String = "auto",
+    val padLayout: String = "side"
 )
 
 @Entity(tableName = "config")
@@ -302,7 +307,11 @@ data class DailyDataEntity(
     val dirtyFields: String = "",
     // The front barricade, ft from the front wall (null: not set that day; 0: none) — with [broodingLength] (the back
     // barricade, ft from the front wall) it bounds the birds' floor at both ends (v51)
-    val penStartFt: Double? = null
+    val penStartFt: Double? = null,
+    // The day's outside weather at the farm — lowest, average and highest °C and % RH — kept once the day is over, for the
+    // house and bird models (v53)
+    val outTempMin: Double? = null, val outTempAvg: Double? = null, val outTempMax: Double? = null,
+    val outRhMin: Double? = null, val outRhAvg: Double? = null, val outRhMax: Double? = null
 )
 
 @Entity(

@@ -164,7 +164,7 @@ fun FarmsScreen(
                 onClick = { showCreate = true },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
+                colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent, contentColor = androidx.compose.ui.graphics.Color.White)
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
                 Text("  New farm", color = Color.White, fontWeight = FontWeight.Medium)

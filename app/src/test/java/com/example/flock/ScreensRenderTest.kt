@@ -234,10 +234,14 @@ class ScreensRenderTest {
             androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(dens.density, 1.3f)) { output() }
         } }
         rule.mainClock.advanceTimeBy(1200)
+        // v53: the farm's order — birds (window, seven numbers, radar), feed and floor, air, lifting, water, graphs — each with its farm view
         listOf("glance", "radar_birds", "time_rail", "section_tabs", "feed_conclusion", "space_why", "coop_layers", "coop_facts",
-            "litter_view", "walk_feed", "walk_water", "chart_cursor", "chart_window", "flock_book").forEach { rule.onNodeWithTag(it).assertExists() }
-        // gone by request: the other radars, the feeding log, the nipple-line drawing, the named birds
-        listOf("radar_feed", "radar_air", "radar_floor", "feed_log", "nipple_view").forEach { assertTrue(it, rule.onAllNodesWithTag(it).fetchSemanticsNodes().isEmpty()) }
+            "tile_live", "tile_cv", "tile_pans", "tile_barricades", "farm_iso_feed", "farm_iso_air", "farm_iso_water", "meat_bar", "tile_water",
+            "chart_cursor", "chart_window", "flock_book").forEach { rule.onNodeWithTag(it).assertExists() }
+        listOf("jump_birds", "jump_feed", "jump_air", "jump_lift", "jump_water", "jump_graphs").forEach { rule.onNodeWithTag(it).assertExists() }
+        // gone by request: the other radars, the feeding log, the nipple-line drawing, the named birds, the old walk and floor cards
+        listOf("radar_feed", "radar_air", "radar_floor", "feed_log", "nipple_view", "walk_feed", "plan_step_0").forEach {
+            assertTrue(it, rule.onAllNodesWithTag(it).fetchSemanticsNodes().isEmpty()) }
         assertTrue(rule.onAllNodesWithText("Pip").fetchSemanticsNodes().isEmpty())
         assertTrue(rule.onAllNodesWithText("Choose what shows", substring = true).fetchSemanticsNodes().isEmpty())
         assertTrue(rule.onAllNodesWithText("At a glance").fetchSemanticsNodes().isEmpty())
@@ -247,22 +251,85 @@ class ScreensRenderTest {
             assertTrue(it, rule.onAllNodesWithText(it, substring = true).fetchSemanticsNodes().isEmpty()) }
         rule.onRoot().captureRoboImage("src/test/screenshots/screen_output_all_open_bigtext.png")
     }
-    /** The parts of the page drawn new: the litter from the side, the nipple line with its gauge, the floor plan and the feed with the barricade. */
+    /** v53's sections on the farm's flock after lifting (day 44): feed and floor, air (litter view), lifting, water. */
     @Config(qualifiers = "w360dp-h5600dp-xhdpi") @Test fun newCards() {
         val r = KgfFlock.computed(44)
         val d = com.example.flock.ui.screens.OutputData(KgfFlock.flock, KgfFlock.farm, r.last(), r, KgfFlock.feedTypes, null, emptyList(), false, false)
+        val needs = d.needsAt(12.0, d.plannedFeedings)
         rule.mainClock.autoAdvance = false
         rule.setContent { MyApplicationTheme { androidx.compose.foundation.layout.Column(Modifier.fillMaxSize().background(Color.Black).padding(14.dp),
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
-            com.example.flock.ui.screens.FeedTodayCard(d, d.recommendedOption, {}) { }
-            com.example.flock.ui.screens.SpaceCard(d)
-            com.example.flock.ui.screens.LitterCard(d, 14)
-            com.example.flock.ui.screens.WaterCard(d)
-            com.example.flock.ui.screens.WalkCard(d, d.feedPattern)
+            com.example.flock.ui.screens.FeedSection(d, d.recommendedOption, {}, needs) { }
+            com.example.flock.ui.screens.AirSection(d, 14, needs, false, {}, com.example.flock.ui.screens.houseMapOf(d, 14))
+            com.example.flock.ui.screens.LiftSection(d) { _, _ -> }
+            com.example.flock.ui.screens.WaterSection(d, needs) { }
         } } }
         rule.mainClock.advanceTimeBy(1600)
-        rule.onNodeWithTag("plan_step_2").assertExists()
+        rule.onNodeWithTag("tile_barricades").assertExists()
+        rule.onNodeWithTag("farm_iso_feed").assertExists()
+        rule.onNodeWithTag("air_view_litter").performClick()
+        rule.mainClock.advanceTimeBy(800)
+        rule.onNodeWithTag("litter_view").assertExists()
+        rule.onNodeWithTag("farm_iso_litter").assertExists()
         rule.onRoot().captureRoboImage("src/test/screenshots/screen_new_cards.png")
+    }
+    /** Every symbol in one sheet, with its name: the set to look at together. */
+    @Config(qualifiers = "w360dp-h1400dp-xhdpi") @Test fun gameIconSheet() {
+        rule.setContent { MyApplicationTheme { androidx.compose.foundation.layout.Column(Modifier.fillMaxSize().background(Color.Black).padding(10.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
+            com.example.flock.ui.screens.GIcon.values().toList().chunked(5).forEach { row ->
+                androidx.compose.foundation.layout.Row(Modifier.fillMaxSize().weight(1f)) {
+                    row.forEach { ic ->
+                        androidx.compose.foundation.layout.Column(Modifier.weight(1f), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                            com.example.flock.ui.screens.GameIcon(ic, 40.dp)
+                            Text(ic.name.lowercase(), style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.7f), maxLines = 1)
+                        }
+                    }
+                    repeat(5 - row.size) { Box(Modifier.weight(1f)) }
+                }
+            }
+        } } }
+        rule.onRoot().captureRoboImage("src/test/screenshots/game_icons.png")
+    }
+    /** The whole house in each of its views: the feed plan's pans and barricades, the air, the fans, the pads, the litter, the water lines. */
+    @Config(qualifiers = "w360dp-h1500dp-xhdpi") @Test fun farmViews() {
+        val r = KgfFlock.computed(44)
+        val d = com.example.flock.ui.screens.OutputData(KgfFlock.flock, KgfFlock.farm, r.last(), r, KgfFlock.feedTypes, null, emptyList(), false, false)
+        val feed = com.example.flock.ui.screens.isoFarmOf(d, d.patternFor(d.recommendedOption), 40.0, 250.0, true, 14)
+        val air = com.example.flock.ui.screens.isoFarmOf(d, d.feedPattern, d.penStartFt, d.barricadeFtNow, false, 14, com.example.flock.ui.screens.houseMapOf(d, 14))
+        println("plan: ${d.floorPlan?.title}")
+        rule.mainClock.autoAdvance = false
+        rule.setContent { MyApplicationTheme { androidx.compose.foundation.layout.Column(Modifier.fillMaxSize().background(Color.Black).padding(14.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)) {
+            com.example.flock.ui.screens.FarmIso(feed, com.example.flock.ui.screens.IsoView.FEED)
+            com.example.flock.ui.screens.FarmIso(air, com.example.flock.ui.screens.IsoView.AIR, layer = com.example.flock.models.HouseMap.Layer.HEAT)
+            com.example.flock.ui.screens.FarmIso(air, com.example.flock.ui.screens.IsoView.FANS)
+            com.example.flock.ui.screens.FarmIso(air.copy(padWet = 1.0, padLayout = "c"), com.example.flock.ui.screens.IsoView.PADS)
+            com.example.flock.ui.screens.FarmIso(air, com.example.flock.ui.screens.IsoView.LITTER, layer = com.example.flock.models.HouseMap.Layer.LITTER)
+            com.example.flock.ui.screens.FarmIso(air, com.example.flock.ui.screens.IsoView.WATER)
+        } } }
+        rule.mainClock.advanceTimeBy(700)
+        rule.onRoot().captureRoboImage("src/test/screenshots/farm_views.png")
+        // pinched in on the feed view: the pans and their rims, the zoom shown (a tap fits it again)
+        rule.onNodeWithTag("farm_iso_feed").performTouchInput {
+            down(0, Offset(width * 0.45f, height * 0.5f)); down(1, Offset(width * 0.55f, height * 0.5f))
+            moveTo(0, Offset(width * 0.15f, height * 0.5f)); moveTo(1, Offset(width * 0.85f, height * 0.5f)); up(0); up(1)
+        }
+        rule.mainClock.advanceTimeBy(400)
+        rule.onNodeWithTag("iso_zoom_reset").assertExists()
+        rule.onRoot().captureRoboImage("src/test/screenshots/farm_views_zoomed.png")
+    }
+    /** Farm settings: the barricades the farm has, how its floor is set, its pads — and the Save button reads. */
+    @Config(qualifiers = "w360dp-h1500dp-xhdpi") @Test fun farmSettingsSaveHasWords() {
+        var saved: FarmEntity? = null
+        rule.setContent { MyApplicationTheme { com.example.flock.ui.components.FarmSettingsDialog(farm, com.example.flock.data.ConfigEntity(spreadsheetId = "t"), feedTypes,
+            {}, { f, _ -> saved = f }, {}, {}) } }
+        rule.onAllNodesWithText("Save settings")[0].assertExists()
+        rule.onNodeWithTag("space_by_setting_pans").performScrollTo().performClick()
+        rule.onNodeWithTag("pad_layout_c").performScrollTo().performClick()
+        com.github.takahirom.roborazzi.captureScreenRoboImage("src/test/screenshots/screen_farm_settings.png")
+        rule.onNodeWithTag("farm_settings_save").performClick()
+        assertEquals("pans", saved?.spaceBy); assertEquals("c", saved?.padLayout); assertEquals(2, saved?.barricades)
     }
     /** The house map's views on the farm window: the litter layer draws, with its key. */
     @Config(qualifiers = "w360dp-h1600dp-xhdpi") @Test fun coopLayers() {
@@ -287,12 +354,12 @@ class ScreensRenderTest {
         rule.mainClock.autoAdvance = false
         rule.setContent { MyApplicationTheme { output() } }
         rule.mainClock.advanceTimeBy(1000)
-        rule.onNodeWithTag("jump_walk").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        rule.onNodeWithTag("jump_water").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
         rule.mainClock.advanceTimeBy(1500)
-        val top = rule.onNodeWithTag("walk_feed").getUnclippedBoundsInRoot().top.value
-        println("walk card drawing at $top dp after the tap")
-        assertTrue("the walk card is on screen", top in 0f..780f)
-        rule.onRoot().captureRoboImage("src/test/screenshots/screen_tabs_walk.png")
+        val top = rule.onNodeWithTag("tile_water").getUnclippedBoundsInRoot().top.value
+        println("water tile at $top dp after the tap")
+        assertTrue("the water section is on screen", top in 0f..780f)
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_tabs_water.png")
     }
     /** The time rail (down the right edge) moves the page to another time of the day; touched it opens out; Now brings the clock back. */
     @Config(qualifiers = "w360dp-h2400dp-xhdpi") @Test fun timeSliderPicksATime() {
@@ -405,6 +472,9 @@ class ScreensRenderTest {
     @Config(qualifiers = "w360dp-h12000dp-xhdpi") @Test fun dialsGoBackToTheWeather() {
         rule.mainClock.autoAdvance = false
         rule.setContent { MyApplicationTheme { output() } }
+        rule.mainClock.advanceTimeBy(800)
+        // the dials are under the Fans view of the air section
+        rule.onNodeWithTag("air_view_fans").performClick()
         rule.mainClock.advanceTimeBy(800)
         rule.onAllNodesWithText("The weather at the farm now · turn a dial to try another")[0].assertExists()
         rule.onAllNodesWithText("+")[0].performClick()

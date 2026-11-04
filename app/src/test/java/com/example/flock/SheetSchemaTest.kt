@@ -113,6 +113,24 @@ class SheetSchemaTest {
         assertTrue(SheetSchema.verify(c, rawOf(short)).any { it.contains("day row") })
     }
 
+    /** v53: the day's kept weather and the farm's barricades, floor choice and pad layout go to the sheet and come back. */
+    @Test fun keptWeatherAndBarricadesRoundTrip() {
+        val f2 = farm.copy(barricades = 1, spaceBy = "pans", padLayout = "c")
+        val flock = FlockEntity(spreadsheetId = sid, flockId = "F1", name = "Batch 3", startDate = "2026-09-19", birdsPlaced = 15700, deletedAt = 0)
+        val days = (0..3).map { DailyDataEntity(spreadsheetId = sid, flockId = "F1", dayNumber = it, date = "2026-09-${19 + it}", updatedAt = it.toLong(),
+            outTempMin = 24.0 + it, outTempAvg = 28.5, outTempMax = 33.2, outRhMin = 48.0, outRhAvg = 71.5, outRhMax = 93.0) }
+        val c = SheetSchema.Content(f2, null, emptyList(), listOf(flock), days, emptyList())
+        val back = rawOf(SheetSchema.blocks(c, SheetSchema.primaryMeta("farm_1", 2)))
+        assertTrue(SheetSchema.upgradeReasons(back).isEmpty())
+        val again = SheetSchema.parse(sid, back, farm, null)
+        assertEquals(listOf(24.0, 25.0, 26.0, 27.0), again.days.map { it.outTempMin })
+        assertEquals(33.2, again.days[0].outTempMax!!, 1e-9); assertEquals(71.5, again.days[2].outRhAvg!!, 1e-9)
+        assertEquals(1, again.farm!!.barricades); assertEquals("pans", again.farm!!.spaceBy); assertEquals("c", again.farm!!.padLayout)
+        // the weather columns sit beside the day's typed-in outside reading
+        val header = SheetSchema.dailyHeader(emptyList(), 5)
+        assertEquals(header.indexOf("OutRH") + 1, header.indexOf("OutTempMin"))
+    }
+
     @Test fun columnLetters() {
         assertEquals(listOf("A", "Z", "AA", "AZ", "BA", "AAA"), listOf(1, 26, 27, 52, 53, 703).map { SheetSchema.colLetter(it) })
     }

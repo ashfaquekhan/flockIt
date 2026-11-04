@@ -1,6 +1,9 @@
 package com.example.flock.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,6 +69,9 @@ fun AccountSheet(
     email: String,
     isDemo: Boolean,
     appVersion: String,
+    /** extra room kept clear at the screen's sides (dp) and its setter */
+    edgeDp: Int = com.example.flock.network.ViewPrefs.EDGE_DEFAULT_DP,
+    onEdge: (Int) -> Unit = {},
     onOpenRecycleBin: () -> Unit,
     onSignOut: () -> Unit,
     onDismiss: () -> Unit
@@ -86,6 +92,20 @@ fun AccountSheet(
                     Icon(Icons.Default.Delete, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("Recycle bin", modifier = Modifier.weight(1f))
+                }
+                // for screens that curve or round at the sides: keep this much clear (outlines are not cut)
+                Text("Screen edges", style = MaterialTheme.typography.labelLarge)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    com.example.flock.network.ViewPrefs.EDGE_CHOICES.forEach { dp ->
+                        val on = dp == edgeDp
+                        Text("$dp", style = MaterialTheme.typography.labelLarge, maxLines = 1,
+                            color = if (on) androidx.compose.ui.graphics.Color.Black else androidx.compose.ui.graphics.Color.White,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier = Modifier.weight(1f)
+                                .background(if (on) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                                .border(1.dp, androidx.compose.ui.graphics.Color.White.copy(alpha = if (on) 1f else 0.45f), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                                .clickable { onEdge(dp) }.padding(vertical = 6.dp).testTag("edge_$dp"))
+                    }
                 }
                 Text(
                     "FlockIt v$appVersion",

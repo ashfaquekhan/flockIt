@@ -124,6 +124,11 @@ class OutputData(
     val gainKind = if (gainMeasured != null) ValueKind.PRESENT else ValueKind.PREDICTED
     val gainCom: Double? = CompanyStandard.gain(day)
     val gainIdeal = bwIdeal - PhysiologicalEngine.bwFromDay(max(0, day - 1).toDouble(), breed)
+    /** The gain to expect over today (this morning to tomorrow's), from the curves: the company's and the breed's, and the
+     *  flock's — the company's day scaled by how the flock stands against it. */
+    val gainTodayCom: Double? = CompanyStandard.gain(day + 1)
+    val gainTodayIdeal: Double = PhysiologicalEngine.bwFromDay(day + 1.0, breed) - bwIdeal
+    val gainToday: Double? = gainTodayCom?.let { g -> bwCom?.takeIf { it > 0 }?.let { c -> g * (bw / c).coerceIn(0.5, 1.5) } ?: g }
     val fcrCom: Double? = CompanyStandard.fcr(day)
     val fcrIdeal = PhysiologicalEngine.stdFcrFromDay(day.toDouble(), breed)
     val cfcrCom: Double? = CompanyStandard.cfcr(day)
@@ -216,9 +221,19 @@ class OutputData(
     val outsideHours: List<Triple<Int, Double, Double>>
     init {
         val pts = hourly.filter { it.date == e.date }.associateBy { it.hour }
+        val keptLo = e.outTempMin; val keptHi = e.outTempMax
         if (pts.size >= 24) {
             outsideSource = com.example.flock.domain.BirdEnvironment.Source.WEATHER
             outsideHours = (0 until 24).map { Triple(it, pts[it]!!.tempC, pts[it]!!.rhPct) }
+        } else if (keptLo != null && keptHi != null) {
+            // the day's weather kept with its row (the hours have gone from the phone): the day's shape between its lowest
+            // and highest, the air most humid when coolest
+            outsideSource = com.example.flock.domain.BirdEnvironment.Source.WEATHER
+            val rhLo = e.outRhMin ?: 50.0; val rhHi = e.outRhMax ?: 85.0
+            outsideHours = com.example.flock.domain.DaySchedule.seasonTemps(keptLo, keptHi).mapIndexed { h, t ->
+                val f = if (keptHi > keptLo) ((t - keptLo) / (keptHi - keptLo)).coerceIn(0.0, 1.0) else 0.5
+                Triple(h, t, rhHi - (rhHi - rhLo) * f)
+            }
         } else {
             outsideSource = com.example.flock.domain.BirdEnvironment.Source.SEASON
             val lo = scenarios.first(); val hi = scenarios.last()
@@ -451,7 +466,7 @@ class OutputData(
         feederGapFt = feederGapFt, drinkerGapFt = farm.usableWidthFt / max(1, drinkerLinesN),
         capKgM2 = farm.densityCapDefault, hotC = hotC, coolC = coolC, lifted = liftTD > 0,
         dayBags = dayBags, bagsFullLine = bagsFullLine, birdsPerPanMax = birdsPerPanMax, feedingsWanted = feedingsWanted,
-        penStartFt = penStartFt, bagsShutLine = bagsTubeLine))
+        penStartFt = penStartFt, bagsShutLine = bagsTubeLine, barricades = farm.barricades, spaceBy = farm.spaceBy))
     /** The way the floor is set once the birds are grown or lifted (null: a young flock, the feed plan below decides). */
     val floorPlan: com.example.flock.domain.SpacePlan.Option? = if (space.young) null else space.options[space.best]
     /** The floor plan's pans as a series over the floor it uses. */

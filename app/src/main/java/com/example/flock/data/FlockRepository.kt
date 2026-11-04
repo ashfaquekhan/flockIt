@@ -528,6 +528,41 @@ class FlockRepository(
             }
         }
 
+    /** One finished day's outside weather at the farm: lowest, average and highest °C and % RH. */
+    data class DayWeather(val tMin: Double, val tAvg: Double, val tMax: Double, val rhMin: Double, val rhAvg: Double, val rhMax: Double)
+
+    /**
+     * Keeps the outside weather of finished days with the flock's day rows (and on the sheet), so the house and bird
+     * models always have the weather the birds lived through — not only while the phone still holds the hours. A day
+     * already holding the same values is left alone; the rows are sent quietly, then the report tabs once.
+     * Returns how many days were kept.
+     */
+    suspend fun saveDayWeather(spreadsheetId: String, flockId: String, byDate: Map<String, DayWeather>): Int = withContext(Dispatchers.IO) {
+        if (byDate.isEmpty()) return@withContext 0
+        val changed = ioLock.withLock {
+            val rows = dailyDataDao.getDailyDataList(spreadsheetId, flockId)
+            fun same(a: Double?, b: Double) = a != null && kotlin.math.abs(a - b) < 0.05
+            val list = rows.mapNotNull { r ->
+                val w = byDate[r.date] ?: return@mapNotNull null
+                if (same(r.outTempMin, w.tMin) && same(r.outTempAvg, w.tAvg) && same(r.outTempMax, w.tMax) &&
+                    same(r.outRhMin, w.rhMin) && same(r.outRhAvg, w.rhAvg) && same(r.outRhMax, w.rhMax)) return@mapNotNull null
+                val kept = r.copy(outTempMin = w.tMin, outTempAvg = w.tAvg, outTempMax = w.tMax, outRhMin = w.rhMin, outRhAvg = w.rhAvg, outRhMax = w.rhMax)
+                kept.copy(dirty = true, dirtyFields = mergeDirtyFields(r.dirty, r.dirtyFields, SheetSchema.WEATHER_HEADERS.map { SheetSchema.norm(it) }.toSet()))
+            }
+            list.forEach { dailyDataDao.insertOrUpdateDay(it) }
+            list
+        }
+        if (changed.isEmpty()) return@withContext 0
+        // sent like rows saved offline: one at a time, quietly (no note), the report tabs once at the end
+        val s = sync
+        if (s != null && s.isOnline()) ioLock.withLock {
+            var sent = 0
+            changed.forEach { if (pushDirtyDay(null, spreadsheetId, flockId, it.dayNumber, updateReports = false)) sent++ }
+            if (sent > 0) try { s.pushReports(spreadsheetId) } catch (e: Exception) { }
+        }
+        changed.size
+    }
+
     /**
      * Complete mathematical recalculation for a flock across its entire life-cycle.
      */

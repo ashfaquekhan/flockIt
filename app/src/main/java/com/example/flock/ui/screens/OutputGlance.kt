@@ -111,77 +111,6 @@ fun overallScore(entered: List<Radar.Axis>, projected: List<Radar.Axis>): Double
     projected.indices.mapNotNull { i -> (entered.getOrNull(i)?.score ?: projected[i].score)?.coerceAtMost(Radar.MAX) }
         .takeIf { it.isNotEmpty() }?.average()
 
-/** One number of the glance: what, its value (coloured by what it is), the company's and the ideal, and the line. */
-private class Tile(
-    val label: String, val value: V, val trend: TrendMark?,
-    val com: Double?, val ideal: Double?, val dec: Int,
-    /** the ideal written as a band or a limit ("≤ 8.0"), when it is not one number */
-    val idealText: String? = null,
-    /** lines in place of company and ideal, for a number that has none */
-    val subs: List<String>? = null,
-    val actual: Double? = null
-)
-
-/**
- * The day at a glance: what the colours mean, the four radars (100 = the target), and the twelve numbers that matter —
- * each with the company's and the ideal under it and the line that shows where it stands between them.
- */
-@Composable
-fun GlanceCard(d: OutputData, view: OutputData.NowView, entryHHmm: String?, live: Boolean, onNow: () -> Unit, hour: Int, pat: OutputData.PanPattern) {
-    val m = d.mass
-    val beforeToday = (d.mortTD - d.mortToday).coerceAtLeast(0).toDouble()
-    val mort = if (d.mk == P) d.mortTDPct else (beforeToday + view.deaths) * 100.0 / d.entryBirds
-    val weight = if (d.vk == P) d.bwNow else view.weightG
-    val fcr = m?.fcr ?: view.fcr
-    val liveNow = if (d.mortEntered) d.live.toDouble() else view.live
-    val lifted = m?.liftedBirds ?: d.liftTD
-    val liftDays = d.rows.filter { it.birdsLifted > 0 && it.dayNumber <= d.day }.map { it.dayNumber }
-    val tiles = listOf(
-        Tile("Weight g", v(weight, 1, d.vk), trendOf(weight, d.bwCom, Better.HIGHER), d.bwCom, d.bwIdeal, 1, actual = weight),
-        Tile("Gain g/day", v(d.gain, 1, d.gainKind), trendOf(d.gain, d.gainCom, Better.HIGHER), d.gainCom, d.gainIdeal, 1, actual = d.gain),
-        Tile("CV %", v(d.cvEst, 1, if (d.cvMeasured) P else PR), d.cvEst?.let { rangeTrend(it, null, 10.0) }, null, 8.0, 1, idealText = "≤ 8.0", actual = d.cvEst),
-        Tile("FCR", v(fcr, 3, d.fcrKind), trendOf(fcr, d.fcrCom, Better.LOWER), d.fcrCom, d.fcrIdeal, 3, actual = fcr),
-        Tile("cFCR 2 kg", v(m?.cFcrCompany, 3, d.fcrKind), trendOf(m?.cFcrCompany, d.cfcrCom, Better.LOWER), d.cfcrCom, d.cfcrIdeal, 3, actual = m?.cFcrCompany),
-        Tile("EPEF", v(d.epef, 1, d.fcrKind), trendOf(d.epef, d.epefCom, Better.HIGHER), d.epefCom, d.epefIdeal, 1, actual = d.epef),
-        Tile("Mortality %", v(mort, 2, d.mk), trendOf(mort, d.comCumPct, Better.LOWER), d.comCumPct, d.ceilingPct, 2, actual = mort),
-        Tile("Live birds", if (d.mortEntered) vi(d.live, P) else vi(Math.round(view.live).toInt(), PR), trendOf(liveNow, d.liveCom, Better.HIGHER, 1.0),
-            d.liveCom, d.liveIdeal, 0, actual = liveNow),
-        Tile("Lifted", vi(lifted, P), null, null, null, 0,
-            subs = if (lifted > 0) listOf(Fmt.n(m?.liftedKg ?: d.liftKgTD, 1) + " kg", "day " + liftDays.joinToString(",")) else listOf("none yet", "")),
-        Tile("Feed bags", v(d.dayBags, 1, PR), trendOf(d.dayBags, d.giveBags, Better.CLOSER, 10.0), d.giveBags, d.idealBags, 1, actual = d.dayBags),
-        Tile("Water L", v(d.waterL, 1, PR), null, null, d.waterIdealL, 1, actual = d.waterL),
-        Tile("kg/m²", v(d.space.kgM2, 1, d.vk), trendOf(d.space.kgM2, d.space.targetKgM2, Better.LOWER, 5.0), null, d.space.targetKgM2, 1,
-            idealText = "≤ " + Fmt.n(d.space.targetKgM2, 1), actual = d.space.kgM2)
-    )
-    GlassBox(Modifier.fillMaxWidth().testTag("glance")) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val sky = d.hourly.firstOrNull { it.date == d.e.date && it.hour == hour }
-                Text("Day ${d.day}", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium))
-                Spacer(Modifier.width(8.dp))
-                Text(view.hhmm, style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium),
-                    color = Color.White, modifier = Modifier.testTag("time_shown"))
-                if (sky?.emoji != null) Text(" " + sky.emoji, style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.weight(1f))
-                if (!live) Text("Now", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = Color.White,
-                    modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).clickable { onNow() }
-                        .padding(horizontal = 10.dp, vertical = 5.dp).testTag("time_now"))
-                Spacer(Modifier.width(6.dp))
-                InfoButton("glance")
-            }
-            // what the colours mean, before anything coloured
-            ColourKey(listOf(kindColor(P) to "entered " + (entryHHmm ?: "—"), kindColor(PR) to "projected " + view.hhmm,
-                kindColor(C) to "company", kindColor(I) to "ideal (Ross)"))
-            BirdRadar(d, view)
-            tiles.chunked(3).forEach { row ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    row.forEach { t -> GlanceTile(t, Modifier.weight(1f)) }
-                }
-            }
-        }
-    }
-}
-
 /** Swatches and what each colour means; wraps as whole items. */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -281,29 +210,6 @@ fun BirdRadar(d: OutputData, view: OutputData.NowView) {
     }
 }
 
-@Composable
-private fun GlanceTile(t: Tile, modifier: Modifier) {
-    val col = kindColor(if (t.value.text == "—") NE else t.value.kind)
-    val mono = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont, letterSpacing = (-0.3).sp)
-    fun f(x: Double) = if (t.dec == 0) Fmt.i(Math.round(x).toInt()) else Fmt.n(x, t.dec)
-    Column(modifier.border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(10.dp)).padding(horizontal = 7.dp, vertical = 6.dp)) {
-        Text(t.label, style = MaterialTheme.typography.labelLarge, color = Color.White, maxLines = 1, softWrap = false)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(t.value.text, style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium, letterSpacing = (-0.4).sp),
-                color = col, maxLines = 1, softWrap = false, modifier = Modifier.weight(1f, fill = false))
-            if (t.trend != null) { Spacer(Modifier.width(3.dp)); TrendIcon(t.trend, 10.dp) }
-        }
-        if (t.subs != null) t.subs.forEach { Text(it, style = mono, color = Color.White.copy(alpha = 0.6f), maxLines = 1, softWrap = false) }
-        else {
-            Text("co " + (t.com?.let { f(it) } ?: "NA"), style = mono, color = kindColor(C).copy(alpha = if (t.com == null) 0.55f else 1f), maxLines = 1, softWrap = false)
-            Text("id " + (t.idealText ?: t.ideal?.let { f(it) } ?: "NA"), style = mono, color = kindColor(I).copy(alpha = if (t.ideal == null) 0.55f else 1f), maxLines = 1, softWrap = false)
-        }
-        // the line: the company's tick (violet), the ideal's (blue) and the flock's dot
-        if (t.subs == null) MiniCompare(t.actual, t.value.kind, t.com, t.ideal)
-        else Spacer(Modifier.height(10.dp))
-    }
-}
-
 /** The comparison line of a glance number, small: company tick below the line, ideal tick above, the flock's dot. */
 @Composable
 fun MiniCompare(actual: Double?, kind: ValueKind, com: Double?, ideal: Double?) {
@@ -327,7 +233,8 @@ fun MiniCompare(actual: Double?, kind: ValueKind, com: Double?, ideal: Double?) 
  * The page's sections as tabs that stay at the top: the one being read is lit, and a tap scrolls to another.
  */
 @Composable
-fun SectionTabs(items: List<Pair<String, String>>, current: String?, onJump: (String) -> Unit, modifier: Modifier = Modifier) {
+fun SectionTabs(items: List<Pair<String, String>>, current: String?, onJump: (String) -> Unit, modifier: Modifier = Modifier,
+                icons: Map<String, GIcon> = emptyMap()) {
     val row = rememberScrollState()
     val xs = remember { HashMap<String, Int>() }
     LaunchedEffect(current) { current?.let { xs[it] }?.let { row.animateScrollTo((it - 40).coerceAtLeast(0)) } }
@@ -335,12 +242,15 @@ fun SectionTabs(items: List<Pair<String, String>>, current: String?, onJump: (St
         horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         items.forEach { (key, label) ->
             val on = key == current
-            Text(label, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = if (on) Color.Black else Color.White,
-                maxLines = 1, softWrap = false,
-                modifier = Modifier.onGloballyPositioned { xs[key] = it.positionInParent().x.toInt() }
-                    .background(if (on) Color.White else Color.Transparent, RoundedCornerShape(10.dp))
-                    .border(1.dp, Color.White.copy(alpha = if (on) 1f else 0.4f), RoundedCornerShape(10.dp)).clickable { onJump(key) }
-                    .padding(horizontal = 12.dp, vertical = 7.dp).testTag("jump_$key"))
+            Row(Modifier.onGloballyPositioned { xs[key] = it.positionInParent().x.toInt() }
+                .background(if (on) Color.White else Color.Transparent, RoundedCornerShape(10.dp))
+                .border(1.dp, Color.White.copy(alpha = if (on) 1f else 0.4f), RoundedCornerShape(10.dp)).clickable { onJump(key) }
+                .padding(start = if (icons[key] != null) 7.dp else 12.dp, end = 12.dp, top = 5.dp, bottom = 5.dp).testTag("jump_$key"),
+                verticalAlignment = Alignment.CenterVertically) {
+                icons[key]?.let { GameIcon(it, 20.dp); Spacer(Modifier.width(5.dp)) }
+                Text(label, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = if (on) Color.Black else Color.White,
+                    maxLines = 1, softWrap = false)
+            }
         }
     }
 }

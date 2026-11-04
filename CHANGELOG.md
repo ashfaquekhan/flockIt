@@ -8,6 +8,52 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v53 — 2026-11-05 · The Output page in the farm's order with whole-house farm views and game-style signs, barricades the farm has, the weather kept, safe screen edges · **DB 19 → 20**, sheet schema 9 → 10
+- **The page in the farm's order**, six sections with tabs that carry their sign: **Birds · Feed · Air · Lifting · Water · Graphs**.
+  Every number is a tile: its sign, its name, the value (entered green, projected amber) with its arrow, `co` and `id`
+  under it and the line between them. No number is shown twice; the long cards (Floor, Walk, Litter, FCR, the glance) are
+  folded into the sections.
+- **Birds**: the farm window, then Live birds · Weight · FCR · cFCR · Mortality · Stocking density (kg/m², ft² a bird) ·
+  CV with how the weights spread (light / even / heavy) — then the one-score radar. The small numbers under the window
+  are gone (they are the tiles now); what the birds are doing and the feeding times stay.
+- **Feed and floor**: the whole house from above and the side (no turning): every pan of every line as the plan opens
+  it (amber on, white off, crossed outside the barricades), the hoppers, the drinker lines and the barricades where they
+  go (dashed while they are the plan's, not yet put up), a ruler in ft with the barricades' places. Pinch to zoom, slide
+  sideways, double tap fits it again. Tiles: bags to use (feedings × bags, bags a line), feed a bird (g), yesterday's
+  gain, gain today from the curve, the pans (series, open a line, birds a pan), the barricades, the walk to feed, hungry
+  now, eaten yesterday, the feeding times; trays and paper in the first week.
+- **Air and ventilation**: the same house, small and still, in four views — **Air** (heat on the floor, the air moving
+  from the pads to the fans), **Fans** (those running lit and turning, on their timer), **Pads** (wet or dry), **Litter**
+  (moisture) — each with its tiles: temperature, humidity, what the birds feel, air speed, static pressure, CO₂, outside,
+  body temperature, panting, light; minimum ventilation with the fan timer and cycle, fans now, air changes, the
+  controller; pads now and at the hottest hour, the layout; litter moisture, temperature, under the drinkers, ammonia,
+  depth, caking. **No sensors yet**: each tile keeps a place for a sensor's reading ("sensor —") and the house shows where
+  sensors would stand. The fan dials (another outside temperature) sit under Fans.
+- **Lifting**: one bar of where the meat is (in the house, lifted, dead), the birds lifted, livability, EPEF, produced,
+  FCR with the dead counted, the breed's cFCR, the target and the harvest forecast (set from here).
+- **Water**: the house with its drinker lines and the tank (pinch to zoom), refills ×, the day's water, a bird's, an
+  hour's, the walk to water, birds a nipple, height, pressure, flow, water temperature and pH, thirsty now.
+- **Graphs**: the graph card, the trends as tiles (placed, removed, daily gain, last week's FCR, days ahead, first-week
+  and last-week deaths), the last 3 and 7 days, the projection check, the flock book.
+- **Game-style signs**: about 60 small symbols drawn in the app (the same on every phone) — a chick, a weight, a feed pan,
+  a tombstone, a bell curve, a sack, pans, a fence, a fan, a thermometer, a drop, a honeycomb pad, a litter heap, a tank,
+  a truck, a trophy … — one for each section and number. All in `GameIcons.kt`, to change together.
+- **Barricades the farm has** (Farm settings, 0–4) and **how a floor too big for the birds is set**: Auto (barricade on a
+  cool day, pans on a warm one) · Barricades (pen them whenever roomy) · Pans (never a barricade). Also on the Feed
+  section. The plan uses only the barricades there are; two leave the same empty floor at both ends; with none (or Pans)
+  the chicks have the whole house from the start.
+- **Barricades shown everywhere**: in the farm window a barricade out of view is named at its edge with its place in ft;
+  the map under the window draws fences with posts, the floor past them dark and their place in ft; the feed view draws
+  them on the whole house.
+- **Pad layout** in Farm settings: side by side (both side walls) or C-type (the end wall too); drawn on the air views.
+- **The weather is kept with each day**: once a day is over, its lowest, average and highest temperature and humidity are
+  saved in the day row and on the sheet (6 new DailyData columns). The house and bird models use them for days whose
+  hours have gone from the phone (it keeps about 80 days), instead of the season's typical day.
+- **Fixed: the Save button in Farm settings had no words** (black on black) — and the same on Open farm, Add new batch,
+  Create farm, Share and the other plain buttons: their words are white now.
+- **Screen edges**: room is kept clear at the sides of the screen (the phone's curved-edge and cut-out insets, and 8 dp
+  more) so outlines are not cut on a curved or rounded screen; the account menu sets it (0–24 dp).
+
 ## v52 — 2026-11-05 · The time at Save, plain entry headings, a Now button, one score on the radar, arrows green or red · no DB or sheet change
 - **The time of the entries is picked at Save**: no separate "Time of these entries" box. Hold Save (or Update), and a
   small window shows the time — for a day updated again the time its data was first entered (its weighing, else its

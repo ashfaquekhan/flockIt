@@ -52,6 +52,16 @@ val MIGRATION_18_19 = object : androidx.room.migration.Migration(18, 19) {
     }
 }
 
+/** v20: the barricades a farm has, how its floor is set, how its pads sit; each day's outside weather (lowest, average, highest). */
+val MIGRATION_19_20 = object : androidx.room.migration.Migration(19, 20) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE farm ADD COLUMN barricades INTEGER NOT NULL DEFAULT 2")
+        db.execSQL("ALTER TABLE farm ADD COLUMN spaceBy TEXT NOT NULL DEFAULT 'auto'")
+        db.execSQL("ALTER TABLE farm ADD COLUMN padLayout TEXT NOT NULL DEFAULT 'side'")
+        listOf("outTempMin", "outTempAvg", "outTempMax", "outRhMin", "outRhAvg", "outRhMax").forEach { db.execSQL("ALTER TABLE daily_data ADD COLUMN $it REAL") }
+    }
+}
+
 val MIGRATION_17_18 = object : androidx.room.migration.Migration(17, 18) {
     override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE daily_data ADD COLUMN liftedAt INTEGER NOT NULL DEFAULT 0")
@@ -84,7 +94,7 @@ val MIGRATION_15_16 = object : androidx.room.migration.Migration(15, 16) {
         DailyDataEntity::class,
         TaskEntity::class
     ],
-    version = 19,
+    version = 20,
     exportSchema = false
 )
 abstract class FlockDatabase : RoomDatabase() {
@@ -109,7 +119,7 @@ abstract class FlockDatabase : RoomDatabase() {
                     FlockDatabase::class.java,
                     "flockit_database"
                 )
-                    .addMigrations(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
+                    .addMigrations(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20)
                     .fallbackToDestructiveMigration()
                     .addCallback(FlockDatabaseCallback(scope))
                     .build()

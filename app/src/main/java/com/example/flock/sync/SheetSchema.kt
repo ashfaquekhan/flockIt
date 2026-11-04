@@ -34,8 +34,10 @@ object SheetSchema {
      *    Computed gains the lifting mass balance (birds and kg lifted, live and dead mass, both cFCRs).
      * 9: DailyData gains PenStartFt (the front barricade, ft from the front wall; BroodingLength is the back one);
      *    _Farm gains lineFillBagsShut (bags that fill a line with its pans shut).
+     * 10: DailyData gains the day's outside weather kept for the models (OutTempMin / Avg / Max, OutRhMin / Avg / Max);
+     *    _Farm gains barricades (how many the farm has), spaceBy (auto · barricade · pans) and padLayout (side · c).
      */
-    const val VERSION = 9
+    const val VERSION = 10
 
     val FLOCK_HEADERS = listOf(
         "flockId", "name", "breed", "startDate", "startTime", "birdsPlaced", "receptionMort",
@@ -50,8 +52,11 @@ object SheetSchema {
         "WaterTempC", "WaterPh", "FeedMoisturePct", "MeasuredCo2", "MeasuredNh3", "MeasuredO2",
         "MeasuredPressure", "MeasuredAirspeed", "PadWetMin", "PadDryMin", "LuxPerFt2", "DieselCansUsed",
         "UpdatedAt", "UpdatedBy", "Committed", "FeedUsedBreakdown", "SavedFields", "IndividualWeights", "Locations", "WeighedAt",
-        "LiftedAt", "Feedings", "PenStartFt"
+        "LiftedAt", "Feedings", "PenStartFt",
+        "OutTempMin", "OutTempAvg", "OutTempMax", "OutRhMin", "OutRhAvg", "OutRhMax"
     )
+    /** The columns of the day's kept weather (written by the app once a day is over, not typed in). */
+    val WEATHER_HEADERS = listOf("OutTempMin", "OutTempAvg", "OutTempMax", "OutRhMin", "OutRhAvg", "OutRhMax")
 
     // ---- how DailyData is written (schema 6): related columns side by side, per-variety and extra-location columns in place
     private val LAYOUT_A = listOf("FlockId", "Day", "Date", "Locked", "SampleEntered", "Locations",
@@ -60,6 +65,7 @@ object SheetSchema {
     private val LAYOUT_C = listOf("FeedUsedType", "FeedUsedBreakdown", "Feedings",
         "FeedRecB1", "FeedTypeB1", "FeedRecB2", "FeedTypeB2", "FeedRecB3", "FeedTypeB3", "DieselCansUsed", "Notes",
         "PenStartFt", "BroodingLength", "ActualFans", "ActualFanTime", "OutTemp", "OutRH",
+        "OutTempMin", "OutTempAvg", "OutTempMax", "OutRhMin", "OutRhAvg", "OutRhMax",
         "WaterTempC", "WaterPh", "FeedMoisturePct", "MeasuredCo2", "MeasuredNh3", "MeasuredO2",
         "MeasuredPressure", "MeasuredAirspeed", "PadWetMin", "PadDryMin", "LuxPerFt2",
         "UpdatedAt", "UpdatedBy", "Committed", "SavedFields", "WeighedAt")
@@ -227,7 +233,9 @@ object SheetSchema {
             indivWeights = r.s("IndividualWeights"),
             moreSamples = r.moreSamples(), locCount = (r.i("Locations") ?: 0).coerceIn(0, com.example.flock.data.MAX_LOCATIONS),
             weighedAt = r.l("WeighedAt") ?: 0L,
-            liftedAt = r.l("LiftedAt") ?: 0L, feedings = r.s("Feedings"), penStartFt = r.d("PenStartFt")
+            liftedAt = r.l("LiftedAt") ?: 0L, feedings = r.s("Feedings"), penStartFt = r.d("PenStartFt"),
+            outTempMin = r.d("OutTempMin"), outTempAvg = r.d("OutTempAvg"), outTempMax = r.d("OutTempMax"),
+            outRhMin = r.d("OutRhMin"), outRhAvg = r.d("OutRhAvg"), outRhMax = r.d("OutRhMax")
         )
         // The per-variety columns are the bags record when the sheet has them: they set the split and the total.
         val perType = r.usedByCode().filterValues { it > 0 }
@@ -262,7 +270,8 @@ object SheetSchema {
         d.updatedAt, d.updatedBy, d.committed, d.feedUsedBreakdown, d.savedFields, d.indivWeights,
         if (d.locCount > 0) d.locCount else "",
         if (d.weighedAt > 0) d.weighedAt else "",
-        if (d.liftedAt > 0) d.liftedAt else "", d.feedings, n(d.penStartFt)
+        if (d.liftedAt > 0) d.liftedAt else "", d.feedings, n(d.penStartFt),
+        n(d.outTempMin), n(d.outTempAvg), n(d.outTempMax), n(d.outRhMin), n(d.outRhAvg), n(d.outRhMax)
     )
     /** Sample locations 6 and up as column name → value. */
     fun sampleColumns(d: DailyDataEntity): Map<String, Any> = buildMap {
@@ -387,7 +396,8 @@ object SheetSchema {
         listOf("panLipCm", sv(farm.panLipCm)),
         listOf("lineFillBags", sv(farm.lineFillBags)), listOf("sensorPansPerLine", sv(farm.sensorPansPerLine)),
         listOf("panSpacingFt", sv(farm.panSpacingFt)), listOf("feederLineGapFt", sv(farm.feederLineGapFt)),
-        listOf("lineFillBagsShut", sv(farm.lineFillBagsShut))
+        listOf("lineFillBagsShut", sv(farm.lineFillBagsShut)),
+        listOf("barricades", sv(farm.barricades)), listOf("spaceBy", farm.spaceBy), listOf("padLayout", farm.padLayout)
     )
 
     /** Farm settings from the _Farm key/value tab, laid over [base]; a key the sheet lacks keeps the base value. Keys match case-insensitively. */
@@ -427,7 +437,10 @@ object SheetSchema {
             lineFillBags = num(g("lineFillBags")) ?: num(g("feederLineBags")) ?: base.lineFillBags,
             sensorPansPerLine = it2("sensorPansPerLine", base.sensorPansPerLine),
             panSpacingFt = db("panSpacingFt", base.panSpacingFt), feederLineGapFt = db("feederLineGapFt", base.feederLineGapFt),
-            lineFillBagsShut = db("lineFillBagsShut", base.lineFillBagsShut)
+            lineFillBagsShut = db("lineFillBagsShut", base.lineFillBagsShut),
+            barricades = it2("barricades", base.barricades).coerceIn(0, 4),
+            spaceBy = st("spaceBy", base.spaceBy).lowercase().takeIf { it in listOf("auto", "barricade", "pans") } ?: base.spaceBy,
+            padLayout = st("padLayout", base.padLayout).lowercase().takeIf { it in listOf("side", "c") } ?: base.padLayout
         )
     }
 

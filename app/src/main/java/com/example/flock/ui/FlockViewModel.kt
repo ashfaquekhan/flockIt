@@ -476,8 +476,23 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
                 } catch (e: Exception) { 3 }
                 val fresh = WeatherClient.fetchHourly(farm.weatherLat, farm.weatherLon, need.coerceIn(3, 92))
                 _hourly.value = com.example.flock.network.WeatherStore.merge(ctx, farm.weatherLat, farm.weatherLon, fresh)
+                keepDayWeather(farm, _hourly.value)
             }
         }
+    }
+
+    /**
+     * The weather of every finished day of the open flock (all 24 hours known), kept with its day row and on the sheet:
+     * lowest, average and highest temperature and humidity, so the house and bird models keep real weather for the
+     * whole flock (the phone holds the hours for about 80 days only).
+     */
+    private fun keepDayWeather(farm: FarmEntity, hours: List<com.example.flock.network.HourPoint>) {
+        val flock = _activeFlock.value ?: return
+        val sid = _selectedSpreadsheetId.value
+        val today = try { LocalDate.now(ZoneId.of(farm.timeZone)).toString() } catch (e: Exception) { LocalDate.now().toString() }
+        val sums = dayWeatherOf(hours, flock.startDate, today)
+        if (sums.isEmpty()) return
+        viewModelScope.launch { try { repository.saveDayWeather(sid, flock.flockId, sums) } catch (e: Exception) { } }
     }
 
     /** Opens the 14-day forecast popup for the farm's configured location. */
@@ -1005,4 +1020,19 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
             _userMessage.value = "Signed out"
         }
     }
+}
+
+/**
+ * Each finished day of a flock from the hourly weather: the days from [startDate] up to (not including) [today] whose
+ * 24 hours are all known, with their lowest, average and highest temperature and humidity (one decimal).
+ */
+fun dayWeatherOf(hours: List<HourPoint>, startDate: String, today: String): Map<String, FlockRepository.DayWeather> {
+    fun r1(x: Double) = Math.round(x * 10) / 10.0
+    return hours.filter { it.date >= startDate && it.date < today }.groupBy { it.date }
+        .filterValues { h -> h.map { it.hour }.toSet().size >= 24 }
+        .mapValues { (_, h) ->
+            val byHour = h.groupBy { it.hour }.mapValues { it.value.last() }.values
+            FlockRepository.DayWeather(r1(byHour.minOf { it.tempC }), r1(byHour.map { it.tempC }.average()), r1(byHour.maxOf { it.tempC }),
+                r1(byHour.minOf { it.rhPct }), r1(byHour.map { it.rhPct }.average()), r1(byHour.maxOf { it.rhPct }))
+        }
 }
