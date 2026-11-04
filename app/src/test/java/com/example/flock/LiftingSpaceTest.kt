@@ -6,6 +6,8 @@ import com.example.flock.data.parseFeedings
 import com.example.flock.domain.Litter
 import com.example.flock.domain.SpacePlan
 import com.example.flock.domain.Suggest
+import com.example.flock.ui.screens.toCount
+import com.example.flock.ui.screens.toNum
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -151,7 +153,7 @@ class LiftingSpaceTest {
         cool.steps.forEach { println("cool: $it") }
         assertEquals("pen", c.key)
         assertTrue(c.shutPastPen > 0)
-        assertTrue(cool.steps[1].contains("past it") && cool.steps[0].startsWith("Barricade at"))
+        assertTrue(cool.steps[1].contains("outside") && cool.steps[0].startsWith("Barricade at"))
         // too few bags to fill the open pans even once: the plan says so
         val short = SpacePlan.plan(spaceIn(7222, 3.1, 31.0, 24.0).copy(dayBags = 3.0, bagsFullLine = 3.0, birdsPerPanMax = 71.0))
         assertTrue(short.options.first().let { !it.feedReaches })
@@ -197,6 +199,52 @@ class LiftingSpaceTest {
         val feed = d.feedWalkM(d.feedPattern); val water = d.waterWalkM
         println("day 44 walk: feed ${"%.2f".format(feed)} m (${d.feedPattern.label}), water ${"%.2f".format(water)} m, limits ${d.walkLimits}")
         assertTrue(feed <= d.walkLimits.maxM && water <= d.walkLimits.maxM)
+    }
+
+    /** Both barricades: the floor between them, its pans, and a feeding that fills the open pans only (the tube stays full). */
+    @Test fun theFloorBetweenTwoBarricades() {
+        // 7,222 birds of 3.2 kg left in the house, trimmed 50 ft at the front and 50 ft at the back of 299 ft
+        val i = spaceIn(7222, 3.2, 31.0, 24.0, area = (299.0 - 100) * 39).copy(penStartFt = 50.0, penFt = 249.0,
+            dayBags = 22.0, bagsFullLine = 3.0, bagsShutLine = 1.0, birdsPerPanMax = 70.0, feedingsWanted = 2)
+        val out = SpacePlan.plan(i)
+        val set = out.options.first { it.key == "set" }
+        println("as set: ${set.title}; ${out.why}; ${out.steps}")
+        assertEquals("set", out.options[out.best].key)
+        assertTrue("pans inside the barricades only", set.pansInPen in 75..82)
+        assertEquals(199.0 * 39, set.areaFt2, 1.0)
+        // filling the lines takes the tube (1 bag a line) as well as the open pans (114 pans share the other 2 bags)
+        assertEquals(4 * 1.0 + 4 * set.openPerLine / (114 / 2.0), set.fillBags, 0.01)
+        assertTrue(out.steps[0].startsWith("Barricades at 50 and 249 ft"))
+    }
+
+    /** The house map: tunnel air warms towards the fans, the birds add up to the flock, the litter is wetter under the drinkers. */
+    @Test fun theHouseMap() {
+        val m = com.example.flock.models.HouseMap.field(com.example.flock.models.HouseMap.In(
+            lengthFt = 299.0, widthFt = 39.0, penStartFt = 0.0, penEndFt = 299.0,
+            drinkerYFt = listOf(2.2, 10.8, 19.5, 28.2, 36.8), feederYFt = listOf(6.5, 15.2, 23.8, 32.5),
+            live = 7222, avgKg = 3.15, houseC = 30.0, houseRh = 65.0, airCfm = 100_000.0, tunnel = true, comfortC = 21.0,
+            litterMoistPct = 28.0, densityIdeal = 30.0, densityMost = 39.0, rhIdeal = 70.0, rhMost = 80.0))
+        println("rise ${"%.2f".format(m.riseC)} °C; air ${"%.1f".format(m.airC(5.0))} → ${"%.1f".format(m.airC(295.0))}; rh ${"%.1f".format(m.rh(5.0))} → ${"%.1f".format(m.rh(295.0))}")
+        assertTrue(m.riseC in 0.5..4.0)
+        // warmer towards the fans; the humidity can go either way (warming dries the air, the birds' breath wets it)
+        assertTrue(m.airC(295.0) > m.airC(5.0))
+        assertTrue(m.rh(5.0) in 40.0..90.0 && m.rh(295.0) in 40.0..90.0)
+        // the birds on the floor add up to the flock
+        var birds = 0.0
+        for (a in 0 until 60) for (b in 0 until 40) birds += m.birdsM2((a + 0.5) * 299 / 60, (b + 0.5) * 39 / 40) * (299.0 / 60 * 39 / 40 * 0.0929)
+        assertEquals(7222.0, birds, 7222 * 0.05)
+        // wetter under a drinker line than between the lines; outside the birds' floor nobody lives
+        assertTrue(m.litterMoist(150.0, 10.8) > m.litterMoist(150.0, 6.5))
+        val pen = com.example.flock.models.HouseMap.field(com.example.flock.models.HouseMap.In(299.0, 39.0, 50.0, 249.0, listOf(10.8), listOf(6.5),
+            7222, 3.15, 24.0, 60.0, 10_000.0, false, 21.0, 25.0, 30.0, 39.0, 70.0, 80.0))
+        assertEquals(0.0, pen.kgM2(20.0, 10.0), 0.0)
+        assertTrue(pen.kgM2(150.0, 10.0) > 0)
+    }
+
+    /** Numbers as typed on the entry page: comma decimals, spaces, "12.0" for a count. */
+    @Test fun numbersAsTyped() {
+        assertEquals(3.5, "3,5".toNum()!!, 0.0); assertEquals(3.5, " 3.5 ".toNum()!!, 0.0); assertEquals(1234.5, "1,234.5".toNum()!!, 0.0)
+        assertEquals(12, "12.0".toCount()); assertEquals(1234, "1,234".toCount()); assertEquals(null, "12.5".toCount())
     }
 
     @Test fun feedingsRoundTrip() {

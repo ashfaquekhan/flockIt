@@ -38,7 +38,8 @@ import kotlin.math.min
  * which pans are open. Long houses scroll sideways.
  */
 @Composable
-fun FarmTopView(d: OutputData, pattern: OutputData.PanPattern = d.feedPattern, barricadeFt: Double = d.barricadeFtNow, pansInArea: Int = d.pansInArea) {
+fun FarmTopView(d: OutputData, pattern: OutputData.PanPattern = d.feedPattern, barricadeFt: Double = d.barricadeFtNow, pansInArea: Int = d.pansInArea,
+                startFt: Double = d.penStartFt) {
     val f = d.farm
     val lenFt = max(10.0, f.usableLengthFt)
     val widFt = max(5.0, f.usableWidthFt)
@@ -58,16 +59,18 @@ fun FarmTopView(d: OutputData, pattern: OutputData.PanPattern = d.feedPattern, b
             val paint = Paint().apply { isAntiAlias = true; textSize = 10f * px; typeface = com.example.ui.theme.AppFonts.mono; color = Color.White.copy(alpha = 0.7f).toArgb() }
             // house
             drawRect(line, Offset(X(0.0), Y(0.0)), Size((lenFt * s).toFloat(), (widFt * s).toFloat()), style = Stroke(1.2f))
-            // birds' area up to the barricade; past it the floor is empty (dark) and fenced off
+            // the birds' floor between the barricades; outside it the floor is empty (dark) and fenced off
             val bar = barricadeFt.coerceIn(0.0, lenFt)
-            drawRect(ValueIdeal.copy(alpha = 0.07f), Offset(X(0.0), Y(0.0)), Size((bar * s).toFloat(), (widFt * s).toFloat()))
-            if (bar < lenFt - 0.5) {
-                drawRect(Color.White.copy(alpha = 0.06f), Offset(X(bar), Y(0.0)), Size(((lenFt - bar) * s).toFloat(), (widFt * s).toFloat()))
-                // the fence: a solid bar with posts
-                drawLine(ValuePredicted, Offset(X(bar), Y(0.0) - 6f), Offset(X(bar), Y(widFt) + 6f), 4f * px)
+            val front = startFt.coerceIn(0.0, bar)
+            drawRect(Color.White.copy(alpha = 0.05f), Offset(X(front), Y(0.0)), Size(((bar - front) * s).toFloat(), (widFt * s).toFloat()))
+            fun fence(at: Double) {
+                // a solid bar with posts, white: it is a thing in the house, not a kind of value
+                drawLine(Color.White, Offset(X(at), Y(0.0) - 6f), Offset(X(at), Y(widFt) + 6f), 4f * px)
                 var post = 0.0
-                while (post <= widFt + 1e-6) { drawLine(ValuePredicted, Offset(X(bar) - 4f * px, Y(post)), Offset(X(bar) + 4f * px, Y(post)), 2f * px); post += 3.0 }
+                while (post <= widFt + 1e-6) { drawLine(Color.White, Offset(X(at) - 4f * px, Y(post)), Offset(X(at) + 4f * px, Y(post)), 2f * px); post += 3.0 }
             }
+            if (bar < lenFt - 0.5) fence(bar)
+            if (front > 0.5) fence(front)
             // lines, spread across the width
             val gap = d.lineGapFt
             var fIdx = 0
@@ -86,8 +89,8 @@ fun FarmTopView(d: OutputData, pattern: OutputData.PanPattern = d.feedPattern, b
                         val pxFt = start + (p + 0.5) * d.panSpacingFt
                         val c = Offset(X(pxFt), Y(y))
                         when {
-                            // past the barricade: shut (the auger would fill it for no bird)
-                            p >= pansInArea -> { drawCircle(faint, r, c, style = Stroke(1f)); drawLine(Color.White.copy(alpha = 0.45f), Offset(c.x - r, c.y - r), Offset(c.x + r, c.y + r), 1f); drawLine(Color.White.copy(alpha = 0.45f), Offset(c.x - r, c.y + r), Offset(c.x + r, c.y - r), 1f) }
+                            // outside the barricades: shut (the auger would fill it for no bird)
+                            p < pattern.first || p - pattern.first >= pansInArea -> { drawCircle(faint, r, c, style = Stroke(1f)); drawLine(Color.White.copy(alpha = 0.45f), Offset(c.x - r, c.y - r), Offset(c.x + r, c.y + r), 1f); drawLine(Color.White.copy(alpha = 0.45f), Offset(c.x - r, c.y + r), Offset(c.x + r, c.y - r), 1f) }
                             pattern.isOpen(p) -> drawCircle(ValuePredicted, r, c)
                             else -> drawCircle(Color.White.copy(alpha = 0.45f), r, c, style = Stroke(1f))
                         }
@@ -114,11 +117,18 @@ fun FarmTopView(d: OutputData, pattern: OutputData.PanPattern = d.feedPattern, b
             paint.textAlign = Paint.Align.RIGHT
             drawContext.canvas.nativeCanvas.drawText("${Fmt.n(lenFt, 1)} × ${Fmt.n(widFt, 1)} ft", X(lenFt), Y(0.0) - 8f, paint)
             paint.textAlign = Paint.Align.LEFT
+            paint.color = Color.White.toArgb()
             if (bar < lenFt - 0.5) {
-                paint.color = ValuePredicted.toArgb(); paint.isFakeBoldText = true
-                drawContext.canvas.nativeCanvas.drawText("barricade ${Fmt.n(bar, 1)} ft", X(bar) + 8f * px, Y(widFt) + 18f, paint)
-                paint.isFakeBoldText = false; paint.color = Color.White.copy(alpha = 0.6f).toArgb()
+                drawContext.canvas.nativeCanvas.drawText("back barricade ${Fmt.n(bar, 1)} ft", X(bar) + 8f * px, Y(widFt) + 18f, paint)
+                paint.color = Color.White.copy(alpha = 0.6f).toArgb()
                 drawContext.canvas.nativeCanvas.drawText("no birds · pans shut", X(bar) + 8f * px, Y(widFt / 2), paint)
+            }
+            if (front > 0.5) {
+                paint.color = Color.White.toArgb(); paint.textAlign = Paint.Align.RIGHT
+                drawContext.canvas.nativeCanvas.drawText("front barricade ${Fmt.n(front, 1)} ft", X(front) - 8f * px, Y(widFt) + 18f, paint)
+                paint.color = Color.White.copy(alpha = 0.6f).toArgb()
+                drawContext.canvas.nativeCanvas.drawText("no birds · pans shut", X(front) - 8f * px, Y(widFt / 2), paint)
+                paint.textAlign = Paint.Align.LEFT
             }
             paint.color = Color.White.copy(alpha = 0.7f).toArgb()
             drawContext.canvas.nativeCanvas.drawText("lines ${Fmt.n(d.lineLenFt, 1)} ft · pans every ${Fmt.n(d.panSpacingFt, 1)} ft", X(0.0) + 60f * px, Y(0.0) - 8f, paint)
@@ -207,7 +217,7 @@ fun PanCellView(d: OutputData, pattern: OutputData.PanPattern) {
             val r = (0.55 * ftToDp * px).toFloat().coerceIn(3.5f * px, 7f * px)
             for (i in 0 until shownPans) {
                 val c = Offset(X(panFt(i)), Y(0.0))
-                if (pattern.isOpen(i)) drawCircle(ValuePredicted, r, c) else { drawCircle(Color.Black, r, c); drawCircle(Color.White.copy(alpha = 0.6f), r, c, style = Stroke(1.3f * px)) }
+                if (pattern.onInSeries(i)) drawCircle(ValuePredicted, r, c) else { drawCircle(Color.Black, r, c); drawCircle(Color.White.copy(alpha = 0.6f), r, c, style = Stroke(1.3f * px)) }
             }
             label(Fmt.n(pattern.travelM, 2) + " m", (corner.x + pan.x) / 2, (corner.y + pan.y) / 2 - 4f * px, if (ok) ValuePresent else ValueMax)
             // dimensions: floor length along the line (top), line gap (right), pan spacing (under two pans)

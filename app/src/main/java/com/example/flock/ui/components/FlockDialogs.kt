@@ -76,7 +76,7 @@ fun FlockManagementDialog(
         title = {
             Text(
                 text = if (showCreateForm) "Start New Batch" else "Flock Registry",
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium)
             )
         },
         text = {
@@ -91,7 +91,7 @@ fun FlockManagementDialog(
                         text = "ACTIVE & REGISTERED FLOCKS",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontFamily = com.example.ui.theme.NumberFont,
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     )
@@ -113,7 +113,7 @@ fun FlockManagementDialog(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = f.name,
-                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
                                     )
                                     Text(
                                         text = "${f.breed} · ${f.birdsPlaced} placed · start ${f.startDate}",
@@ -250,7 +250,7 @@ fun FarmSettingsDialog(
         title = {
             Text(
                 text = "Farm Hardware & Profile",
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium)
             )
         },
         text = {
@@ -335,7 +335,7 @@ fun FarmSettingsDialog(
                     text = "WEATHER LOCATION (OPEN-METEO)",
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontFamily = com.example.ui.theme.NumberFont,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 )

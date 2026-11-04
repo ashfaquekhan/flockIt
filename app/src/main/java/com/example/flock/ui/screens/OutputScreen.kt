@@ -167,7 +167,14 @@ fun OutputScreen(
     androidx.compose.runtime.LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(30_000); now = System.currentTimeMillis() } }
     val zone = remember(farm.timeZone) { try { java.time.ZoneId.of(farm.timeZone) } catch (e: Exception) { java.time.ZoneId.systemDefault() } }
     val localEvents = remember(flockKey) { FeedLog.load(ctx, flockKey) }
-    val events = remember(dailyRows, localEvents, zone) { feedEvents(dailyRows, localEvents, zone) }
+    // feedings: those on the sheet, and on a day with none the model's own (the farm window feeds the birds at them)
+    val events = remember(dailyRows, localEvents, zone, d) {
+        val logged = feedEvents(dailyRows, localEvents, zone)
+        val date = try { java.time.LocalDate.parse(entry.date) } catch (e: Exception) { null }
+        val onDay = logged.any { date != null && java.time.Instant.ofEpochMilli(it.t).atZone(zone).toLocalDate() == date }
+        if (date == null || onDay) logged else logged + d.daySchedule(d.feedings).feeds.map { h ->
+            FeedEvent(date.atStartOfDay(zone).toInstant().toEpochMilli() + (h * 3600_000).toLong(), d.bagsPerFeeding) }.sortedBy { it.t }
+    }
     val light = LightProgram(entry.lightHours)
     // the time the page shows: today the clock (until the time slider is moved), another day midday
     val nowZ = remember(now, zone) { java.time.Instant.ofEpochMilli(now).atZone(zone) }
@@ -197,6 +204,16 @@ fun OutputScreen(
             ?: entry.updatedAt.takeIf { it > 0 && entry.savedGroups().isNotEmpty() }?.let { java.time.Instant.ofEpochMilli(it).atZone(zone) }
                 ?.takeIf { it.toLocalDate() == dayDate }?.let { String.format("%02d:%02d", it.hour, it.minute) }
     }
+    // the house floor place by place at the time shown (the model suite's house map)
+    val houseMap = remember(d, hour) { houseMapOf(d, hour, com.example.flock.models.ModelStore.params(ctx)) }
+    // kept for the long-term data: the house map's run and the day's inputs and projections (one line each a day)
+    androidx.compose.runtime.LaunchedEffect(flockKey, d.day, isToday) {
+        if (isToday && flock != null) {
+            val t = System.currentTimeMillis()
+            val runs = listOf(houseMap.record(flockKey, d.day, t), dayRecord(d, flockKey, t))
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runs.forEach { com.example.flock.models.ModelStore.record(ctx, it) } }
+        }
+    }
     val coop = CoopInput(
         age = d.day, meanG = view.weightG.takeIf { d.vk != ValueKind.PRESENT } ?: d.bw, cvPct = d.cvEst?.coerceIn(3.0, 20.0), live = d.live, entry = d.entryBirds, stage = d.stage, light = light, feeder = feeder,
         zoneId = zone, airC = air?.air?.tempC ?: entry.tempIdeal, rhPct = air?.air?.rhPct ?: entry.rhIdeal, feelsC = air?.r?.feltC ?: d.plan.comfort,
@@ -205,7 +222,7 @@ fun OutputScreen(
         waterC = 18.0 to 21.0, waterPh = 6.0 to 6.8, travelM = ALLOWED_TRAVEL_M,
         layout = FarmLayout(farm.usableLengthFt, farm.usableWidthFt, d.lineOrder, d.lineGapFt, d.lineStartFt, d.panSpacingFt, d.pansPerLine,
             d.sensorPans, d.feedPattern.on, d.feedPattern.off, d.pansInArea, NIPPLE_SPACING_FT, d.drinkerLenFt, d.drinkerHtIn * 0.0254,
-            d.barricadeFtNow, d.live.toDouble() / d.areaInUseFt2),
+            d.barricadeFtNow, d.live.toDouble() / d.areaInUseFt2, d.penStartFt),
         minVentCfmBird = d.minVentCfmBird, minVentCfm = d.minVentCfmBird * d.live, idealC = entry.tempIdeal,
         nh3Max = entry.nh3Max, co2Max = entry.co2Max, ventC = d.bodyTemp, feetC = d.footTemp.second,
         breaths = d.breathsIdeal, pantAbove = PANT_ABOVE_PER_MIN, weightMeasured = d.vk == ValueKind.PRESENT,
@@ -213,7 +230,8 @@ fun OutputScreen(
         stateWord = air?.r?.state?.label, airFrom = air?.air?.source?.label,
         densityKgFt2 = d.live * d.bwNow / 1000.0 / d.areaInUseFt2, cvEstimated = !d.cvMeasured, compact = false,
         hungry = needsNow.hungry, thirsty = needsNow.thirsty, panting = needsNow.panting,
-        atMs = if (live) null else viewMs, ft2PerBird = d.space.ft2PerBird, roam = d.roam
+        atMs = if (live) null else viewMs, ft2PerBird = d.space.ft2PerBird, roam = d.roam,
+        map = houseMap, facts = coopFacts(d, view, air)
     )
     var confirmClose by remember { mutableStateOf(false) }
 
@@ -222,8 +240,9 @@ fun OutputScreen(
     val entryMin = listOf(entry.weighedAt, entry.liftedAt).firstOrNull { it > 0 }?.let { minutesOf(it) }
 
     // the page's sections, in the order a day is worked: what to do first (feed, water, air), then how the flock is doing
-    val tabs = listOf("coop" to "Farm", "glance" to "Glance", "feed" to "Feed", "water" to "Water", "walk" to "Walk", "air" to "Air",
-        "birds" to "Birds", "floor" to "Floor", "litter" to "Litter", "fcr" to "FCR", "graphs" to "Graphs", "book" to "Book")
+    // the order of urgency: air can kill in minutes, water in hours, feed over the day; then the birds, their floor, the records
+    val tabs = listOf("coop" to "Farm", "glance" to "Glance", "air" to "Air", "water" to "Water", "feed" to "Feed", "birds" to "Birds",
+        "floor" to "Floor", "walk" to "Walk", "litter" to "Litter", "fcr" to "FCR", "graphs" to "Graphs", "book" to "Book")
     val dens = androidx.compose.ui.platform.LocalDensity.current
     var tabsPx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     val tabsDp = with(dens) { tabsPx.toDp() }
@@ -239,23 +258,21 @@ fun OutputScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // the house and the birds in it, at the time on the rail
-        Anchored("coop") { GlassBox(Modifier.fillMaxWidth()) { Coop3D(coop) } }
+        Anchored("coop") { GlassBox(Modifier.fillMaxWidth()) {
+            Coop3D(coop.copy(feedTimes = d.modelFeedTimes(d.feedOptions[feedPick.coerceIn(0, d.feedOptions.size - 1)].feedings)))
+        } }
         // the day at a glance: the four radars and the twelve numbers that matter
         Anchored("glance") {
             GlanceCard(d, view, entryHHmm, live, { pinned = null }, hour, pat)
             AlertList(d.allAlerts)
         }
-        Anchored("feed") {
-            FeedTodayCard(d, feedPick, { feedPick = it }) {
-                FeedEntryRow(d, feeder, zone, onFeed = { bags, at -> onLogFeeding(bags, at); now = System.currentTimeMillis() },
-                    onUndo = { onUndoFeeding(); now = System.currentTimeMillis() })
-            }
-        }
-        Anchored("water") { WaterCard(d, onFarmChange) }
-        Anchored("walk") { WalkCard(d, pat) }
         Anchored("air") { VentTab(d, hour, needsNow, weatherOn, onWeatherOn) }
+        Anchored("water") { WaterCard(d, onFarmChange) }
+        // the feedings are the model's (shown in the farm window); nothing to log by hand
+        Anchored("feed") { FeedTodayCard(d, feedPick, { feedPick = it }) }
         Anchored("birds") { BirdsTab(d, onFlockPlan) }
         Anchored("floor") { SpaceCard(d) }
+        Anchored("walk") { WalkCard(d, pat) }
         Anchored("litter") { LitterCard(d, hour) }
         Anchored("fcr") { LiftingCard(d) }
         Anchored("graphs") { GraphsCard(d) }
@@ -352,7 +369,7 @@ private fun FeedEntryRow(d: OutputData, feeder: FeederState, zone: java.time.Zon
     }
     Column(Modifier.fillMaxWidth().border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(10.dp)).padding(10.dp).testTag("feed_log"),
         verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Log a feeding", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
+        Text("Log a feeding", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium))
         run {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 androidx.compose.material3.OutlinedTextField(
@@ -408,7 +425,7 @@ fun TagChip(k: ValueKind, modifier: Modifier = Modifier, text: String = kindTag(
             Spacer(Modifier.width(if (compact) 3.dp else 5.dp))
             Text(text, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
                 style = (if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium)
-                    .copy(fontWeight = FontWeight.Bold, color = kindColor(k)))
+                    .copy(fontWeight = FontWeight.Medium, color = kindColor(k)))
         }
     }
 }
@@ -441,7 +458,7 @@ fun OutputCard(
     GlassBox(Modifier.fillMaxWidth().onGloballyPositioned { anchors?.report("card:$title", it.positionInRoot().y) }) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = title, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface),
+                Text(text = title, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface),
                     modifier = Modifier.weight(1f))
                 if (info != null) InfoButton(info)
             }
@@ -456,8 +473,8 @@ fun Part(title: String, info: String? = null, content: @Composable () -> Unit) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.16f)))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.4.sp),
-                color = Color.White.copy(alpha = 0.85f), modifier = Modifier.weight(1f))
+            Text(title, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
+                color = Color.White, modifier = Modifier.weight(1f))
             if (info != null) InfoButton(info)
         }
         content()
@@ -472,7 +489,7 @@ fun GistTile(item: GistItem, modifier: Modifier = Modifier) {
     Surface(color = Color.Black, shape = RoundedCornerShape(10.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine), modifier = modifier) {
         Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp)) {
             Text(item.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-            Text(item.value, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black, fontFamily = com.example.ui.theme.NumberFont, fontSize = 16.sp),
+            Text(item.value, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium, fontFamily = com.example.ui.theme.NumberFont, fontSize = 16.sp),
                 color = valColor, maxLines = 2)
             Text(item.sub, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -534,7 +551,7 @@ fun PopulationDistributionCard(entry: DailyDataEntity) {
                     else -> StatusCrit
                 }
                 Column(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
-                    Text(Fmt.n(loc.avg, 1), style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold))
+                    Text(Fmt.n(loc.avg, 1), style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium))
                     Box(modifier = Modifier.fillMaxWidth().height((frac * 110).dp).background(barColor, RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)))
                     Text(loc.label, style = MaterialTheme.typography.labelMedium)
                     Text("${loc.count} birds", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -556,7 +573,7 @@ fun PopulationDistributionCard(entry: DailyDataEntity) {
 private fun BandChip(label: String, count: Int, color: Color, modifier: Modifier = Modifier) {
     Surface(color = Color.Black, shape = RoundedCornerShape(8.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine), modifier = modifier) {
         Column(modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("$count spots", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Black, color = color, fontFamily = com.example.ui.theme.NumberFont))
+            Text("$count spots", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium, color = color, fontFamily = com.example.ui.theme.NumberFont))
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         }
     }
@@ -604,4 +621,62 @@ fun Anchored(key: String, content: @Composable () -> Unit) {
     val a = LocalScrollAnchors.current
     // a column (not a box): some blocks emit several cards, which must stack, not overlap
     Column(Modifier.fillMaxWidth().onGloballyPositioned { a?.report(key, it.positionInRoot().y) }, verticalArrangement = Arrangement.spacedBy(12.dp)) { content() }
+}
+
+
+/** The house map's inputs for the hour shown: the barricades and lines, the birds, the house air and fans, the litter, the weather. */
+fun houseMapOf(d: OutputData, hour: Int, params: com.example.flock.models.ModelParams = com.example.flock.models.ModelParams.DEFAULTS): com.example.flock.models.HouseMap.Field {
+    val h = d.envAt(hour)
+    val sky = d.env?.at(hour)
+    val fans = h?.fans ?: d.minLevel.avgFans
+    val lines = d.lineOrder.withIndex()
+    return com.example.flock.models.HouseMap.field(com.example.flock.models.HouseMap.In(
+        lengthFt = d.farm.usableLengthFt, widthFt = d.farm.usableWidthFt, penStartFt = d.penStartFt, penEndFt = d.barricadeFtNow,
+        drinkerYFt = lines.filter { it.value == 'D' }.map { (it.index + 0.5) * d.lineGapFt },
+        feederYFt = lines.filter { it.value == 'F' }.map { (it.index + 0.5) * d.lineGapFt },
+        live = d.live, avgKg = d.bwNow / 1000.0,
+        houseC = h?.air?.tempC ?: d.e.tempIdeal, houseRh = h?.air?.rhPct ?: d.e.rhIdeal,
+        airCfm = fans * d.fanCfm, tunnel = fans > d.minLevel.avgFans * 1.5 + 0.5, comfortC = d.plan.comfort,
+        litterMoistPct = litterOf(d, hour).moisturePct,
+        densityIdeal = d.space.targetKgM2, densityMost = d.farm.densityCapDefault, rhIdeal = d.e.rhMax, rhMost = d.e.rhMax + 10,
+        sources = com.example.flock.models.Sources(sky?.outC, sky?.outRh), params = params))
+}
+
+/** The small numbers under the farm window: the flock now, and what the house should be today. */
+fun coopFacts(d: OutputData, view: OutputData.NowView, air: com.example.flock.domain.BirdEnvironment.Hour?): List<Triple<String, String, ValueKind>> {
+    val m = d.mass
+    val e = d.e
+    val ach = if (d.houseVolFt3 > 0) d.minVentCfmBird * d.liveSafe * 60 / d.houseVolFt3 else null
+    return listOf(
+        Triple("avg wt", Fmt.n(if (d.vk == ValueKind.PRESENT) d.bwNow else view.weightG, 1) + " g", d.vk),
+        Triple("CV", Fmt.n(d.cvEst, 1) + " %", if (d.cvMeasured) ValueKind.PRESENT else ValueKind.PREDICTED),
+        Triple("area", Fmt.n(d.space.ft2PerBird, 2) + " ft²/bird", ValueKind.PREDICTED),
+        Triple("density", Fmt.n(d.space.kgM2, 1) + " kg/m²", ValueKind.PREDICTED),
+        Triple("mortality", Fmt.n(d.mortTDPct, 2) + " %", d.mk),
+        Triple("FCR", Fmt.n(m?.fcr ?: view.fcr, 3), d.fcrKind),
+        Triple("cFCR", Fmt.n(m?.cFcrCompany, 3), d.fcrKind),
+        Triple("feels", air?.r?.feltC?.let { Fmt.n(it, 1) + " °C" } ?: "—", ValueKind.PREDICTED),
+        Triple("ideal temp", Fmt.n(e.tempIdeal, 1) + " °C", ValueKind.IDEAL),
+        Triple("ideal RH", Fmt.n(e.rhIdeal, 1) + " %", ValueKind.IDEAL),
+        Triple("ideal air", Fmt.n(d.minVentCfmBird, 3) + " cfm/bird", ValueKind.IDEAL),
+        Triple("air changes", ach?.let { Fmt.n(it, 1) + " /h" } ?: "—", ValueKind.IDEAL),
+        Triple("ideal pressure", "20.0–25.0 Pa", ValueKind.IDEAL),
+        Triple("light", Fmt.n(e.lightHours, 1) + " h", ValueKind.IDEAL)
+    )
+}
+
+/** The day as the models saw it: what was entered, the weather, and what was projected — one line a day in the model log. */
+fun dayRecord(d: OutputData, flockId: String, atMs: Long): com.example.flock.models.ModelRecord {
+    val e = d.e
+    val m = d.mass
+    return com.example.flock.models.ModelRecord("day", 1, 0, flockId, d.day, atMs,
+        inputs = mapOf("date" to e.date, "liveBirds" to d.live, "mortality" to e.mortality, "avgWeightG" to e.avgWeight, "cv" to e.cv,
+            "feedBagsUsed" to e.feedBagsUsed, "birdsLifted" to e.birdsLifted, "weightLiftedKg" to e.weightLifted,
+            "penStartFt" to d.penStartFt, "penEndFt" to d.barricadeFtNow, "lightHours" to e.lightHours,
+            "outsideHours" to d.outsideHours.map { listOf(it.first, it.second, it.third) }, "weatherSource" to d.outsideSource.name,
+            "sensors" to emptyList<Any>()),
+        outputs = mapOf("bwG" to d.bw, "bwNowG" to d.bwNow, "fcr" to m?.fcr, "cfcr" to m?.cFcrCompany, "epef" to d.epef,
+            "dayBags" to d.dayBags, "feedings" to d.feedings, "feedTimes" to d.modelFeedTimes(d.feedings), "waterL" to d.waterL,
+            "kgM2" to d.space.kgM2, "walkFeedM" to d.feedWalkM(d.feedPattern), "walkWaterM" to d.waterWalkM,
+            "expectedDeaths" to d.expectedDeaths, "litterMoistPct" to litterOf(d, 12).moisturePct))
 }

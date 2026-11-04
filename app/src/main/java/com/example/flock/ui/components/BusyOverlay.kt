@@ -56,7 +56,7 @@ fun BusyOverlay(label: String?) {
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             CircularProgressIndicator(color = Color.White, strokeWidth = 3.dp, modifier = Modifier.size(36.dp))
-            Text("$label…", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = Color.White, textAlign = TextAlign.Center)
+            Text("$label…", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium), color = Color.White, textAlign = TextAlign.Center)
             Text("Other buttons wait until it is done · $secs s", style = MaterialTheme.typography.labelMedium,
                 color = Color.White.copy(alpha = 0.7f), textAlign = TextAlign.Center)
         }

@@ -125,7 +125,6 @@ private class Tile(
 @Composable
 fun GlanceCard(d: OutputData, view: OutputData.NowView, entryHHmm: String?, live: Boolean, onNow: () -> Unit, hour: Int, pat: OutputData.PanPattern) {
     val m = d.mass
-    val groups = remember(d, view, hour, pat) { radarsOf(d, view, hour, pat) }
     val beforeToday = (d.mortTD - d.mortToday).coerceAtLeast(0).toDouble()
     val mort = if (d.mk == P) d.mortTDPct else (beforeToday + view.deaths) * 100.0 / d.entryBirds
     val weight = if (d.vk == P) d.bwNow else view.weightG
@@ -154,13 +153,13 @@ fun GlanceCard(d: OutputData, view: OutputData.NowView, entryHHmm: String?, live
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val sky = d.hourly.firstOrNull { it.date == d.e.date && it.hour == hour }
-                Text("Day ${d.day}", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                Text("Day ${d.day}", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium))
                 Spacer(Modifier.width(8.dp))
-                Text(view.hhmm, style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold),
-                    color = kindColor(PR), modifier = Modifier.testTag("time_shown"))
+                Text(view.hhmm, style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium),
+                    color = Color.White, modifier = Modifier.testTag("time_shown"))
                 if (sky?.emoji != null) Text(" " + sky.emoji, style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.weight(1f))
-                if (!live) Text("Now", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = Color.White,
+                if (!live) Text("Now", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = Color.White,
                     modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).clickable { onNow() }
                         .padding(horizontal = 10.dp, vertical = 5.dp).testTag("time_now"))
                 Spacer(Modifier.width(6.dp))
@@ -169,9 +168,8 @@ fun GlanceCard(d: OutputData, view: OutputData.NowView, entryHHmm: String?, live
             // what the colours mean, before anything coloured
             ColourKey(listOf(kindColor(P) to "entered " + (entryHHmm ?: "—"), kindColor(PR) to "projected " + view.hhmm,
                 kindColor(C) to "company", kindColor(I) to "ideal (Ross)"))
+            BirdRadar(d, view)
             GradeKey()
-            RadarGrid(groups)
-            RadarKey()
             tiles.chunked(3).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     row.forEach { t -> GlanceTile(t, Modifier.weight(1f)) }
@@ -190,7 +188,7 @@ fun ColourKey(items: List<Pair<Color, String>>, modifier: Modifier = Modifier) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(9.dp).background(c, CircleShape))
                 Spacer(Modifier.width(4.dp))
-                Text(t, style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont), color = Color.White.copy(alpha = 0.8f),
+                Text(t, style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont), color = c,
                     maxLines = 1, softWrap = false)
             }
         }
@@ -212,42 +210,86 @@ fun GradeKey(modifier: Modifier = Modifier) {
     }
 }
 
-/** What the radar's shapes are. */
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-@Composable
-private fun RadarKey() {
-    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        @Composable fun item(t: String, draw: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit) = Row(verticalAlignment = Alignment.CenterVertically) {
-            Canvas(Modifier.size(width = 18.dp, height = 10.dp)) { draw() }
-            Spacer(Modifier.width(4.dp))
-            Text(t, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.8f), maxLines = 1, softWrap = false)
-        }
-        val present = kindColor(P); val company = kindColor(C); val ideal = kindColor(I)
-        item("flock") { drawLine(present, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), 2.4f * density) }
-        item("100 = target") { drawLine(company, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), 1.6f * density,
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f * density, 3f * density))) }
-        item("ideal (birds)") { drawLine(ideal, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), 1.2f * density) }
-    }
+/** The birds' six scores for the day: as entered (null where nothing is entered) and as projected at the time shown. */
+fun birdScores(d: OutputData, view: OutputData.NowView): Triple<List<Radar.Axis>, List<Radar.Axis>, List<Radar.Axis>> {
+    val m = d.mass
+    val beforeToday = (d.mortTD - d.mortToday).coerceAtLeast(0).toDouble()
+    val entered = Radar.scores(Radar.In(
+        weightG = d.bwNow.takeIf { d.vk == P }, weightCom = d.bwCom, fcr = m?.fcr?.takeIf { d.fcrKind == P }, fcrCom = d.fcrCom,
+        mortPct = d.mortTDPct?.takeIf { d.mk == P }, mortCom = d.comCumPct, cvPct = d.cvEst?.takeIf { d.cvMeasured }, eatenVsComPct = null,
+        epef = d.epef?.takeIf { d.fcrKind == P }, epefCom = d.epefCom, gainG = d.gain?.takeIf { d.gainKind == P }, gainCom = d.gainCom))
+    val projected = Radar.scores(Radar.In(
+        weightG = view.weightG, weightCom = d.bwCom, fcr = view.fcr ?: m?.fcr, fcrCom = d.fcrCom,
+        mortPct = (beforeToday + view.deaths) * 100.0 / d.entryBirds, mortCom = d.comCumPct, cvPct = d.cvEst, eatenVsComPct = null,
+        epef = d.epef, epefCom = d.epefCom, gainG = d.gain, gainCom = d.gainCom))
+    val ideal = Radar.scores(Radar.In(
+        weightG = d.bwIdeal, weightCom = d.bwCom, fcr = d.fcrIdeal, fcrCom = d.fcrCom, mortPct = d.ceilingPct, mortCom = d.comCumPct,
+        cvPct = 8.0, eatenVsComPct = 0.0, epef = d.epefIdeal, epefCom = d.epefCom, gainG = d.gainIdeal, gainCom = d.gainCom))
+    return Triple(entered, projected, ideal)
 }
 
+/**
+ * The birds against the company, on six axes: every score is the flock's figure as a share of the company's for the
+ * day (FCR and mortality the other way up, so further out is always better). Nothing is filled: the company is the
+ * dashed ring (100), the ideal (Ross) the thin blue outline, the flock as entered green and as projected at the time
+ * shown amber, so every outline shows through the others (an outline needs three scores; fewer are dots only). Under each name: the entered score (green) and the
+ * projected one (amber).
+ */
 @Composable
-private fun RadarGrid(groups: List<Radar.Group>) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        groups.chunked(2).forEach { row ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.forEach { g ->
-                    Column(Modifier.weight(1f).border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(10.dp)).padding(horizontal = 4.dp, vertical = 6.dp)
-                        .testTag("radar_${g.key}")) {
-                        Text(g.title, Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
-                        Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(g.target, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.55f), maxLines = 1, modifier = Modifier.weight(1f))
-                            val mean = g.mean
-                            Text(mean?.let { Fmt.n(it, 0) } ?: "—", style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold),
-                                color = mean?.let { gradeColor(scoreGrade(it, g.key == "birds")) } ?: Color.White.copy(alpha = 0.5f), maxLines = 1)
-                        }
-                        RadarChart(g.flock, g.ideal, g.max, g.key == "birds", compact = true)
-                    }
-                }
+fun BirdRadar(d: OutputData, view: OutputData.NowView) {
+    val (entered, projected, ideal) = remember(d, view) { birdScores(d, view) }
+    val present = kindColor(P); val proj = kindColor(PR); val company = kindColor(C); val idealC = kindColor(I)
+    Column(Modifier.fillMaxWidth().testTag("radar_birds"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Birds against the company · 100 = the company today, further out is better", style = MaterialTheme.typography.labelLarge, color = Color.White)
+        Canvas(Modifier.fillMaxWidth().height(250.dp).testTag("radar")) {
+            val px = density
+            val n = projected.size
+            val max = Radar.MAX
+            val cx = size.width / 2; val cy = size.height / 2 + 4f * px
+            val rMax = min(size.height / 2 - 34f * px, size.width / 2 - 74f * px)
+            fun pt(i: Int, score: Double): Offset {
+                val a = -Math.PI / 2 + i * Math.PI * 2 / n
+                val r = (score.coerceIn(0.0, max) / max * rMax).toFloat()
+                return Offset(cx + r * cos(a).toFloat(), cy + r * sin(a).toFloat())
+            }
+            fun ring(score: Double) = Path().apply { (0 until n).forEach { i -> val p = pt(i, score); if (i == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y) }; close() }
+            drawPath(ring(50.0), Color.White.copy(alpha = 0.12f), style = Stroke(1f))
+            drawPath(ring(max), Color.White.copy(alpha = 0.12f), style = Stroke(1f))
+            (0 until n).forEach { i -> drawLine(Color.White.copy(alpha = 0.10f), Offset(cx, cy), pt(i, max), 1f) }
+            drawPath(ring(100.0), company, style = Stroke(1.4f * px, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f * px, 5f * px))))
+            // an axis with no score is left out of the shape (not drawn as nought)
+            fun shape(axes: List<Radar.Axis>) = Path().apply {
+                var first = true
+                axes.forEachIndexed { i, a -> val sc = a.score ?: return@forEachIndexed; val p = pt(i, sc); if (first) moveTo(p.x, p.y) else lineTo(p.x, p.y); first = false }
+                close()
+            }
+            drawPath(shape(ideal), idealC, style = Stroke(1.2f * px))
+            if (projected.count { it.score != null } >= 3) drawPath(shape(projected), proj, style = Stroke(1.4f * px))
+            if (entered.count { it.score != null } >= 3) drawPath(shape(entered), present, style = Stroke(1.6f * px))
+            entered.forEachIndexed { i, a -> a.score?.let { drawCircle(present, 3f * px, pt(i, it)) } }
+            projected.forEachIndexed { i, a -> a.score?.let { drawCircle(proj, 2.4f * px, pt(i, it)) } }
+            val label = Paint().apply { isAntiAlias = true; textSize = 12f * px; typeface = com.example.ui.theme.AppFonts.text; color = Color.White.toArgb() }
+            val num = Paint().apply { isAntiAlias = true; textSize = 11.5f * px; typeface = com.example.ui.theme.AppFonts.mono }
+            fun sc(x: Double?) = x?.let { if (it >= max) "150+" else Fmt.n(it, 0) } ?: "—"
+            (0 until n).forEach { i ->
+                val ang = -Math.PI / 2 + i * Math.PI * 2 / n
+                val lr = rMax + 10f * px
+                val lx = cx + lr * cos(ang).toFloat(); val ly0 = cy + lr * sin(ang).toFloat()
+                val dx = lx - cx
+                val align = when { abs(dx) < rMax * 0.3f -> Paint.Align.CENTER; dx > 0 -> Paint.Align.LEFT; else -> Paint.Align.RIGHT }
+                val sy = sin(ang)
+                val ly = when { sy < -0.5 -> ly0 - 16f * px; sy > 0.5 -> ly0 + 12f * px; else -> ly0 }
+                label.textAlign = align
+                drawContext.canvas.nativeCanvas.drawText(projected[i].label, lx, ly, label)
+                // the entered score (green), then the projected one (amber)
+                val e = sc(entered[i].score); val pj = sc(projected[i].score)
+                val we = num.measureText(e); val wsep = num.measureText(" · "); val wp = num.measureText(pj)
+                val total = we + wsep + wp
+                var x = when (align) { Paint.Align.CENTER -> lx - total / 2; Paint.Align.LEFT -> lx; else -> lx - total }
+                num.textAlign = Paint.Align.LEFT
+                num.color = (if (entered[i].score == null) Color.White.copy(alpha = 0.5f) else present).toArgb(); drawContext.canvas.nativeCanvas.drawText(e, x, ly + 14f * px, num); x += we
+                num.color = Color.White.copy(alpha = 0.5f).toArgb(); drawContext.canvas.nativeCanvas.drawText(" · ", x, ly + 14f * px, num); x += wsep
+                num.color = proj.toArgb(); drawContext.canvas.nativeCanvas.drawText(pj, x, ly + 14f * px, num)
             }
         }
     }
@@ -259,9 +301,9 @@ private fun GlanceTile(t: Tile, modifier: Modifier) {
     val mono = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont, letterSpacing = (-0.3).sp)
     fun f(x: Double) = if (t.dec == 0) Fmt.i(Math.round(x).toInt()) else Fmt.n(x, t.dec)
     Column(modifier.border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(10.dp)).padding(horizontal = 7.dp, vertical = 6.dp)) {
-        Text(t.label, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.65f), maxLines = 1, softWrap = false)
+        Text(t.label, style = MaterialTheme.typography.labelLarge, color = Color.White, maxLines = 1, softWrap = false)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(t.value.text, style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp),
+            Text(t.value.text, style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium, letterSpacing = (-0.4).sp),
                 color = col, maxLines = 1, softWrap = false, modifier = Modifier.weight(1f, fill = false))
             if (t.trend != null) { Spacer(Modifier.width(3.dp)); TrendIcon(t.trend, 10.dp) }
         }
@@ -330,7 +372,7 @@ fun RadarChart(flock: List<Radar.Axis>, ideal: List<Radar.Axis>?, max: Double = 
         drawPath(shape(flock), present.copy(alpha = 0.22f))
         drawPath(shape(flock), present, style = Stroke((if (compact) 2f else 2.4f) * px))
         val paint = Paint().apply { isAntiAlias = true; textSize = labelPx; typeface = com.example.ui.theme.AppFonts.text }
-        val num = Paint().apply { isAntiAlias = true; textSize = numPx; typeface = com.example.ui.theme.AppFonts.mono; isFakeBoldText = true }
+        val num = Paint().apply { isAntiAlias = true; textSize = numPx; typeface = com.example.ui.theme.AppFonts.mono; isFakeBoldText = false }
         flock.forEachIndexed { i, a ->
             val s = a.score
             val dot = pt(i, (s ?: 0.0).coerceAtMost(max))
@@ -364,7 +406,7 @@ fun SectionTabs(items: List<Pair<String, String>>, current: String?, onJump: (St
         horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         items.forEach { (key, label) ->
             val on = key == current
-            Text(label, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold), color = if (on) Color.Black else Color.White,
+            Text(label, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = if (on) Color.Black else Color.White,
                 maxLines = 1, softWrap = false,
                 modifier = Modifier.onGloballyPositioned { xs[key] = it.positionInParent().x.toInt() }
                     .background(if (on) Color.White else Color.Transparent, RoundedCornerShape(10.dp))
@@ -435,14 +477,14 @@ fun TimeRail(minutes: Int, nowMinutes: Int?, entryMinutes: Int?, light: LightPro
             nowMinutes?.let { drawCircle(Color.White, (if (engaged) 6f else 3.5f) * px, Offset(x, y(it))); if (engaged) drawCircle(Color.Black, 2.5f * px, Offset(x, y(it))) }
             // the handle: the time shown
             val hy = y(minutes)
-            drawRoundRect(kindColor(PR), Offset(x - 4f * px, hy - 12f * px), Size(8f * px, 24f * px), CornerRadius(4f * px))
+            drawRoundRect(Color.White, Offset(x - 4f * px, hy - 12f * px), Size(8f * px, 24f * px), CornerRadius(4f * px))
         }
         // the time on a bubble beside the handle
         val label = hhmmOf(minutes)
         androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxHeight()) {
             val top = (maxHeight * (minutes / 1440f) - 12.dp).coerceIn(0.dp, maxHeight - 24.dp)
-            if (engaged) Text(label, Modifier.padding(top = top).background(kindColor(PR), RoundedCornerShape(6.dp)).padding(horizontal = 4.dp, vertical = 2.dp),
-                style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold), color = Color.Black,
+            if (engaged) Text(label, Modifier.padding(top = top).background(Color.White, RoundedCornerShape(6.dp)).padding(horizontal = 4.dp, vertical = 2.dp),
+                style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium), color = Color.Black,
                 textAlign = TextAlign.Center)
         }
     }

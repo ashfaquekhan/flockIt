@@ -73,13 +73,19 @@ fun ValueChip(x: V, modifier: Modifier = Modifier, big: Boolean = false) {
     val k = if (x.text == "—") ValueKind.NEUTRAL else x.kind
     val col = kindColor(k)
     Column(modifier.border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)).padding(horizontal = 7.dp, vertical = 4.dp)) {
-        Text(x.tag ?: kindTag(x.kind).ifEmpty { "—" }, maxLines = 1, softWrap = false,
-            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 10.5.sp, letterSpacing = (-0.1).sp), color = col.copy(alpha = 0.9f))
-        Text(x.text, maxLines = 1, softWrap = false,
-            style = MaterialTheme.typography.bodyLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold,
-                fontSize = if (big) 17.sp else 15.sp, letterSpacing = (-0.3).sp), color = col)
+        Text(chipTag(x), maxLines = 1, softWrap = false, style = chipTagStyle(), color = col)
+        Text(x.text, maxLines = 1, softWrap = false, style = chipNumStyle(big), color = col)
     }
 }
+
+private fun chipTag(x: V) = x.tag ?: kindTag(x.kind).ifEmpty { "—" }
+
+@Composable
+private fun chipTagStyle() = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Normal, fontSize = 12.sp, letterSpacing = (-0.1).sp)
+
+@Composable
+private fun chipNumStyle(big: Boolean) = MaterialTheme.typography.bodyLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium,
+    fontSize = if (big) 17.sp else 15.sp, letterSpacing = (-0.3).sp)
 
 /** Width of the label in front of a row of chips: one short word, never broken (grows with the system text size). */
 @Composable
@@ -89,15 +95,23 @@ fun leadWidth(): androidx.compose.ui.unit.Dp = 64.dp * androidx.compose.ui.platf
 @Composable
 fun LeadLabel(text: String) {
     Text(text, modifier = Modifier.width(leadWidth()), maxLines = 1, softWrap = false,
-        style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
+        style = MaterialTheme.typography.labelMedium, color = Color.White)
 }
 
-/** Chips in rows that wrap to fit the screen (at least ~80 dp per chip), split evenly: four make 2 + 2, not 3 + 1. */
+/**
+ * Chips in rows that wrap to fit the screen, split evenly (four make 2 + 2, not 3 + 1): a row holds as many as the
+ * longest name or number among them allows (at least ~80 dp each), so nothing is cut.
+ */
 @Composable
 fun ValueRow(vals: List<V>, lead: String? = null) {
+    val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+    val dens = androidx.compose.ui.platform.LocalDensity.current
+    val tagStyle = chipTagStyle(); val numStyle = chipNumStyle(false)
+    val need = with(dens) { (vals.maxOfOrNull { max(measurer.measure(chipTag(it), tagStyle).size.width, measurer.measure(it.text, numStyle).size.width) } ?: 0).toDp() }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val leadW = if (lead != null) leadWidth() else 0.dp
-        val fit = ((maxWidth - leadW) / 78.dp).toInt().coerceIn(2, 4).coerceAtMost(max(1, vals.size))
+        val chip = maxOf(78.dp, need + 16.dp)
+        val fit = ((maxWidth - leadW + 6.dp) / (chip + 6.dp)).toInt().coerceIn(1, 4).coerceAtMost(max(1, vals.size))
         val lines = (vals.size + fit - 1) / fit
         val per = if (lines <= 0) 1 else (vals.size + lines - 1) / lines
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -120,7 +134,7 @@ fun ValueRow(vals: List<V>, lead: String? = null) {
 fun Param(label: String, unit: String, rows: List<Pair<String?, List<V>>>, note: String? = null, strong: Boolean = false) {
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.Bottom) {
-            Text(label, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = if (strong) FontWeight.Black else FontWeight.Bold))
+            Text(label, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = if (strong) FontWeight.Medium else FontWeight.Medium))
             if (unit.isNotEmpty()) Text("  $unit", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.55f))
         }
         rows.forEach { (scope, vals) -> ValueRow(vals, scope) }
@@ -139,7 +153,7 @@ fun Note(text: String) {}
 
 @Composable
 fun SubHeader(text: String) {
-    Text(text, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary,
+    Text(text, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium), color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(top = 4.dp))
 }
 
@@ -293,20 +307,20 @@ fun KpiLine(k: Kpi, plan: Boolean = false) {
 fun CompactLine(label: String, unit: String, sub: String?, value: V, trend: TrendMark?, refs: List<Pair<String, Color>>, projected: V? = null) {
     Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(label, Modifier.weight(1f).padding(end = 8.dp), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), maxLines = 2)
+            Text(label, Modifier.weight(1f).padding(end = 8.dp), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium), maxLines = 2)
             if (trend != null) { TrendIcon(trend); Spacer(Modifier.width(5.dp)) }
-            Text(value.text, style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold),
+            Text(value.text, style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium),
                 color = kindColor(if (value.text == "—") ValueKind.NEUTRAL else value.kind), maxLines = 1, softWrap = false)
             if (unit.isNotEmpty()) Text(" $unit", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), maxLines = 1, softWrap = false)
         }
         if (sub != null || refs.isNotEmpty() || projected != null) Row(verticalAlignment = Alignment.CenterVertically) {
             if (projected != null) Text("projected " + projected.text, Modifier.padding(end = 8.dp),
-                style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold),
+                style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium),
                 color = kindColor(ValueKind.PREDICTED), maxLines = 1, softWrap = false)
             else if (sub != null) Text(sub, Modifier.padding(end = 8.dp), style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont),
                 color = Color.White.copy(alpha = 0.6f), maxLines = 1, softWrap = false)
             androidx.compose.foundation.layout.FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-                refs.forEach { (t, c) -> Text(t, style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont), color = c, maxLines = 1, softWrap = false) }
+                refs.forEach { (t, c) -> Text(t, style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont), color = c, maxLines = 1, softWrap = false) }
             }
         }
     }
@@ -409,7 +423,7 @@ fun OutputTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit) {
                 .clickable { onSelect(i) }
                 .padding(vertical = 10.dp, horizontal = 4.dp)
                 .testTagCompat("tab_out_$i"), contentAlignment = Alignment.Center) {
-                Text(l, style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (on) FontWeight.Bold else FontWeight.Medium),
+                Text(l, style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (on) FontWeight.Medium else FontWeight.Medium),
                     color = Color.White.copy(alpha = if (on) 1f else 0.7f), maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
         }
@@ -424,14 +438,14 @@ data class MMRow(val label: String, val house: V?, val line: V?, val pan: V?)
 /** Whole house (macro) next to one line and one pan (micro), same numbers side by side. */
 @Composable
 fun MacroMicroTable(rows: List<MMRow>, heads: List<String> = listOf("House", "Line", "Pan")) {
-    val mono = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp)
+    val mono = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium, letterSpacing = (-0.3).sp)
     val grey = Color.White.copy(alpha = 0.6f)
     val wts = listOf(1.25f, 1.1f, 0.8f)
     Column(Modifier.fillMaxWidth().border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Row(Modifier.fillMaxWidth()) {
             Spacer(Modifier.weight(1.05f))
-            heads.forEachIndexed { i, h -> Text(h, Modifier.weight(wts[i]).padding(start = 4.dp), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = grey, textAlign = androidx.compose.ui.text.style.TextAlign.End) }
+            heads.forEachIndexed { i, h -> Text(h, Modifier.weight(wts[i]).padding(start = 4.dp), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium), color = grey, textAlign = androidx.compose.ui.text.style.TextAlign.End) }
         }
         rows.forEach { r ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -450,9 +464,9 @@ private fun KpiRow(k: Kpi) {
     val (stTxt, stCol) = status(k)
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(k.label + if (k.unit.isNotEmpty()) "  " + k.unit else "", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
+            Text(k.label + if (k.unit.isNotEmpty()) "  " + k.unit else "", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium), modifier = Modifier.weight(1f))
             Text(stTxt, modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 3.dp),
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = stCol), maxLines = 1)
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium, color = stCol), maxLines = 1)
         }
         val micro = listOf(v(k.actual, k.decimals, k.actualKind), v(k.company, k.decimals, ValueKind.COMMERCIAL), v(k.ideal, k.decimals, ValueKind.IDEAL, k.idealLabel))
         val rows = buildList {
@@ -506,7 +520,7 @@ fun Knob(label: String, unit: String, value: Double, lo: Double, hi: Double, ste
     val ink = MaterialTheme.colorScheme.onSurface
     fun snap(x: Double) = ((x / step).roundToInt() * step).coerceIn(lo, hi)
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(label, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = color)
+        Text(label, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = color)
         Box(Modifier.size(112.dp), contentAlignment = Alignment.Center) {
             Canvas(
                 Modifier.size(112.dp)
@@ -547,13 +561,13 @@ fun Knob(label: String, unit: String, value: Double, lo: Double, hi: Double, ste
                 }
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(Fmt.n(value, 1), style = MaterialTheme.typography.titleLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Black), color = color)
+                Text(Fmt.n(value, 1), style = MaterialTheme.typography.titleLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium), color = color)
                 Text(unit, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            androidx.compose.material3.OutlinedIconButton(onClick = { onChange(snap(value - step)) }, modifier = Modifier.size(34.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))) { Text("−", fontWeight = FontWeight.Black) }
-            androidx.compose.material3.OutlinedIconButton(onClick = { onChange(snap(value + step)) }, modifier = Modifier.size(34.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))) { Text("+", fontWeight = FontWeight.Black) }
+            androidx.compose.material3.OutlinedIconButton(onClick = { onChange(snap(value - step)) }, modifier = Modifier.size(34.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))) { Text("−", fontWeight = FontWeight.Medium) }
+            androidx.compose.material3.OutlinedIconButton(onClick = { onChange(snap(value + step)) }, modifier = Modifier.size(34.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))) { Text("+", fontWeight = FontWeight.Medium) }
         }
     }
 }

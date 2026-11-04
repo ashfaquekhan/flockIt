@@ -3,8 +3,11 @@ package com.example.flock.ui.screens
 import android.graphics.Paint
 import android.graphics.Typeface
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
@@ -109,7 +112,13 @@ data class CoopInput(
     /** space each bird has (ft²) */
     val ft2PerBird: Double = 0.0,
     /** how much the birds roam against the usual (1): more floor than they need, more and longer walks; tight, fewer */
-    val roam: Double = 1.0
+    val roam: Double = 1.0,
+    /** the house floor place by place (litter, humidity, density, heat) for the views on top of the window */
+    val map: com.example.flock.models.HouseMap.Field? = null,
+    /** small numbers shown in the card under the window: name, value, what the value is */
+    val facts: List<Triple<String, String, ValueKind>> = emptyList(),
+    /** the day's feedings as the model plans them (HH:mm) */
+    val feedTimes: List<String> = emptyList()
 )
 
 /**
@@ -122,9 +131,13 @@ data class FarmLayout(
     val lineStartFt: Double, val panSpacingFt: Double, val pansPerLine: Int, val sensorPans: Int,
     val patternOn: Int, val patternOff: Int, val pansInArea: Int,
     val nippleSpacingFt: Double, val drinkerLenFt: Double, val drinkerHtM: Double,
-    val barricadeFt: Double, val birdsPerFt2: Double
+    val barricadeFt: Double, val birdsPerFt2: Double,
+    /** the front barricade, ft from the front wall (0: none): the birds live between it and [barricadeFt] */
+    val penStartFt: Double = 0.0
 ) {
-    fun panOpen(i: Int) = i < pansInArea && (i % max(1, patternOn + patternOff)) < patternOn
+    /** the first pan inside the birds' floor */
+    val panFirst: Int get() = if (penStartFt <= lineStartFt) 0 else kotlin.math.ceil((penStartFt - lineStartFt) / panSpacingFt).toInt().coerceAtLeast(0)
+    fun panOpen(i: Int) = i >= panFirst && i - panFirst < pansInArea && ((i - panFirst) % max(1, patternOn + patternOff)) < patternOn
     fun lineY(i: Int) = (i + 0.5) * lineGapFt
     companion object {
         val DEMO = FarmLayout(299.0, 39.0, listOf('D', 'F', 'D', 'F', 'D', 'F', 'D', 'F', 'D'), 39.0 / 9, 5.0, 2.5, 112, 2,
@@ -207,6 +220,7 @@ internal class CoopSim {
     var lines: List<Line> = emptyList()
     /** birds stay short of the barricade (window x, m) */
     var birdMaxX = 0.0
+    var birdMinX = 0.0
     /** house walls inside the window: front (x = 0), back (x = sx), near side (z = 0), far side (z = sz) */
     var walls = BooleanArray(4)
 
@@ -239,7 +253,7 @@ internal class CoopSim {
 
     /** Birds the window would hold at the flock's density (before the cap). */
     fun birdsFor(L: FarmLayout, lenFt: Double, widFt: Double, x0: Double): Int {
-        val reach = (min(x0 + lenFt, L.barricadeFt) - x0).coerceIn(0.0, lenFt)
+        val reach = (min(x0 + lenFt, L.barricadeFt) - max(x0, L.penStartFt)).coerceIn(0.0, lenFt)
         return (L.birdsPerFt2 * reach * widFt).roundToInt()
     }
 
@@ -281,6 +295,7 @@ internal class CoopSim {
         }
         lines = ls; pans = ps; nipples = ns
         birdMaxX = lx(L.barricadeFt).coerceIn(0.0, sx)
+        birdMinX = lx(L.penStartFt).coerceIn(0.0, birdMaxX)
         walls = booleanArrayOf(x0Ft <= 0.01, x0Ft + lenFt >= L.lengthFt - 0.01, y0Ft <= 0.01, y0Ft + widFt >= L.widthFt - 0.01)
         // birds at the flock's real density on the floor they can reach in this window
         val n = birdsFor(L, lenFt, widFt, x0Ft).coerceIn(0, MAX_BIRDS)
@@ -293,7 +308,7 @@ internal class CoopSim {
             else Bird("", Trait.PLAIN, gauss(rnd).coerceIn(-2.5, 2.5), 1000 + i).also { it.x = -1.0 }
         }
         list.forEach { b ->
-            if (b.x < 0.06 || b.x > birdMaxX - 0.06 || b.zz < 0.06 || b.zz > sz - 0.06) place(b)
+            if (b.x < birdMinX + 0.06 || b.x > birdMaxX - 0.06 || b.zz < 0.06 || b.zz > sz - 0.06) place(b)
             b.panI = -1; b.nipI = -1
             if (b.state.startsWith("go") || b.state == "eat" || b.state == "drink" || b.state == "peckGrain") { b.state = "idle"; b.t = 0.0; b.dur = b.rnd.nextDouble(0.5, 2.0) }
         }
@@ -305,9 +320,9 @@ internal class CoopSim {
     private fun gauss(r: Random): Double { val u = max(1e-9, r.nextDouble()); val v = r.nextDouble(); return sqrt(-2 * kotlin.math.ln(u)) * cos(2 * PI * v) }
 
     private fun place(b: Bird) {
-        if (birdMaxX < 0.12) { b.x = 0.06; b.zz = sz / 2; return }
+        if (birdMaxX - birdMinX < 0.12) { b.x = birdMinX + 0.06; b.zz = sz / 2; return }
         repeat(10) {
-            b.x = b.rnd.nextDouble(0.06, birdMaxX - 0.06); b.zz = b.rnd.nextDouble(0.06, sz - 0.06)
+            b.x = b.rnd.nextDouble(birdMinX + 0.06, birdMaxX - 0.06); b.zz = b.rnd.nextDouble(0.06, sz - 0.06)
             if (pans.none { hypot(it.x - b.x, it.z - b.zz) < panR + 0.04 }) return
         }
     }
@@ -459,7 +474,7 @@ internal class CoopSim {
             if (b.t >= b.dur) choose(b, inp, hunger, feedIn, heavy)
             b.sit = damp(b.sit, b.tSit, 6.0, dt); b.peck = damp(b.peck, b.tPeck, 14.0, dt); b.headYaw = damp(b.headYaw, b.tHeadYaw, 6.0, dt)
             // stay on the floor of the window, short of the barricade, and out of the pans
-            b.x = b.x.coerceIn(0.06, max(0.06, birdMaxX - 0.06)); b.zz = b.zz.coerceIn(0.06, sz - 0.06)
+            b.x = b.x.coerceIn(birdMinX + 0.06, max(birdMinX + 0.06, birdMaxX - 0.06)); b.zz = b.zz.coerceIn(0.06, sz - 0.06)
             for (p in pans) {
                 val dx = b.x - p.x; val dz = b.zz - p.z; val d = hypot(dx, dz)
                 if (d < panR * 0.85 && d > 1e-6) { b.x = p.x + dx / d * panR * 0.85; b.zz = p.z + dz / d * panR * 0.85 }
@@ -477,7 +492,7 @@ internal class CoopSim {
     }
     /** Nearest open feed pan with room at the rim (sometimes the next one, so the crowd spreads); -1 if all are full. */
     private fun pickPan(b: Bird): Int {
-        val c = pans.indices.filter { pans[it].open && !pans[it].sensor && pans[it].x <= birdMaxX + panR }.sortedBy { hypot(pans[it].x - b.x, pans[it].z - b.zz) }
+        val c = pans.indices.filter { pans[it].open && !pans[it].sensor && pans[it].x <= birdMaxX + panR && pans[it].x >= birdMinX - panR }.sortedBy { hypot(pans[it].x - b.x, pans[it].z - b.zz) }
         if (c.isEmpty()) return -1
         val cap = panCap()
         val free = c.filter { i -> birds.count { o -> o !== b && o.panI == i && (o.state == "eat" || o.state == "goEat") } < cap }
@@ -486,7 +501,7 @@ internal class CoopSim {
         return if (free.size > 1 && b.rnd.nextDouble() < 0.3) free[1] else free[0]
     }
     private fun pickNipple(b: Bird): Int {
-        val c = nipples.indices.filter { nipples[it].x <= birdMaxX }.sortedBy { hypot(nipples[it].x - b.x, nipples[it].z - b.zz) }
+        val c = nipples.indices.filter { nipples[it].x <= birdMaxX && nipples[it].x >= birdMinX }.sortedBy { hypot(nipples[it].x - b.x, nipples[it].z - b.zz) }
         if (c.isEmpty()) return -1
         return c[min(c.size - 1, b.rnd.nextInt(3))]
     }
@@ -578,14 +593,14 @@ internal class CoopSim {
                 // a short walk, as far as a bird of this size goes in one go, inside the window
                 val a = b.rnd.nextDouble(0.0, 2 * PI)
                 val d = b.rnd.nextDouble(0.3, 1.0) * bud.walkBoutM * (if (b.trait == Trait.CURIOUS) 1.5 else 1.0) * inp.roam
-                b.tx = (b.x + sin(a) * d).coerceIn(0.1, max(0.1, birdMaxX - 0.1)); b.tz = (b.zz + cos(a) * d).coerceIn(0.1, sz - 0.1); b.dur = 90.0
+                b.tx = (b.x + sin(a) * d).coerceIn(birdMinX + 0.1, max(birdMinX + 0.1, birdMaxX - 0.1)); b.tz = (b.zz + cos(a) * d).coerceIn(0.1, sz - 0.1); b.dur = 90.0
             }
             "rest" -> {
                 b.dur = b.rnd.nextDouble(0.6, 1.5) * bud.restSec
                 // cold chicks walk to the nearest group before lying down
                 if (bud.huddle > b.tol) {
                     val cell = 1.1
-                    b.tx = ((Math.floor(b.x / cell) + 0.5) * cell + b.rnd.nextDouble(-0.12, 0.12)).coerceIn(0.1, max(0.1, birdMaxX - 0.1))
+                    b.tx = ((Math.floor(b.x / cell) + 0.5) * cell + b.rnd.nextDouble(-0.12, 0.12)).coerceIn(birdMinX + 0.1, max(birdMinX + 0.1, birdMaxX - 0.1))
                     b.tz = ((Math.floor(b.zz / cell) + 0.5) * cell + b.rnd.nextDouble(-0.12, 0.12)).coerceIn(0.1, sz - 0.1)
                     b.state = "walk"; b.thenRest = true; b.dur = 90.0
                 }
@@ -680,7 +695,7 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
     val full = mode == 0
     val lenFt = min(VIEW_LEN_FT, L.lengthFt)
     val widFt = widthOf(mode)
-    if (x0 < 0) x0 = (min(L.barricadeFt, L.lengthFt) * 0.25 - lenFt / 2).coerceIn(0.0, max(0.0, L.lengthFt - lenFt))
+    if (x0 < 0) x0 = (L.penStartFt + (min(L.barricadeFt, L.lengthFt) - L.penStartFt) * 0.25 - lenFt / 2).coerceIn(0.0, max(0.0, L.lengthFt - lenFt))
     if (full) y0 = 0.0 else if (y0 < 0) y0 = (L.lineY(midF) - widFt / 2).coerceIn(0.0, max(0.0, L.widthFt - widFt))
     y0 = y0.coerceIn(0.0, max(0.0, L.widthFt - widFt))
     sim.lenFt = lenFt; sim.widFt = widFt; sim.x0Ft = x0; sim.y0Ft = y0
@@ -713,7 +728,12 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
         }
     }
     val scheduledDark = run { val z = clock(inp); !inp.light.isLight(z.hour + z.minute / 60.0) }
+    // what the floor shows: as it is, or one of the house map's layers
+    var layerIdx by rememberSaveable { androidx.compose.runtime.mutableIntStateOf(-1) }
+    val layer = com.example.flock.models.HouseMap.Layer.values().getOrNull(layerIdx)?.takeIf { inp.map != null }
     Column(modifier) {
+        if (inp.map != null && !inp.compact) LayerChips(listOf(-1 to "Floor") + com.example.flock.models.HouseMap.Layer.values().map { it.ordinal to it.label },
+            layerIdx, { layerIdx = it }, Modifier.padding(start = 10.dp, end = 10.dp, top = 10.dp))
         androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
             val h = (maxWidth * (if (mode == 0) 0.72f else 0.9f)).coerceIn(250.dp, 460.dp)
             Canvas(
@@ -771,7 +791,7 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
             ) {
                 @Suppress("UNUSED_VARIABLE") val frame = tick
                 val pr = CoopProj(sim.sx, sim.sz, 0.5, size.width, size.height, cam)
-                drawCoop(sim, inp, lightNow().toFloat(), clock(inp), awake, pr)
+                drawCoop(sim, inp, lightNow().toFloat(), clock(inp), awake, pr, layer)
             }
             if (scheduledDark || awake) {
                 androidx.compose.material3.OutlinedButton(
@@ -798,32 +818,118 @@ fun Coop3D(inp: CoopInput, modifier: Modifier = Modifier) {
                         })
             }
         }
-        FarmMiniMap(L, x0, y0, lenFt, widFt, Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) { nx, ny -> x0 = nx; if (!full) y0 = ny }
+        FarmMiniMap(L, x0, y0, lenFt, widFt, Modifier.padding(horizontal = 10.dp, vertical = 8.dp), inp.map, layer) { nx, ny -> x0 = nx; if (!full) y0 = ny }
+        if (layer != null) LayerKey(inp.map!!, layer)
         if (inp.compact) return@Column
-        // the four followed birds, in one table
+        // what the birds in view are doing, and the day's numbers, in small type
         @Suppress("UNUSED_VARIABLE") val refresh = slow
-        val named = sim.birds.filter { !it.lite }
-        if (named.isNotEmpty()) Column(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            val lab = MaterialTheme.typography.labelMedium
-            val num = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold)
-            named.forEach { b ->
-                Row(Modifier.fillMaxWidth()) {
-                    Text(b.name, Modifier.width(52.dp), style = lab, color = Color.White)
-                    Text(b.trait.label, Modifier.weight(1.0f), style = lab, color = Color.White.copy(alpha = 0.55f), maxLines = 1)
-                    Text(Fmt.n(b.weightG, 1) + " g", Modifier.weight(1.05f), style = num, color = if (inp.weightMeasured) ValuePresent else ValuePredicted, maxLines = 1, softWrap = false)
-                    // how full the crop is: its own column, wide enough for "100.0 %" so it never runs into the state word
-                    Text(Fmt.n(b.fullness * 100, 1) + "%", Modifier.weight(0.9f).padding(start = 4.dp, end = 6.dp), style = num, color = ValuePredicted, maxLines = 1, softWrap = false,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Clip)
-                    Text(stateWord(b.state), Modifier.weight(1.1f), style = lab, color = Color.White.copy(alpha = 0.7f), maxLines = 1)
+        CoopFacts(sim, inp)
+    }
+}
+
+/** The colours of a house-map layer: up to the ideal, past it, past the most — with the values where they turn. */
+@Composable
+private fun LayerKey(map: com.example.flock.models.HouseMap.Field, layer: com.example.flock.models.HouseMap.Layer) {
+    val lim = map.limits(layer)
+    val (lo, hi) = map.range(layer)
+    fun f(x: Double) = Fmt.n(x, layer.decimals)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text("${layer.label}, ${layer.unit} · projected ${f(lo)}–${f(hi)} on the birds' floor", style = MaterialTheme.typography.labelMedium, color = Color.White)
+        ColourKey(listOf(heatColor(lim.ideal * 0.8, lim, lo) to "≤ ${f(lim.ideal)} ideal", heatColor((lim.ideal + lim.most) / 2, lim, lo) to "past the ideal",
+            heatColor(lim.most * 1.2, lim, lo) to "past ${f(lim.most)} the most"))
+    }
+}
+
+/** A house-map value's colour: green up to the ideal (deeper the nearer it), orange to the most, red past it. */
+internal fun heatColor(v: Double, lim: com.example.flock.models.HouseMap.Limits, lo: Double): Color {
+    fun mix(a: Color, b: Color, t: Double) = Color(a.red + (b.red - a.red) * t.toFloat(), a.green + (b.green - a.green) * t.toFloat(), a.blue + (b.blue - a.blue) * t.toFloat(), 1f)
+    return when {
+        v <= lim.ideal -> TrendGood.copy(alpha = (0.25 + 0.35 * ((v - lo) / max(1e-6, lim.ideal - lo)).coerceIn(0.0, 1.0)).toFloat())
+        v <= lim.most -> mix(TrendGood, TrendAverage, (v - lim.ideal) / max(1e-6, lim.most - lim.ideal)).copy(alpha = 0.65f)
+        else -> mix(TrendAverage, TrendBad, ((v - lim.most) / max(1e-6, lim.most - lim.ideal)).coerceIn(0.0, 1.0)).copy(alpha = 0.7f)
+    }
+}
+
+/**
+ * Under the window, in small type: what the birds in view are doing (share of them), the next feedings the model
+ * plans, and the day's numbers (each in the colour of what it is: entered, projected, ideal).
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun CoopFacts(sim: CoopSim, inp: CoopInput) {
+    val mono = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont)
+    val grey = Color.White
+    Column(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, bottom = 10.dp).testTag("coop_facts"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        val n = sim.birds.size
+        if (n > 0) {
+            val shares = sim.birds.groupingBy { activityOf(it.state) }.eachCount().entries.sortedByDescending { it.value }
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                shares.forEach { (what, c) ->
+                    Row {
+                        Text(Fmt.n(c * 100.0 / n, 0) + "% ", style = mono, color = ValuePredicted)
+                        Text(what, style = mono, color = grey)
+                    }
+                }
+            }
+        }
+        if (inp.feedTimes.isNotEmpty()) Row {
+            Text("feed ", style = mono, color = grey)
+            Text(inp.feedTimes.joinToString(" · "), style = mono, color = ValuePredicted)
+        }
+        // each name with its number, kept together; the pairs wrap to the next line as a whole
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            inp.facts.forEach { (label, value, kind) ->
+                Row {
+                    Text("$label ", style = mono, color = grey, maxLines = 1, softWrap = false)
+                    Text(value, style = mono, color = kindColor(kind), maxLines = 1, softWrap = false)
                 }
             }
         }
     }
 }
 
+/**
+ * The views of the farm window, one chip each, as wide as its word: they share the row when they fit (wider words get
+ * more of it) and scroll sideways when the text is set large; a word is never cut.
+ */
+@Composable
+private fun LayerChips(names: List<Pair<Int, String>>, current: Int, onPick: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val style = MaterialTheme.typography.labelMedium
+    val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+    val dens = androidx.compose.ui.platform.LocalDensity.current
+    val pad = 8.dp; val gap = 6.dp
+    val words = names.map { (_, n) -> with(dens) { measurer.measure(n, style).size.width.toDp() } }
+    val widths = words.map { it + pad * 2 + 2.dp }
+    val scroll = androidx.compose.foundation.rememberScrollState()
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth()) {
+        // they share the row while every word fits with a little room (the spare width becomes padding)
+        val fits = words.fold(0.dp) { a, w -> a + w + 8.dp } + gap * (names.size - 1) <= maxWidth
+        Row((if (fits) Modifier.fillMaxWidth() else Modifier.horizontalScroll(scroll)).testTag("coop_layers"), horizontalArrangement = Arrangement.spacedBy(gap)) {
+            names.forEachIndexed { i, (k, name) ->
+                val on = k == current
+                Text(name, style = style, color = if (on) Color.Black else Color.White, maxLines = 1, softWrap = false,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = (if (fits) Modifier.weight(widths[i].value) else Modifier)
+                        .background(if (on) Color.White else Color.Transparent, RoundedCornerShape(8.dp))
+                        .border(1.dp, Color.White.copy(alpha = if (on) 1f else 0.4f), RoundedCornerShape(8.dp)).clickable { onPick(k) }
+                        .padding(horizontal = if (fits) 2.dp else pad, vertical = 6.dp).testTag("coop_layer_$k"))
+            }
+        }
+    }
+}
+
+/** What a bird is doing, in five words. */
+private fun activityOf(s: String) = when (s) {
+    "eat", "goEat" -> "eating"; "drink", "goDrink" -> "drinking"; "rest", "sleep" -> "resting"
+    "walk", "goGrain" -> "walking"; else -> "standing, pecking, preening"
+}
+
 /** The whole house at its real shape: feeder and drinker lines, the barricade, and the window (drag or tap to move it). */
 @Composable
-private fun FarmMiniMap(L: FarmLayout, x0: Double, y0: Double, lenFt: Double, widFt: Double, modifier: Modifier = Modifier, onMove: (Double, Double) -> Unit) {
+private fun FarmMiniMap(L: FarmLayout, x0: Double, y0: Double, lenFt: Double, widFt: Double, modifier: Modifier = Modifier,
+                        map: com.example.flock.models.HouseMap.Field? = null, layer: com.example.flock.models.HouseMap.Layer? = null, onMove: (Double, Double) -> Unit) {
+    val grid = remember(map, layer) { if (map != null && layer != null) map.grid(layer) else null }
+    val lim = remember(map, layer) { if (map != null && layer != null) map.limits(layer) to map.range(layer).first else null }
     val cx by androidx.compose.runtime.rememberUpdatedState(x0)
     val cy by androidx.compose.runtime.rememberUpdatedState(y0)
     androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth()) {
@@ -845,11 +951,27 @@ private fun FarmMiniMap(L: FarmLayout, x0: Double, y0: Double, lenFt: Double, wi
         ) {
             val sx = size.width / L.lengthFt.toFloat(); val sy = size.height / L.widthFt.toFloat()
             drawRect(Color.White.copy(alpha = 0.5f), Offset.Zero, size, style = Stroke(1.2f))
-            drawRect(ValueIdeal.copy(alpha = 0.07f), Offset.Zero, Size((L.barricadeFt * sx).toFloat(), size.height))
-            if (L.barricadeFt < L.lengthFt - 0.5) drawLine(ValuePredicted, Offset((L.barricadeFt * sx).toFloat(), 0f), Offset((L.barricadeFt * sx).toFloat(), size.height), 2f)
+            // the layer, cell by cell; else the birds' floor between the barricades, lightly
+            if (grid != null && lim != null) {
+                val cw = size.width / grid.size; val ch = size.height / grid[0].size
+                grid.forEachIndexed { a, col -> col.forEachIndexed { b, v -> drawRect(heatColor(v, lim.first, lim.second), Offset(a * cw, b * ch), Size(cw + 0.5f, ch + 0.5f)) } }
+            } else drawRect(Color.White.copy(alpha = 0.06f), Offset((L.penStartFt * sx).toFloat(), 0f), Size(((L.barricadeFt - L.penStartFt) * sx).toFloat(), size.height))
+            // the barricades: white fences (things in the house, not kinds of value)
+            if (L.barricadeFt < L.lengthFt - 0.5) drawLine(Color.White, Offset((L.barricadeFt * sx).toFloat(), 0f), Offset((L.barricadeFt * sx).toFloat(), size.height), 2.5f)
+            if (L.penStartFt > 0.5) drawLine(Color.White, Offset((L.penStartFt * sx).toFloat(), 0f), Offset((L.penStartFt * sx).toFloat(), size.height), 2.5f)
             L.lineOrder.forEachIndexed { i, k ->
                 val y = (L.lineY(i) * sy).toFloat()
-                if (k == 'F') drawLine(ValuePredicted.copy(alpha = 0.8f), Offset((L.lineStartFt * sx).toFloat(), y), Offset(((L.lineStartFt + (L.pansPerLine + L.sensorPans) * L.panSpacingFt) * sx).toFloat(), y), 1.6f)
+                if (k == 'F') {
+                    val xa = (L.lineStartFt * sx).toFloat(); val xb = ((L.lineStartFt + (L.pansPerLine + L.sensorPans) * L.panSpacingFt) * sx).toFloat()
+                    drawLine(Color.White.copy(alpha = 0.8f), Offset(xa, y), Offset(xb, y), 1.6f)
+                    // the hopper at the front end (filled square) and the sensor pans at the far end (open squares)
+                    val hs = 3.2f * density
+                    drawRect(Color.White, Offset(xa - hs * 1.4f, y - hs / 2), Size(hs, hs))
+                    for (q in 0 until L.sensorPans) {
+                        val xq = ((L.lineStartFt + (L.pansPerLine + q + 0.5) * L.panSpacingFt) * sx).toFloat()
+                        drawRect(Color.White, Offset(xq - hs / 2, y - hs / 2), Size(hs, hs), style = Stroke(1f))
+                    }
+                }
                 else drawLine(ValueMin.copy(alpha = 0.6f), Offset((L.lineStartFt * sx).toFloat(), y), Offset(((L.lineStartFt + L.drinkerLenFt) * sx).toFloat(), y), 1f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(3f, 3f)))
             }
             val wx = (x0 * sx).toFloat(); val wy = (y0 * sy).toFloat()
@@ -860,7 +982,8 @@ private fun FarmMiniMap(L: FarmLayout, x0: Double, y0: Double, lenFt: Double, wi
     }
 }
 
-private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: java.time.ZonedDateTime, awake: Boolean, pr: CoopProj) {
+private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: java.time.ZonedDateTime, awake: Boolean, pr: CoopProj,
+                               layer: com.example.flock.models.HouseMap.Layer? = null) {
     val sx = sim.sx; val sz = sim.sz
     fun P(x: Double, y: Double, z: Double) = pr.P(x, y, z)
     val S = pr.S
@@ -879,7 +1002,25 @@ private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: 
     val floor = quad(P(0.0, 0.0, 0.0), P(sx, 0.0, 0.0), P(sx, 0.0, sz), P(0.0, 0.0, sz))
     drawPath(floor, Color(0xFF2A2218).copy(alpha = 0.20f + 0.45f * light))
     clipPath(floor) {
+        // the house map's layer on the floor, a foot square at a time (x along the house, z across, as in the house)
+        val map = inp.map
+        if (map != null && layer != null) {
+            val lim = map.limits(layer); val lo = map.range(layer).first
+            val step = 2 * FT
+            var gx = 0.0
+            while (gx < sx - 1e-6) {
+                var gz = 0.0
+                while (gz < sz - 1e-6) {
+                    val v = map.value(layer, sim.x0Ft + (gx + step / 2) / FT, sim.y0Ft + (gz + step / 2) / FT)
+                    val x2 = min(sx, gx + step); val z2 = min(sz, gz + step)
+                    drawPath(quad(P(gx, 0.0, gz), P(x2, 0.0, gz), P(x2, 0.0, z2), P(gx, 0.0, z2)), heatColor(v, lim, lo))
+                    gz += step
+                }
+                gx += step
+            }
+        }
         if (sim.birdMaxX < sx) drawPath(quad(P(sim.birdMaxX, 0.0, 0.0), P(sx, 0.0, 0.0), P(sx, 0.0, sz), P(sim.birdMaxX, 0.0, sz)), Color.Black.copy(alpha = 0.55f))
+        if (sim.birdMinX > 0) drawPath(quad(P(0.0, 0.0, 0.0), P(sim.birdMinX, 0.0, 0.0), P(sim.birdMinX, 0.0, sz), P(0.0, 0.0, sz)), Color.Black.copy(alpha = 0.55f))
         // a line every foot for scale
         var g = FT
         while (g < sx - 1e-6) { drawLine(faint, P(g, 0.0, 0.0), P(g, 0.0, sz), 1f); g += FT }
@@ -896,13 +1037,14 @@ private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: 
         }
     }
     drawPath(floor, line, style = Stroke(1.2f))
-    // barricade: a low fence
-    if (sim.birdMaxX < sx - 0.01) {
-        val bx = sim.birdMaxX
-        drawLine(ValuePredicted.copy(alpha = 0.8f), P(bx, 0.25, 0.0), P(bx, 0.25, sz), 2f)
+    // barricades: low white fences
+    fun fence(bx: Double) {
+        drawLine(Color.White.copy(alpha = 0.85f), P(bx, 0.25, 0.0), P(bx, 0.25, sz), 2f)
         var zf = 0.0
-        while (zf <= sz + 1e-6) { drawLine(ValuePredicted.copy(alpha = 0.6f), P(bx, 0.0, zf), P(bx, 0.25, zf), 1.2f); zf += 0.3 }
+        while (zf <= sz + 1e-6) { drawLine(Color.White.copy(alpha = 0.6f), P(bx, 0.0, zf), P(bx, 0.25, zf), 1.2f); zf += 0.3 }
     }
+    if (sim.birdMaxX < sx - 0.01) fence(sim.birdMaxX)
+    if (sim.birdMinX > 0.01) fence(sim.birdMinX)
 
     fun ellipseAt(x: Double, y: Double, z: Double, r: Double, col: Color, stroke: Boolean = false, w: Float = 1.2f) {
         val c = P(x, y, z); val rx = (r * S).toFloat(); val ry = (r * S * pr.flat).toFloat()
@@ -947,18 +1089,6 @@ private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: 
         val at = drawBird(b, sh, light, ::P, k, pr.camX, pr.camZ, pr.flat, lod)
         if (!b.lite) nameAt += b to at
     }
-    // names above the named heads, nudged up so two never overlap
-    val np = Paint().apply { isAntiAlias = true; textSize = 11f * density; color = Color.White.copy(alpha = 0.85f).toArgb(); textAlign = Paint.Align.CENTER; isFakeBoldText = true }
-    val placed = mutableListOf<androidx.compose.ui.geometry.Rect>()
-    nameAt.sortedByDescending { it.second.y }.forEach { (b, at) ->
-        val w = np.measureText(b.name) + 6f; val hh = np.textSize + 3f
-        var r = androidx.compose.ui.geometry.Rect(at.x - w / 2, at.y - hh, at.x + w / 2, at.y)
-        var guard = 0
-        while (placed.any { it.overlaps(r) } && guard++ < 6) r = r.translate(0f, -hh)
-        placed += r
-        drawRoundRect(Color.Black.copy(alpha = 0.55f), r.topLeft, r.size, androidx.compose.ui.geometry.CornerRadius(4f, 4f))
-        drawContext.canvas.nativeCanvas.drawText(b.name, r.center.x, r.bottom - 4f, np)
-    }
     // numbers of a tapped bird, next to it
     if (sel != null) {
         val lp = Paint().apply { isAntiAlias = true; textSize = (size.width / 30f).coerceIn(11f * density, 15f * density); typeface = com.example.ui.theme.AppFonts.mono }
@@ -967,7 +1097,7 @@ private fun DrawScope.drawCoop(sim: CoopSim, inp: CoopInput, light: Float, now: 
         val mean = inp.meanG
         val grey = Color.White.copy(alpha = 0.6f)
         val rows = listOf(
-            listOf((if (sel.lite) "Bird" else sel.name) + " " to Color.White, sel.trait.label to grey),
+            listOf("Bird " to Color.White, sel.trait.label to grey),
             listOf(Fmt.n(sel.weightG, 1) to ValuePresent, " g  " to grey, (if (sel.weightG >= mean) "+" else "") + Fmt.n((sel.weightG / mean - 1) * 100, 1) to ValuePresent, "%" to grey),
             listOf("full " to grey, Fmt.n(sel.fullness * 100, 1) to ValuePredicted, "%  " to grey, stateWord(sel.state) to grey)
         )

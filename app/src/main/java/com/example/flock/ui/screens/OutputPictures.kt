@@ -113,9 +113,9 @@ fun HouseAirflow(level: IbController.Level, fanCount: Int, hasPads: Boolean, pad
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("${running}.0 / $n.0 fans", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = ValuePresent)
-            if (level.isTimer) Text("timer", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = ValuePredicted)
-            if (hasPads) Text(if (padsOn) "pads wet" else "pads off", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = if (padsOn) ValueIdeal else MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("${running}.0 / $n.0 fans", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = ValuePresent)
+            if (level.isTimer) Text("timer", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = ValuePredicted)
+            if (hasPads) Text(if (padsOn) "pads wet" else "pads off", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = if (padsOn) ValueIdeal else MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

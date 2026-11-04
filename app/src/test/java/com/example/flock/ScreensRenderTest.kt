@@ -234,8 +234,11 @@ class ScreensRenderTest {
             androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(dens.density, 1.3f)) { output() }
         } }
         rule.mainClock.advanceTimeBy(1200)
-        listOf("glance", "radar_birds", "radar_feed", "radar_air", "radar_floor", "time_rail", "section_tabs", "feed_conclusion", "feed_log", "space_why",
-            "litter_view", "nipple_view", "walk_feed", "walk_water", "flock_book").forEach { rule.onNodeWithTag(it).assertExists() }
+        listOf("glance", "radar_birds", "time_rail", "section_tabs", "feed_conclusion", "space_why", "coop_layers", "coop_facts",
+            "litter_view", "walk_feed", "walk_water", "chart_cursor", "chart_window", "flock_book").forEach { rule.onNodeWithTag(it).assertExists() }
+        // gone by request: the other radars, the feeding log, the nipple-line drawing, the named birds
+        listOf("radar_feed", "radar_air", "radar_floor", "feed_log", "nipple_view").forEach { assertTrue(it, rule.onAllNodesWithTag(it).fetchSemanticsNodes().isEmpty()) }
+        assertTrue(rule.onAllNodesWithText("Pip").fetchSemanticsNodes().isEmpty())
         assertTrue(rule.onAllNodesWithText("Choose what shows", substring = true).fetchSemanticsNodes().isEmpty())
         assertTrue(rule.onAllNodesWithText("At a glance").fetchSemanticsNodes().isEmpty())
         assertTrue(rule.onAllNodesWithText("Half", substring = true).fetchSemanticsNodes().isEmpty())
@@ -258,12 +261,30 @@ class ScreensRenderTest {
         rule.onNodeWithTag("plan_step_2").assertExists()
         rule.onRoot().captureRoboImage("src/test/screenshots/screen_new_cards.png")
     }
+    /** The house map's views on the farm window: the litter layer draws, with its key. */
+    @Config(qualifiers = "w360dp-h1600dp-xhdpi") @Test fun coopLayers() {
+        rule.mainClock.autoAdvance = false
+        rule.setContent { MyApplicationTheme { output() } }
+        rule.mainClock.advanceTimeBy(800)
+        rule.onNodeWithTag("coop_layer_0").performClick()
+        rule.mainClock.advanceTimeBy(800)
+        rule.onAllNodesWithText("past the ideal", substring = true)[0].assertExists()
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_coop_litter.png")
+    }
+    /** The model weights file reads; a number and a true/false become weights. */
+    @Test fun modelParamsRead() {
+        val p = com.example.flock.models.ModelStore.parse("""{"version": 3, "models": {"house_map": {"drinker_wet_pts": 9.5, "fans_at_back": false}}}""")!!
+        assertEquals(3, p.version)
+        assertEquals(9.5, p.get("house_map", "drinker_wet_pts", 7.0), 0.0)
+        assertEquals(0.0, p.get("house_map", "fans_at_back", 1.0), 0.0)
+        assertEquals(0.6, p.get("house_map", "sensible", 0.6), 0.0)
+    }
     /** The tabs at the top go to a section and light the one being read. */
     @Config(qualifiers = "w360dp-h780dp-xhdpi") @Test fun tabsGoToASection() {
         rule.mainClock.autoAdvance = false
         rule.setContent { MyApplicationTheme { output() } }
         rule.mainClock.advanceTimeBy(1000)
-        rule.onNodeWithTag("jump_walk").performClick()
+        rule.onNodeWithTag("jump_walk").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
         rule.mainClock.advanceTimeBy(1500)
         val top = rule.onNodeWithTag("walk_feed").getUnclippedBoundsInRoot().top.value
         println("walk card drawing at $top dp after the tap")

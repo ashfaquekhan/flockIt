@@ -124,6 +124,8 @@ object FlockCalc {
         val masses = mutableListOf<Mass>()
         // the barricade the farm entered last (ft from the front wall); it holds until another is entered
         var penFt: Double? = null
+        // the front barricade (ft from the front wall), carried on like the back one until a day changes it
+        var penStart = 0.0
 
         // Stock tracking per feed type (Bug 3 Fix)
         var totalReceivedBags = 0.0
@@ -290,6 +292,9 @@ object FlockCalc {
 
             // Area & density: the floor the birds have (the barricade entered, else the brooding plan) and the birds after any lifting
             r.broodingLength?.let { penFt = if (it <= 0 || it >= farm.usableLengthFt) null else it }
+            r.penStartFt?.let { penStart = it.coerceIn(0.0, max(0.0, farm.usableLengthFt - 10)) }
+            // the birds' floor runs from the front barricade to the back one (the back wall when there is none)
+            val penLen = if (penStart > 0 || penFt != null) ((penFt ?: farm.usableLengthFt) - penStart).coerceAtLeast(10.0) else null
             val areaRes = PhysiologicalEngine.computeAreaAndDensity(
                 liveBirds = live,
                 avgKg = avgAfterKg,
@@ -298,7 +303,7 @@ object FlockCalc {
                 broodDensity = farm.broodDensity,
                 densityCapDefault = farm.densityCapDefault,
                 day = day,
-                penLengthFt = penFt
+                penLengthFt = penLen
             )
 
             // Climate display targets

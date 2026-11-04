@@ -151,7 +151,7 @@ fun GlanceTile(
                         text = label.uppercase(),
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.Medium,
                             fontFamily = com.example.ui.theme.NumberFont,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -164,7 +164,7 @@ fun GlanceTile(
                             Text(
                                 text = badgeText,
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = FontWeight.Medium,
                                     fontSize = 9.sp,
                                     color = if (badgeIsGood) StatusGood else StatusWarn
                                 ),
@@ -181,7 +181,7 @@ fun GlanceTile(
                         text = value,
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontSize = 22.sp,
-                            fontWeight = FontWeight.ExtraBold,
+                            fontWeight = FontWeight.Medium,
                             color = if (isWarning) warningColor else MaterialTheme.colorScheme.onSurface
                         )
                     )
@@ -189,7 +189,7 @@ fun GlanceTile(
                         Text(
                             text = " $unit",
                             style = MaterialTheme.typography.bodySmall.copy(
-                                fontWeight = FontWeight.SemiBold,
+                                fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             ),
                             modifier = Modifier.padding(bottom = 2.dp)

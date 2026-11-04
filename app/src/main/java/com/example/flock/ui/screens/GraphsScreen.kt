@@ -118,7 +118,7 @@ fun WeightGrowthChartCard(
             ) {
                 Text(
                     text = "Body Weight Trajectory",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium)
                 )
                 Text(
                     text = "Tap any day to inspect",
@@ -279,7 +279,7 @@ fun FeedWaterChartCard(
         Column(modifier = Modifier.padding(14.dp)) {
             Text(
                 text = "Daily Feed & Water per Bird",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium)
             )
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -369,7 +369,7 @@ fun MortalityChartCard(
         Column(modifier = Modifier.padding(14.dp)) {
             Text(
                 text = "Cumulative Mortality vs Ceiling",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium)
             )
             Spacer(modifier = Modifier.height(8.dp))
 

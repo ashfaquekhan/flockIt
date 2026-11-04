@@ -56,7 +56,7 @@ fun InitialsAvatar(name: String, size: Dp) {
             .background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.12f), CircleShape),
         contentAlignment = Alignment.Center
     ) {
-        Text(letter, color = Color.White, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+        Text(letter, color = Color.White, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium))
     }
 }
 
@@ -73,7 +73,7 @@ fun AccountSheet(
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { InitialsAvatar(displayName.ifBlank { email.ifBlank { "F" } }, 56.dp) },
-        title = { Text(displayName.ifBlank { "Local Farmer" }, fontWeight = FontWeight.Bold) },
+        title = { Text(displayName.ifBlank { "Local Farmer" }, fontWeight = FontWeight.Medium) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
@@ -128,7 +128,7 @@ fun RecycleBinDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Recycle Bin", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+                    Text("Recycle Bin", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium))
                     IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "Close") }
                 }
                 Spacer(Modifier.height(4.dp))
@@ -172,7 +172,7 @@ fun RecycleBinDialog(
 private fun BinHeader(text: String) {
     Text(
         text = text,
-        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
         modifier = Modifier.padding(top = 6.dp)
     )
 }
@@ -189,7 +189,7 @@ private fun BinRow(title: String, subtitle: String, onRestore: () -> Unit, onPur
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1)
+                Text(title, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium), maxLines = 1)
                 Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
             IconButton(onClick = onRestore) {

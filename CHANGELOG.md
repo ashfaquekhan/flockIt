@@ -8,6 +8,50 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v51 — 2026-11-05 · Two barricades, the tube counted in a line's fill, the model suite and the house map, one see-through radar, graphs like a market chart, lighter type · **DB 18 → 19**, sheet schema 8 → 9
+- **Fixed: Unlock day.** A day with only a lifting saved was locked with no banner and no Unlock button; now every locked
+  day shows both. Unlocking holds through a reload, and what is typed after it is kept.
+- **Fixed: "sheet not loaded" over other apps.** The 3-minute auto-load runs only while FlockIt is on screen; a load
+  the app starts by itself fails quietly (the sync chip says offline); no message ever pops up from the background.
+- **Fixed: decimals in Entry.** "3,5" (a keyboard's comma decimal), spaces, "1,234.5", and "12.0" for a count are read.
+- **Front and back barricades** (Entry: ft from the front wall, ft from the back wall; the floor in between is shown).
+  The birds' floor, density, the pans inside it and the pan series all follow both barricades; pans outside are shut;
+  the pan map, the farm window and its strip draw both fences (white).
+- **The tube counts in a line's fill**: Farm settings has "Bags to fill 1 line, pans open" (required) and "…, pans shut"
+  (optional: the tube alone; the box shows about what a line that long holds, 0.72 kg a metre). Filling a line takes
+  tube + (whole line − tube) × open ÷ all pans, so shutting half the pans does not halve the bags; the plan's "bags to
+  fill" and the pans each feeding reaches follow it. Left empty, the tube is not counted (the plan as before).
+- **The model suite** (`models/`): one place for every prediction model, its version, its weights
+  (`assets/models/params.json`, overridable by a newer file without a new app) and its inputs (entries, weather, sensor
+  readings — none yet, the place is there). Every day's inputs and outputs are kept as a log (one line a day and model);
+  "Export the model log" in the flock book hands it to another app.
+- **The house map** (first model in the suite): litter moisture, air humidity, stocking density and heat, place by place,
+  from the birds' heat and moisture carried along by the air, the lines, the barricades, the weather and the litter
+  model. **Views on the farm window**: Floor · Litter · Humidity · Density · Heat, coloured on the window's floor and the
+  strip, with a key (green ideal · orange past it · red past the most).
+- **The farm window**: no named birds; under it in small type what the birds in view are doing (% eating, drinking,
+  resting, walking…), the model's feeding times, and the day's numbers (avg wt, CV, ft²/bird, kg/m², mortality, FCR,
+  cFCR, feels, ideal temp / RH / air / air changes / pressure, light), names in white, each name kept with its number
+  when the line wraps. The view chips are as wide as their words (scroll sideways with large text). The strip shows
+  the hoppers, the sensor pans and both barricades.
+- **No "Log a feeding"**: the feedings are the model's (after lights-on, before lights-off, clear of the hot hours); the
+  farm window feeds the birds at them and the feed card shows the same times.
+- **One radar**, the birds against the company, see-through: entered (green), projected at the time shown (amber),
+  the company's ring (100, the only dashed line) and the ideal (blue) all as thin outlines; an outline needs three
+  scores (fewer show as dots); under each name entered · projected; one colour key above it. The sensory radars are
+  gone.
+- **Graphs**: a slider moves the cursor (no tapping), a range slider picks the days shown, values sit beside the dots in
+  the zoom, lifting badges are numbered (L1, L2 …), the ends are no longer cut, and Zoom lays the chart out in
+  landscape.
+- **Walk to feed and water**: no coloured floor; round the nearest open pan or nipple three circles — the furthest
+  bird's walk now (green), the ideal (blue), the most (red).
+- **Order of the page**: Glance · Air · Water · Feed · Birds · Floor · Walk · Litter · FCR · Graphs · Book (air can kill
+  in minutes, water in hours, feed over the day).
+- **Lighter and clearer**: bold and black type made medium everywhere (the wordmark kept as it was); names and headings
+  larger and white; a colour key's words in their colour; marks that mean nothing (the selected tab's bar, the time on
+  the glance and the rail's handle, plain headings, fences) white. No nipple-line drawing. Chips sit fewer to a row
+  when their names are long, so a name ("Reception deaths") is never cut.
+
 ## v50 — 2026-11-04 · Four radars, company and ideal on every number, the walk to feed and water, tabs that stay on top, fewer cards · no DB or sheet change
 - **The walk to feed and water** (new card): the furthest bird's walk to an open pan and to a nipple against the safe walk
   and the most for the age (chicks 1.0 / 1.5 m, days 4–10 1.5 / 2.5 m, then 2.0 / 3.0 m — Aviagen: chicks within 1 m of

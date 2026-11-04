@@ -66,7 +66,7 @@ private val RhDial = Color(0xFFA9CCF0)
 
 @Composable
 fun SectionLabel(text: String) {
-    Text(text.uppercase(), style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.6.sp),
+    Text(text.uppercase(), style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium, letterSpacing = 1.6.sp),
         color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(top = 10.dp))
 }
 
@@ -90,7 +90,7 @@ fun StatTile(label: String, value: V, sub: String?, modifier: Modifier = Modifie
     GlassBox(modifier) {
         Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
             Text(label, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), maxLines = 1)
-            Text(value.text, style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold),
+            Text(value.text, style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium),
                 color = kindColor(if (value.text == "—") ValueKind.NEUTRAL else value.kind), maxLines = 1, softWrap = false)
             if (sub != null) Text(sub, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.55f), maxLines = 2)
         }
@@ -108,7 +108,7 @@ fun BirdsTab(d: OutputData, onFlockPlan: ((Double, Int) -> Unit)? = null) {
     val e = d.e
     OutputCard(title = "Birds", info = "reception") {
         Param("Placed", "", vi(d.placed, P, "Chicks placed"), vi(d.reception, P, "Reception deaths"), v(d.receptionPct, 2, P, "% of placed"))
-        Param("Started", "", vi(d.entryBirds, P, "Birds"), v(d.mortWithReceptionPct, 2, d.mk, "Mortality with reception %"))
+        Param("Started", "", vi(d.entryBirds, P, "Birds"), v(d.mortWithReceptionPct, 2, d.mk, "Mortality incl. reception %"))
         Param("Removed till date", "", vi(d.mortTD, d.mk, "Deaths"), vi(d.lameTD, P, "Culls"), vi(d.mortToday, d.mk, "Deaths today"))
         KpiLine(Kpi("Livability", "%", e.livability, d.mk, 100 - d.comCumPct, 100 - d.ceilingPct, Better.HIGHER, 2))
         TrendsCard(d)
@@ -192,7 +192,7 @@ internal fun AccuracyCard(d: OutputData) {
     val lines = listOf(Line("Weight g", d.weightAccuracy.upTo(d.day), 1), Line("Feed, bags", d.feedAccuracy.upTo(d.day), 2), Line("FCR", d.fcrAccuracy.upTo(d.day), 3),
         Line("Mortality %", d.mortAccuracy.upTo(d.day), 2))
     fun offColor(pct: Double?) = when { pct == null -> Color.White.copy(alpha = 0.5f); abs(pct) <= 3 -> TrendGood; abs(pct) <= 8 -> TrendAverage; else -> TrendBad }
-    val mono = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp)
+    val mono = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium, letterSpacing = (-0.3).sp)
     val grey = Color.White.copy(alpha = 0.6f)
     Part("Projection check", "accuracy") {
         Column(Modifier.fillMaxWidth().border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 6.dp),
@@ -200,7 +200,7 @@ internal fun AccuracyCard(d: OutputData) {
             Row(Modifier.fillMaxWidth()) {
                 Spacer(Modifier.weight(1.3f))
                 listOf("Projected" to 1.25f, "Actual" to 1.0f, "Off %" to 0.85f, "Avg %" to 0.8f).forEach { (t, w) ->
-                    Text(t, Modifier.weight(w), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = grey, textAlign = TextAlign.End, maxLines = 1, softWrap = false)
+                    Text(t, Modifier.weight(w), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium), color = grey, textAlign = TextAlign.End, maxLines = 1, softWrap = false)
                 }
             }
             lines.forEach { l ->
@@ -346,7 +346,7 @@ fun PlanFlow(steps: List<Triple<String, V, String?>>) {
                     Column(Modifier.weight(1f).border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 5.dp)) {
                         Text(label, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f), maxLines = 1)
                         Text(value.text, style = (if (value.text.length > 7) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleMedium)
-                                .copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold),
+                                .copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium),
                             color = kindColor(value.kind), maxLines = 1, softWrap = false)
                         if (sub != null) Text(sub, style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont), color = Color.White.copy(alpha = 0.6f), maxLines = 1)
                     }
@@ -364,7 +364,7 @@ fun PlanFlow(steps: List<Triple<String, V, String?>>) {
 internal fun BagsWorkedOut(d: OutputData) {
     val f = d.intake
     val a = d.intakeAdvice
-    Text("How the bags were worked out", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
+    Text("How the bags were worked out", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium))
     if (f.learning) {
         // not enough entries yet: the chart's ration, in whole bags
         PlanFlow(listOf(
@@ -453,12 +453,12 @@ private fun TankPicture(tankL: Double, refills: Int, needL: Double) {
             drawArc(line, 0f, 180f, false, androidx.compose.ui.geometry.Offset(0f, h - 2 * ry), androidx.compose.ui.geometry.Size(w, ry * 2), style = androidx.compose.ui.graphics.drawscope.Stroke(1.6f * density))
         }
         Column {
-            Text("× $refills", style = MaterialTheme.typography.headlineSmall.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold), color = kindColor(MN))
+            Text("× $refills", style = MaterialTheme.typography.headlineSmall.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium), color = kindColor(MN))
             Text("refills of ${Fmt.n(tankL, 1)} L", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.65f))
         }
         Spacer(Modifier.weight(1f))
         Column(horizontalAlignment = Alignment.End) {
-            Text(Fmt.n(needL, 1) + " L", style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold), color = kindColor(PR))
+            Text(Fmt.n(needL, 1) + " L", style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium), color = kindColor(PR))
             Text("needed of ${Fmt.n(holds, 1)} L", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.65f))
         }
     }
@@ -483,7 +483,6 @@ internal fun WaterCard(d: OutputData, onFarmChange: ((com.example.flock.data.Far
         }
         KpiLine(Kpi("Water a bird", "mL", d.waterPerBird, PR, null, d.waterIdealPerBird, Better.CLOSER, 1), plan = true)
         Param("Water", "", v(d.waterL / max(0.5, e.lightHours), 1, PR, "L an hour, lit"))
-        NippleLineView(d.drinkerHtIn, e.drinkerPressureIn.takeIf { it > 0 })
         Param("Nipple line", "", v(e.drinkerPressureIn.takeIf { it > 0 }, 2, I, "Pressure in"), v(d.drinkerHtIn, 1, I, "Height in"),
             v(e.drinkerFlowLHrLine.takeIf { it > 0 }, 1, I, "L/h per line"))
         if (d.birdsPerNipple != null) RangeParam("Birds / nipple", "", null, null, d.birdsPerNippleMax, d.birdsPerNipple, 1, PR)
@@ -504,7 +503,7 @@ fun StockBlock(d: OutputData) {
         val maxBags = d.stockCodes.maxOfOrNull { max(d.recByCode[it] ?: 0.0, d.stockBags(it)) } ?: 0.0
         val unit = listOf(1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0).firstOrNull { maxBags / it <= 20 } ?: 200.0
         d.stockCodes.forEach { code -> FeedTypeBlock(d, code, unit) }
-        Text("All types, bags", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Black))
+        Text("All types, bags", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium))
         StockRow(d.recBagsTD, d.usedBagsTD, d.stockBagsTotal)
         val canL = f.dieselCanL
         Param("Diesel", "L", v(d.e.dieselCansUsed * canL, 1, P, "Today"), v(d.dieselTD * canL, 1, P, "Till date"))
@@ -520,8 +519,8 @@ private fun FeedTypeBlock(d: OutputData, code: String, unit: Double) {
     Column(Modifier.fillMaxWidth().border(1.dp, GlassLine.copy(alpha = 0.35f), RoundedCornerShape(10.dp)).padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("$code · ${ft?.name ?: "Feed"}", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
-            Text(Fmt.n(stock, 2), style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Black),
+            Text("$code · ${ft?.name ?: "Feed"}", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium), modifier = Modifier.weight(1f))
+            Text(Fmt.n(stock, 2), style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium),
                 color = if (stock < 0) StatusCrit else kindColor(P))
         }
         if (rec > 0 || used > 0) SackStrip(max(0.0, stock) / unit, kotlin.math.min(used, rec) / unit, Color.White.copy(alpha = 0.8f))
@@ -546,10 +545,10 @@ private fun StockChip(icon: androidx.compose.ui.graphics.vector.ImageVector, lab
         Row(verticalAlignment = Alignment.CenterVertically) {
             androidx.compose.material3.Icon(icon, contentDescription = label, tint = col.copy(alpha = 0.9f), modifier = Modifier.size(13.dp))
             Spacer(Modifier.width(3.dp))
-            Text(label, maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 10.5.sp, letterSpacing = (-0.1).sp), color = col.copy(alpha = 0.9f))
+            Text(label, maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium, fontSize = 10.5.sp, letterSpacing = (-0.1).sp), color = col.copy(alpha = 0.9f))
         }
         Text(x.text, maxLines = 1, softWrap = false,
-            style = MaterialTheme.typography.bodyLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold, fontSize = 15.sp, letterSpacing = (-0.3).sp), color = col)
+            style = MaterialTheme.typography.bodyLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium, fontSize = 15.sp, letterSpacing = (-0.3).sp), color = col)
     }
 }
 
@@ -641,7 +640,7 @@ private fun CoolingGridCard(d: OutputData, onPick: (Double, Double) -> Unit) {
                     val col = when { over > 4 -> StatusCrit; over > 2 -> StatusWarn; over < -3 -> ValueIdeal; else -> ValuePresent }
                     Column(Modifier.weight(1f).border(1.dp, GlassLine, RoundedCornerShape(10.dp)).clickable { onPick(t, h) }.padding(vertical = 8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(Fmt.n(s.fans, 1), style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Black), color = col)
+                        Text(Fmt.n(s.fans, 1), style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium), color = col)
                         Text("${Fmt.n(s.feltC, 1)}°", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.7f))
                     }
                 }

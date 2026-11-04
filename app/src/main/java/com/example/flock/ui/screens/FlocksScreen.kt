@@ -99,7 +99,7 @@ fun FlocksScreen(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         farmName,
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black),
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium),
                         maxLines = 1
                     )
                     Text(
@@ -133,7 +133,7 @@ fun FlocksScreen(
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(48.dp)
                                 )
                                 Spacer(Modifier.height(10.dp))
-                                Text("No flocks yet", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                                Text("No flocks yet", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium))
                                 Text(
                                     "Add a batch, or pull down to sync.",
                                     style = MaterialTheme.typography.bodyMedium,
@@ -168,7 +168,7 @@ fun FlocksScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
-                Text("  New flock / batch", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("  New flock / batch", color = Color.White, fontWeight = FontWeight.Medium)
             }
         }
     }
@@ -243,7 +243,7 @@ private fun FlockCard(
             ) {
                 Text(
                     "#$seq · ${flock.name}",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
                     modifier = Modifier.weight(1f)
                 )
                 if (flock.locked) {

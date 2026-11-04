@@ -87,9 +87,11 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
 
     // Non-blocking Toast (a Scaffold Snackbar sat over the bottom buttons and blocked taps).
     val context = LocalContext.current
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(userMessage) {
         userMessage?.let {
-            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            // shown only while FlockIt is on screen: a toast from an app in the background floats over other apps
+            if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
             viewModel.clearUserMessage()
         }
     }

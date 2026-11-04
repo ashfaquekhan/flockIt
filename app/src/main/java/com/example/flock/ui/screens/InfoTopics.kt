@@ -40,17 +40,17 @@ data class InfoTopic(
 object InfoTopics {
     val all: Map<String, InfoTopic> = mapOf(
         "glance" to InfoTopic("The day at a glance",
-            "Four radars — Birds, Feed and water, Air, Floor and litter — and the twelve numbers that matter, at the time on the rail down the right edge (touch it to move the time; tap the white dot to go back to now). Number colours: green = entered (at the time in the key), amber = projected, violet = the company's (co), blue = the ideal, Ross (id). Under each number its line: the violet tick is the company, the blue tick the ideal, the dot the flock. Arrows and scores: green good, orange a little off, red far off.",
-            "Birds radar, 100 = the company's standard for the day, more is better (drawn up to 150): Livability = company mortality ÷ mortality; FCR = company FCR ÷ FCR (lifting counted); EPEF ÷ company; Growth = weight ÷ company; Even = 8 % ÷ CV; Gain = the daily gain since the weighing before ÷ the company's. The thin blue shape is the breed's ideal scored the same way. The other three, 100 = inside the ideal band, 50 at the limit, 0 as far again past it: Eaten (100 − 2 × the gap to the company's feed over 7 days), birds a pan and a nipple, the walk to feed and water; temperature, humidity, what the birds feel, air speed, ammonia; kg/m², the floor a bird has against what it needs, litter depth, moisture and caking. The number by each title is the radar's average.",
+            "The birds against the company on one radar, and the twelve numbers that matter, at the time on the rail down the right edge (touch it to move the time; tap the white dot for now). Number colours: green = entered, amber = projected, violet = the company's (co), blue = the ideal, Ross (id). Under each number its line: violet tick the company, blue tick the ideal, the dot the flock. Arrows: green good, orange a little off, red far off.",
+            "Radar: each score is the flock's figure as a share of the company's for the day, 100 = the company (the dashed ring), turned so that further out is always better: Livability = company mortality ÷ mortality; FCR = company FCR ÷ FCR (lifting counted); EPEF ÷ company; Growth = weight ÷ company; Even = 8 % ÷ CV; Gain = daily gain ÷ company. Green outline = as entered (an axis with nothing entered is left out), amber dashed = projected at the time shown, blue = the breed's ideal scored the same way. Under each name: entered · projected.",
             "Every entry and its time, the feed plan and the flock's appetite, the lights, the weather switch.",
             "The time on the rail, every entry.",
-            "A point inside the dashed ring is behind the target: start there. Evenness is estimated until 10 or more birds are weighed one by one."),
+            "A point inside the dashed ring is behind the company: start there. Evenness is estimated until 10 or more birds are weighed one by one."),
         "walk" to InfoTopic("Walk to feed and water",
-            "How far the furthest bird walks to an open pan and to a nipple, against the safe walk and the most for the age: chicks 1.0 m safe and 1.5 m at most (days 0–3), 1.5 m and 2.5 m (days 4–10), then 2.0 m and 3.0 m.",
-            "The furthest bird stands halfway between two lines and halfway between two open points on them: walk = √((line gap ÷ 2)² + (point gap ÷ 2)²). Shutting pans (1 on · 2 off) makes the gap along the line 3 pans. Trays and chick drinkers count while they are down: one every (floor ÷ count) m², the furthest bird at the middle of a square of them (side ÷ √2). The drawing is to scale: green is the floor within the safe walk of an open point, orange within the most, red past it; ✕ is the furthest bird.",
-            "Feeder and drinker lines, pans a line and their spacing, nipples (25 cm apart), the barricade, the pan series picked in the feed card, trays and chick drinkers.",
-            "Feedings picked, pans shut, the barricade, birds' age.",
-            "Aviagen: chicks no more than 1 m from water in the first 24 hours; the management guides: no bird more than 3 m from feed or water. Red on the floor means birds that eat or drink less: open more pans or move the barricade."),
+            "How far the furthest bird walks to an open pan and to a nipple, against the ideal walk and the most for the age: chicks 1.0 m ideal and 1.5 m at most (days 0–3), 1.5 m and 2.5 m (days 4–10), then 2.0 m and 3.0 m.",
+            "The furthest bird stands halfway between two lines and halfway between two open points on them: walk = √((line gap ÷ 2)² + (point gap ÷ 2)²). Shutting pans (1 on · 2 off) makes the gap along the line 3 pans. Trays and chick drinkers count while they are down: one every (floor ÷ count) m², the furthest bird at the middle of a square of them (side ÷ √2). The drawing is to scale; round the nearest open point: green = the furthest bird's walk now, blue = the ideal, red = the most. ✕ is the furthest bird.",
+            "Feeder and drinker lines, pans a line and their spacing, nipples (25 cm apart), the barricades, the pan series picked in the feed card, trays and chick drinkers.",
+            "Feedings picked, pans shut, the barricades, birds' age.",
+            "Aviagen: chicks no more than 1 m from water in the first 24 hours; the management guides: no bird more than 3 m from water. When the green circle is outside the red one, open more pans or move the barricades."),
         "today" to InfoTopic("Today: entered and projected",
             "Two columns that never mix. Entered: what was typed in for this day, exactly as entered — it does not move. Projected: what the app works out. For today it is the figure right now and moves with the clock; for an earlier day it is what the app had projected for that day before its entry (so the two can be compared); for a later day it is the forecast.",
             "Weight now = the last weighing grown along the breed curve for the hours since it was saved. Eaten today = the bags the flock is likely to eat today × the share of the lit hours gone. Water today = the day's water the same way. Deaths today = the flock's own recent daily rate × the share of the day gone, until today's deaths are entered. Live birds = yesterday's − deaths. FCR = (feed entered + feed eaten since) ÷ (live birds × weight now).",
@@ -241,7 +241,7 @@ fun InfoButton(key: String, modifier: Modifier = Modifier) {
     var open by remember { mutableStateOf(false) }
     Box(modifier.size(24.dp).border(1.dp, Color.White.copy(alpha = 0.55f), CircleShape).clickable { open = true }.testTag("info_$key"),
         contentAlignment = Alignment.Center) {
-        Text("i", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = Color.White.copy(alpha = 0.85f))
+        Text("i", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium), color = Color.White.copy(alpha = 0.85f))
     }
     if (open) AlertDialog(
         onDismissRequest = { open = false },
@@ -251,7 +251,7 @@ fun InfoButton(key: String, modifier: Modifier = Modifier) {
                 listOf("What it is" to topic.what, "How it is worked out" to topic.how, "What it needs" to topic.inputs,
                     "What changes it" to topic.changes, "Keeping it right" to topic.check).forEach { (h, b) ->
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(h, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = Color.White.copy(alpha = 0.7f))
+                        Text(h, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = Color.White.copy(alpha = 0.7f))
                         Text(b, style = MaterialTheme.typography.bodyMedium)
                     }
                 }

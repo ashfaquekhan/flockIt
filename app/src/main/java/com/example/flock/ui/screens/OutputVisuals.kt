@@ -40,6 +40,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
@@ -95,17 +96,18 @@ private const val PAD_T = 26f
  * Draws [c] over the days [from]–[to]: grid, the company's ±5 % band, lifting days as rose bands with an L badge, the
  * lines (present on top), and at the day [sel] a cursor with every line's value in a box.
  */
-private fun DrawScope.drawChart(c: ChartSpec, from: Double, to: Double, sel: Int, labelArgb: Int, textPx: Float) {
+private fun DrawScope.drawChart(c: ChartSpec, from: Double, to: Double, sel: Int, labelArgb: Int, textPx: Float, dotLabels: Boolean = false) {
     val px = density
     val padL = PAD_L * px; val padB = PAD_B * px; val padT = PAD_T * px
-    val gw = size.width - padL - 14f * px; val gh = size.height - padB - padT
+    val inset = 12f * px
+    val gw = size.width - padL - 2 * inset - 18f * px; val gh = size.height - padB - padT
     val span = (to - from).coerceAtLeast(1.0)
-    fun x(d: Int) = padL + ((d - from) / span * gw).toFloat()
+    fun x(d: Int) = padL + inset + ((d - from) / span * gw).toFloat()
     fun y(v: Double) = padT + (gh - ((v.coerceIn(c.yMin, c.yMax) - c.yMin) / (c.yMax - c.yMin)) * gh).toFloat()
     val lbl = Paint().apply { color = labelArgb; textSize = textPx; isAntiAlias = true; typeface = com.example.ui.theme.AppFonts.mono }
     var t = kotlin.math.ceil(c.yMin / c.yStep) * c.yStep
     while (t <= c.yMax + 1e-9) {
-        drawLine(Color.White.copy(alpha = 0.10f), Offset(padL, y(t)), Offset(padL + gw, y(t)), 1f)
+        drawLine(Color.White.copy(alpha = 0.10f), Offset(padL, y(t)), Offset(padL + gw + 2 * inset, y(t)), 1f)
         lbl.textAlign = Paint.Align.RIGHT
         drawContext.canvas.nativeCanvas.drawText(if (c.yStep >= 1000) Fmt.n(t / 1000, 1) + "k" else Fmt.n(t, if (c.yStep < 1) 1 else 0), padL - 6f * px, y(t) + textPx / 3, lbl)
         t += c.yStep
@@ -115,14 +117,15 @@ private fun DrawScope.drawChart(c: ChartSpec, from: Double, to: Double, sel: Int
     lbl.textAlign = Paint.Align.CENTER
     for (d in d0..d1) if (d % every == 0) drawContext.canvas.nativeCanvas.drawText("d$d", x(d), size.height - 6f * px, lbl)
     val dayW = (gw / span).toFloat()
-    clipRect(padL, 0f, padL + gw + 10f * px, size.height) {
-        // lifting days: a rose band the width of the day and an L badge on top
+    clipRect(padL, 0f, size.width, size.height) {
+        // lifting days: a rose band the width of the day and a numbered badge on top (L1, L2 … in the order lifted)
+        val liftOrder = c.lifts.keys.sorted()
         c.lifts.keys.filter { it in d0..d1 }.forEach { m ->
             val bw = max(6f * px, dayW)
             drawRect(LiftColor.copy(alpha = 0.32f), Offset(x(m) - bw / 2, padT), Size(bw, gh))
-            drawCircle(LiftColor, 9f * px, Offset(x(m), padT - 12f * px))
-            val b = Paint().apply { isAntiAlias = true; textSize = 11f * px; isFakeBoldText = true; color = android.graphics.Color.BLACK; textAlign = Paint.Align.CENTER }
-            drawContext.canvas.nativeCanvas.drawText("L", x(m), padT - 8f * px, b)
+            drawRoundRect(LiftColor, Offset(x(m) - 11f * px, padT - 21f * px), Size(22f * px, 16f * px), CornerRadius(8f * px))
+            val b = Paint().apply { isAntiAlias = true; textSize = 10.5f * px; color = android.graphics.Color.BLACK; textAlign = Paint.Align.CENTER; typeface = com.example.ui.theme.AppFonts.mono }
+            drawContext.canvas.nativeCanvas.drawText("L${liftOrder.indexOf(m) + 1}", x(m), padT - 9f * px, b)
         }
         if (c.companyBand) c.lines.firstOrNull { it.style == Style.COMPANY }?.let { comp ->
             val ds = (max(CompanyStandard.TOLERANCE_FROM_DAY, c.fromDay)..c.maxDay).filter { comp.valueAt(it) != null }
@@ -152,10 +155,26 @@ private fun DrawScope.drawChart(c: ChartSpec, from: Double, to: Double, sel: Int
         // the cursor and the dots on it
         drawLine(Color.White.copy(alpha = 0.6f), Offset(x(sel), padT), Offset(x(sel), padT + gh), 1.2f * px)
         c.lines.forEach { l -> l.valueAt(sel)?.let { v -> drawCircle(colorOf(l.style), 5f * px, Offset(x(sel), y(v))); drawCircle(Color.Black, 2f * px, Offset(x(sel), y(v))) } }
+        // each line's value beside its dot (where they would sit on each other, the box keeps the full list)
+        if (dotLabels) {
+            val dp = Paint().apply { isAntiAlias = true; textSize = textPx; typeface = com.example.ui.theme.AppFonts.mono }
+            val right = x(sel) < padL + gw * 0.6f
+            val used = mutableListOf<Float>()
+            c.lines.mapNotNull { l -> l.valueAt(sel)?.let { l to it } }.sortedBy { y(it.second) }.forEach { (l, v) ->
+                var yy = y(v) + textPx / 3
+                while (used.any { kotlin.math.abs(it - yy) < textPx * 1.1f }) yy += textPx * 1.1f
+                used += yy
+                dp.color = colorOf(l.style).toArgb(); dp.textAlign = if (right) Paint.Align.LEFT else Paint.Align.RIGHT
+                val tx = if (right) x(sel) + 9f * px else x(sel) - 9f * px
+                val t = c.fmt(v); val w = dp.measureText(t)
+                drawRoundRect(Color.Black.copy(alpha = 0.75f), Offset(if (right) tx - 2f * px else tx - w - 2f * px, yy - textPx), Size(w + 4f * px, textPx * 1.3f), CornerRadius(3f * px))
+                drawContext.canvas.nativeCanvas.drawText(t, tx, yy, dp)
+            }
+        }
     }
     // the box with every line's value on the day picked, on the side away from the cursor
     val rows = buildList {
-        add("Day $sel" + (c.lifts[sel]?.let { " · lifted ${Fmt.i(it)}" } ?: "") to (if (c.lifts.containsKey(sel)) LiftColor else Color.White))
+        add("Day $sel" + (c.lifts[sel]?.let { " · L${c.lifts.keys.sorted().indexOf(sel) + 1} lifted ${Fmt.i(it)}" } ?: "") to (if (c.lifts.containsKey(sel)) LiftColor else Color.White))
         c.lines.forEach { l -> l.valueAt(sel)?.let { add("${c.tagOf(l.style)} ${c.fmt(it)}" to colorOf(l.style)) } }
     }
     val tp = Paint().apply { isAntiAlias = true; textSize = textPx * 1.05f; typeface = com.example.ui.theme.AppFonts.mono }
@@ -201,13 +220,13 @@ fun GraphsCard(d: OutputData) {
     var pick by rememberSaveable { mutableStateOf("weight") }
     val c = specs.firstOrNull { it.key == pick } ?: specs.first()
     var sel by remember(d.day, c.key) { mutableStateOf(d.day.coerceIn(c.fromDay, c.maxDay)) }
-    var zoomed by remember { mutableStateOf(false) }
+    var zoomed by rememberSaveable { mutableStateOf(false) }
     val labelArgb = Color.White.copy(alpha = 0.6f).toArgb()
     OutputCard(title = "Graphs") {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             specs.forEach { s ->
                 val on = s.key == c.key
-                Text(s.title, style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (on) FontWeight.Bold else FontWeight.Medium),
+                Text(s.title, style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (on) FontWeight.Medium else FontWeight.Medium),
                     color = Color.White.copy(alpha = if (on) 1f else 0.7f),
                     modifier = Modifier.border(if (on) 2.dp else 1.dp, Color.White.copy(alpha = if (on) 1f else 0.3f), RoundedCornerShape(10.dp))
                         .clickable { pick = s.key }.padding(horizontal = 12.dp, vertical = 8.dp).testTag("chart_pick_${s.key}"))
@@ -216,76 +235,86 @@ fun GraphsCard(d: OutputData) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) { ChartKey(c) }
             Spacer(Modifier.width(8.dp))
-            Text("Zoom", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = Color.White,
+            Text("Zoom", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = Color.White,
                 modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).clickable { zoomed = true }
                     .padding(horizontal = 12.dp, vertical = 6.dp).testTag("chart_zoom"))
         }
-        Canvas(
-            Modifier.fillMaxWidth().height(260.dp).testTag("chart")
-                .pointerInput(c.key) {
-                    fun dayAt(x: Float): Int {
-                        val padL = PAD_L * density
-                        return (c.fromDay + ((x - padL) / (size.width - padL)).coerceIn(0f, 1f) * (c.maxDay - c.fromDay)).roundToInt()
-                    }
-                    detectTapGestures { o -> sel = dayAt(o.x) }
-                }
-                .pointerInput(c.key) {
-                    fun dayAt(x: Float): Int {
-                        val padL = PAD_L * density
-                        return (c.fromDay + ((x - padL) / (size.width - padL)).coerceIn(0f, 1f) * (c.maxDay - c.fromDay)).roundToInt()
-                    }
-                    detectHorizontalDragGestures { ch, _ -> ch.consume(); sel = dayAt(ch.position.x) }
-                }
-        ) { drawChart(c, c.fromDay.toDouble(), c.maxDay.toDouble(), sel, labelArgb, 11f * density) }
+        var win by remember(c.key) { mutableStateOf(c.fromDay.toFloat()..c.maxDay.toFloat()) }
+        val from = win.start.toDouble(); val to = win.endInclusive.toDouble()
+        ChartCanvas(c, from, to, sel, { sel = it }, Modifier.fillMaxWidth().height(260.dp).testTag("chart"), 11f, labelArgb)
+        ChartSliders(c, win, { win = it; sel = sel.coerceIn(it.start.roundToInt(), it.endInclusive.roundToInt()) }, sel, { sel = it })
     }
     if (zoomed) ZoomedChart(c, sel, { sel = it }) { zoomed = false }
 }
 
-/** A chart full screen: one finger reads the days, two fingers zoom into them and move along them. */
+/** The chart drawn over [from]–[to] with the cursor at [sel]; one finger along it moves the cursor. */
+@Composable
+private fun ChartCanvas(c: ChartSpec, from: Double, to: Double, sel: Int, onSel: (Int) -> Unit, modifier: Modifier, textSp: Float, labelArgb: Int, dotLabels: Boolean = false) {
+    val setSel by androidx.compose.runtime.rememberUpdatedState(onSel)
+    val f by androidx.compose.runtime.rememberUpdatedState(from)
+    val t by androidx.compose.runtime.rememberUpdatedState(to)
+    Canvas(modifier.pointerInput(c.key) {
+        fun dayAt(x: Float): Int {
+            val padL = PAD_L * density + 12f * density
+            val gw = size.width - padL - 30f * density
+            return (f + ((x - padL) / gw).coerceIn(0f, 1f) * (t - f)).roundToInt().coerceIn(c.fromDay, c.maxDay)
+        }
+        awaitEachGesture {
+            val down = awaitFirstDown(); setSel(dayAt(down.position.x))
+            do {
+                val ev = awaitPointerEvent()
+                ev.changes.firstOrNull { it.pressed }?.let { ch -> if (kotlin.math.abs(ch.position.x - ch.previousPosition.x) > 0f) { setSel(dayAt(ch.position.x)); ch.consume() } }
+            } while (ev.changes.any { it.pressed })
+        }
+    }) { drawChart(c, from, to, sel, labelArgb, textSp * density, dotLabels) }
+}
+
+/** Under a chart: the days shown (drag either end) and the cursor (drag it to read every day, no tapping). */
+@Composable
+private fun ChartSliders(c: ChartSpec, win: ClosedFloatingPointRange<Float>, onWin: (ClosedFloatingPointRange<Float>) -> Unit, sel: Int, onSel: (Int) -> Unit) {
+    val colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White.copy(alpha = 0.8f),
+        inactiveTrackColor = Color.White.copy(alpha = 0.2f), activeTickColor = Color.Transparent, inactiveTickColor = Color.Transparent)
+    Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("day $sel", Modifier.width(64.dp), style = MaterialTheme.typography.labelLarge, color = Color.White)
+            androidx.compose.material3.Slider(value = sel.toFloat(), onValueChange = { onSel(it.roundToInt()) },
+                valueRange = win.start..max(win.start + 1f, win.endInclusive), colors = colors, modifier = Modifier.weight(1f).testTag("chart_cursor"))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("d${win.start.roundToInt()}–${win.endInclusive.roundToInt()}", Modifier.width(64.dp), style = MaterialTheme.typography.labelMedium, color = Color.White)
+            androidx.compose.material3.RangeSlider(value = win, onValueChange = { r -> if (r.endInclusive - r.start >= 3f) onWin(r) },
+                valueRange = c.fromDay.toFloat()..c.maxDay.toFloat(), colors = colors, modifier = Modifier.weight(1f).testTag("chart_window"))
+        }
+    }
+}
+
+/** Lays [content] out sideways (turned a quarter) when the space is taller than wide: a chart full screen in landscape. */
+private fun Modifier.landscape(): Modifier = this.layout { m, cs ->
+    val w = cs.maxWidth; val h = cs.maxHeight
+    if (h <= w) { val p = m.measure(cs); return@layout layout(p.width, p.height) { p.place(0, 0) } }
+    val p = m.measure(androidx.compose.ui.unit.Constraints.fixed(h, w))
+    layout(w, h) { p.placeWithLayer((w - p.width) / 2, (h - p.height) / 2) { rotationZ = 90f } }
+}
+
+/** A chart full screen, in landscape: one finger reads the days, the sliders move the cursor and choose the days. */
 @Composable
 private fun ZoomedChart(c: ChartSpec, sel0: Int, onSel: (Int) -> Unit, onClose: () -> Unit) {
     var sel by remember { mutableStateOf(sel0) }
-    var from by remember { mutableStateOf(c.fromDay.toDouble()) }
-    var to by remember { mutableStateOf(c.maxDay.toDouble()) }
-    val labelArgb = Color.White.copy(alpha = 0.65f).toArgb()
+    var win by remember { mutableStateOf(c.fromDay.toFloat()..c.maxDay.toFloat()) }
+    val labelArgb = Color.White.copy(alpha = 0.7f).toArgb()
     androidx.compose.ui.window.Dialog(onDismissRequest = { onSel(sel); onClose() },
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
-        Column(Modifier.fillMaxSize().background(Color.Black).padding(12.dp).testTag("chart_zoomed"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(c.title + if (c.unit.isNotEmpty()) " · ${c.unit}" else "", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
-                Text("Close", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = Color.White,
-                    modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).clickable { onSel(sel); onClose() }
-                        .padding(horizontal = 12.dp, vertical = 6.dp))
-            }
-            ChartKey(c)
-            Canvas(
-                Modifier.fillMaxWidth().weight(1f)
-                    .pointerInput(Unit) {
-                        val padL = PAD_L * density
-                        fun dayAt(x: Float) = (from + ((x - padL) / (size.width - padL)).coerceIn(0f, 1f) * (to - from)).roundToInt().coerceIn(c.fromDay, c.maxDay)
-                        awaitEachGesture {
-                            val down = awaitFirstDown(); sel = dayAt(down.position.x)
-                            do {
-                                val ev = awaitPointerEvent()
-                                val pressed = ev.changes.filter { it.pressed }
-                                if (pressed.size >= 2) {
-                                    val span = to - from
-                                    val newSpan = (span / ev.calculateZoom()).coerceIn(4.0, (c.maxDay - c.fromDay).toDouble().coerceAtLeast(4.0))
-                                    val mid = (from + to) / 2 - ev.calculatePan().x / (size.width - padL) * span
-                                    from = (mid - newSpan / 2).coerceIn(c.fromDay.toDouble(), c.maxDay - newSpan); to = from + newSpan
-                                } else if (pressed.size == 1) sel = dayAt(pressed[0].position.x)
-                                ev.changes.forEach { it.consume() }
-                            } while (ev.changes.any { it.pressed })
-                        }
-                    }
-            ) { drawChart(c, from, to, sel, labelArgb, 12f * density) }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("All days" to (c.fromDay.toDouble() to c.maxDay.toDouble()),
-                    "14 days" to (max(c.fromDay, sel - 10).toDouble() to min(c.maxDay, max(c.fromDay, sel - 10) + 14).toDouble()),
-                    "7 days" to (max(c.fromDay, sel - 5).toDouble() to min(c.maxDay, max(c.fromDay, sel - 5) + 7).toDouble())).forEach { (t, r) ->
-                    Text(t, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = Color.White, textAlign = TextAlign.Center,
-                        modifier = Modifier.weight(1f).border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(8.dp)).clickable { from = r.first; to = r.second }.padding(vertical = 10.dp))
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            Column(Modifier.fillMaxSize().landscape().padding(12.dp).testTag("chart_zoomed"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(c.title + if (c.unit.isNotEmpty()) " · ${c.unit}" else "", style = MaterialTheme.typography.titleMedium, color = Color.White, modifier = Modifier.weight(1f))
+                    Box(Modifier.weight(2f)) { ChartKey(c) }
+                    Text("Close", style = MaterialTheme.typography.labelLarge, color = Color.White,
+                        modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).clickable { onSel(sel); onClose() }
+                            .padding(horizontal = 12.dp, vertical = 6.dp))
                 }
+                ChartCanvas(c, win.start.toDouble(), win.endInclusive.toDouble(), sel, { sel = it }, Modifier.fillMaxWidth().weight(1f), 12f, labelArgb, dotLabels = true)
+                ChartSliders(c, win, { win = it; sel = sel.coerceIn(it.start.roundToInt(), it.endInclusive.roundToInt()) }, sel, { sel = it })
             }
         }
     }

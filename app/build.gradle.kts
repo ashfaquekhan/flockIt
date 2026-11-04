@@ -1,4 +1,5 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.time.Duration
 
 plugins {
   alias(libs.plugins.android.application)
@@ -58,7 +59,7 @@ android {
     compose = true
     buildConfig = true
   }
-  testOptions { unitTests { isIncludeAndroidResources = true } }
+  testOptions { unitTests { isIncludeAndroidResources = true; all { it.timeout.set(Duration.ofMinutes(20)) } } }
   dependenciesInfo {
     includeInApk = false
     includeInBundle = true

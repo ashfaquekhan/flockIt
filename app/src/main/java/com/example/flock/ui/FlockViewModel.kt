@@ -73,7 +73,9 @@ data class DailyInputs(
     // Important groups the user actually filled in this time: "W" weights, "M" mortality, "F" feed used.
     val entered: Set<String> = emptySet(),
     /** when what was entered happened (epoch ms) — the weighing, the lifting; null = now */
-    val at: Long? = null
+    val at: Long? = null,
+    /** the front barricade, ft from the front wall (null: unchanged; 0: none) */
+    val penStartFt: Double? = null
 )
 
 class FlockViewModel(application: Application) : AndroidViewModel(application) {
@@ -246,14 +248,14 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
      * the app. One load at a time; a load asked for while one runs is the same load. The repository keeps saves and
      * loads apart, so nothing typed on the phone is overwritten by an older sheet.
      */
-    fun refreshCurrentFarm() {
+    fun refreshCurrentFarm(quiet: Boolean = false) {
         val id = _selectedSpreadsheetId.value
         if (loadJob?.isActive == true) return
         loadJob = viewModelScope.launch {
             _isRefreshing.value = true
             if (!authState.value.isDemoMode && authState.value.isSignedIn && id != "local_default") {
                 _syncStatus.value = "syncing"
-                val ok = runCatching { repository.refreshFromCloud(id) }.getOrDefault(false)
+                val ok = runCatching { repository.refreshFromCloud(id, quiet) }.getOrDefault(false)
                 _syncStatus.value = if (ok) "synced" else "offline"
                 if (ok) _loadedAt.value = System.currentTimeMillis()
             }
@@ -269,7 +271,8 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
             else -> {
                 val id = _selectedSpreadsheetId.value
                 val last = repository.lastLoadedAt[id] ?: 0L
-                if (id != "local_default" && System.currentTimeMillis() - last > maxAgeMs) refreshCurrentFarm()
+                // a load the app starts by itself: a failure only shows on the sync chip, never as a message
+                if (id != "local_default" && System.currentTimeMillis() - last > maxAgeMs) refreshCurrentFarm(quiet = true)
             }
         }
     }
@@ -589,7 +592,8 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
                     padWetMin = inputs.padWetMin,
                     padDryMin = inputs.padDryMin,
                     luxPerFt2 = inputs.luxPerFt2,
-                    dieselCansUsed = inputs.dieselCansUsed
+                    dieselCansUsed = inputs.dieselCansUsed,
+                    penStartFt = inputs.penStartFt ?: existing.penStartFt
                 )
             }
 

@@ -131,7 +131,7 @@ fun TasksScreen(
     ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column {
-                Text("Day $dayNumber planner", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black))
+                Text("Day $dayNumber planner", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium))
                 Text("$doneCount of ${dayTasks.size} done", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Button(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
@@ -191,7 +191,7 @@ private fun BlockCard(
                 Spacer(Modifier.width(8.dp))
                 Icon(Icons.Default.Schedule, contentDescription = null, tint = accent, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
-                Text(blockTitle, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = accent))
+                Text(blockTitle, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium, color = accent))
                 Spacer(Modifier.weight(1f))
                 Text("${tasks.size}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -230,7 +230,7 @@ private fun TaskRow(
                 )
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(t.time, style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary))
+                Text(t.time, style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.primary))
                 Spacer(Modifier.width(8.dp))
                 Text(recurrenceLabel(t), style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (t.kind == "waterfill") {

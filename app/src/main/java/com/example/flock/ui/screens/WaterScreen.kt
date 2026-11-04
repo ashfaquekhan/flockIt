@@ -84,13 +84,13 @@ fun WaterScreen(
                 ) {
                     Text(
                         text = "Water Requirement Today",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium)
                     )
                     Surface(color = DomainWaterWash, shape = RoundedCornerShape(8.dp)) {
                         Text(
                             text = String.format("W:F ratio %.2f", wfRatio),
                             style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = FontWeight.Medium,
                                 color = DomainWater
                             ),
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
@@ -107,14 +107,14 @@ fun WaterScreen(
                     Text(
                         text = String.format("%,.0f", totalWaterL),
                         style = MaterialTheme.typography.displaySmall.copy(
-                            fontWeight = FontWeight.ExtraBold,
+                            fontWeight = FontWeight.Medium,
                             color = DomainWater
                         )
                     )
                     Text(
                         text = " Litres",
                         style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         ),
                         modifier = Modifier.padding(bottom = 6.dp)
@@ -136,7 +136,7 @@ fun WaterScreen(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = String.format("Heat uplift: +%.1f%% demand at %.1f°C", (heatFactor - 1.0) * 100.0, temp),
-                            style = MaterialTheme.typography.bodySmall.copy(color = StatusWarn, fontWeight = FontWeight.SemiBold)
+                            style = MaterialTheme.typography.bodySmall.copy(color = StatusWarn, fontWeight = FontWeight.Medium)
                         )
                     }
                 }
@@ -159,13 +159,13 @@ fun WaterScreen(
                 ) {
                     Text(
                         text = "Tank Refill Schedule",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium)
                     )
                     Surface(color = DomainWaterWash, shape = RoundedCornerShape(8.dp)) {
                         Text(
                             text = "$refills refills · ${tankCapacity.toInt()}L tank",
                             style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = FontWeight.Medium,
                                 color = DomainWater
                             ),
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
@@ -198,7 +198,7 @@ fun WaterScreen(
                             Text(
                                 text = timeStr,
                                 style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = FontWeight.Medium,
                                     fontFamily = com.example.ui.theme.NumberFont
                                 )
                             )
@@ -237,7 +237,7 @@ fun WaterScreen(
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
                     text = "Line Targets & Sanitation",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium)
                 )
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -271,7 +271,7 @@ fun TargetRow(label: String, value: String) {
         )
         Text(
             text = value,
-            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold)
+            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium)
         )
     }
 }

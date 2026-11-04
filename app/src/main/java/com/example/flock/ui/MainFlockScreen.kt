@@ -1,5 +1,6 @@
 package com.example.flock.ui
 
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -72,8 +73,12 @@ fun MainFlockScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val loadedAt by viewModel.loadedAt.collectAsState()
     // while a flock is open the sheet is loaded again every few minutes (another phone's entries come in by themselves)
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        while (true) { kotlinx.coroutines.delay(3 * 60_000L); viewModel.refreshIfStale(3 * 60_000L) }
+    // — only while the app is on screen (it never loads, or says it could not, from behind another app)
+    val life = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.LaunchedEffect(life) {
+        life.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            while (true) { kotlinx.coroutines.delay(3 * 60_000L); viewModel.refreshIfStale(3 * 60_000L) }
+        }
     }
 
     val activeFlock by viewModel.activeFlock.collectAsState()
@@ -169,18 +174,18 @@ fun MainFlockScreen(
                         selected = selected,
                         onClick = { currentTab = tab },
                         icon = {
-                            // the chosen tab is marked with a small bar in the beak's colour
+                            // the chosen tab is marked with a small white bar (a mark, not a kind of value)
                             androidx.compose.foundation.layout.Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
                                 Icon(tab.icon, contentDescription = tab.label)
                                 Box(Modifier.padding(top = 2.dp).size(width = 18.dp, height = 3.dp)
-                                    .background(if (selected) com.example.ui.theme.BrandBeak else androidx.compose.ui.graphics.Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(2.dp)))
+                                    .background(if (selected) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(2.dp)))
                             }
                         },
                         label = {
                             Text(
                                 text = tab.label,
                                 style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                                    fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal
                                 )
                             )
                         },

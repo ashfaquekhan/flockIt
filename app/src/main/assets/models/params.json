@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "note": "FlockIt model weights. A newer file with a higher version in the app's files/models/params.json takes over. Keys are model.key; see models/ModelSuite.kt.",
+  "models": {
+    "house_map": {
+      "sensible": 0.6,
+      "mix": 0.2,
+      "migration": 0.35,
+      "line_attraction": 0.25,
+      "drinker_wet_pts": 7.0,
+      "drinker_sigma_m": 0.6,
+      "crowd_wet_pts": 3.0,
+      "humid_wet_pts_per_5": 1.0,
+      "fans_at_back": true
+    }
+  }
+}

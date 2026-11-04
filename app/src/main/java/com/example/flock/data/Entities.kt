@@ -87,7 +87,9 @@ data class FarmEntity(
     val lineFillBags: Double = 3.0,        // bags that fill one whole feeder line from empty (e.g. 3.3)
     val sensorPansPerLine: Int = 2,        // control (sensor) pans at the end of each line — not feed pans
     val panSpacingFt: Double = 2.5,        // pan to pan on a line
-    val feederLineGapFt: Double = 0.0      // feeder line to feeder line (0 = usable width ÷ lines)
+    val feederLineGapFt: Double = 0.0,     // feeder line to feeder line (0 = usable width ÷ lines)
+    // Bags that fill one line with every pan shut — the tube alone (0 = not known: worked out from the line's length) (v51)
+    val lineFillBagsShut: Double = 0.0
 )
 
 @Entity(tableName = "config")
@@ -297,7 +299,10 @@ data class DailyDataEntity(
     val feedings: String = "",
     // The sheet columns (normalised names) this phone changed and has not sent yet: only these are written,
     // so a value another phone entered meanwhile is not overwritten (v47). Never on the sheet.
-    val dirtyFields: String = ""
+    val dirtyFields: String = "",
+    // The front barricade, ft from the front wall (null: not set that day; 0: none) — with [broodingLength] (the back
+    // barricade, ft from the front wall) it bounds the birds' floor at both ends (v51)
+    val penStartFt: Double? = null
 )
 
 @Entity(

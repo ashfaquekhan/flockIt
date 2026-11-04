@@ -135,7 +135,7 @@ fun TopFlockBar(
                         Column {
                             Text(
                                 text = flock?.name ?: "No Batch Selected",
-                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -181,7 +181,7 @@ fun TopFlockBar(
                         Text(
                             text = tempStr,
                             style = MaterialTheme.typography.labelMedium.copy(
-                                fontWeight = FontWeight.SemiBold,
+                                fontWeight = FontWeight.Medium,
                                 fontFamily = com.example.ui.theme.NumberFont
                             )
                         )
@@ -248,7 +248,7 @@ fun TopFlockBar(
                             Text(
                                 text = "Day $selectedDay",
                                 color = androidx.compose.ui.graphics.Color(0xFFF2F2F0),
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium)
                             )
                         }
                     }
@@ -262,7 +262,7 @@ fun TopFlockBar(
                             Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Today, contentDescription = "Go to today", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Today", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary))
+                                Text("Today", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.primary))
                             }
                         }
                     }
@@ -293,7 +293,7 @@ fun TopFlockBar(
                     Text(
                         text = labelText,
                         color = textColor,
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }

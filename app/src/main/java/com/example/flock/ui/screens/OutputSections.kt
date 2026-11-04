@@ -49,14 +49,14 @@ private val NE = ValueKind.NEUTRAL
  * feeding log. How the bags were worked out sits under it as numbers.
  */
 @Composable
-fun FeedTodayCard(d: OutputData, pick: Int, onPick: (Int) -> Unit, feedLog: @Composable () -> Unit) {
+fun FeedTodayCard(d: OutputData, pick: Int, onPick: (Int) -> Unit, feedLog: @Composable () -> Unit = {}) {
     val o = d.feedOptions[pick.coerceIn(0, d.feedOptions.size - 1)]
     val pat = d.patternFor(pick)
     val plan = d.floorPlan
-    val fillBags = d.feederLines * pat.openPerLine / d.pansPerBag
+    val fillBags = d.bagsToFill(pat.openPerLine)
     OutputCard(title = "Feed", info = "plan") {
         Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.testTag("feed_conclusion")) {
-            Text("${o.feedings} × ${Fmt.n(o.bagsPerFeeding, 1)}", style = MaterialTheme.typography.headlineSmall.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold),
+            Text("${o.feedings} × ${Fmt.n(o.bagsPerFeeding, 1)}", style = MaterialTheme.typography.headlineSmall.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium),
                 color = kindColor(PR))
             Spacer(Modifier.width(6.dp))
             Text("bags · ${Fmt.n(o.bagsPerLine, 2)} a line", style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = 0.8f), modifier = Modifier.padding(bottom = 3.dp))
@@ -70,14 +70,14 @@ fun FeedTodayCard(d: OutputData, pick: Int, onPick: (Int) -> Unit, feedLog: @Com
                     .clickable { onPick(i) }.testTag("feedings_${opt.feedings}"))
             }
         }
-        ValueRow(listOf(vt(d.feedTimesFor(o.feedings).joinToString(" "), PR, "Times")), "when")
+        ValueRow(listOf(vt(d.modelFeedTimes(o.feedings).joinToString(" "), PR, "Times")), "when")
         // a bird's share of today's bags, against the company's ration and the breed's
         KpiLine(Kpi("Feed a bird today", "g", d.dayBags * d.bagKg * 1000 / d.liveSafe, PR, d.comPerBird, d.idealPerBird, Better.CLOSER, 1), plan = true)
-        Text("Pans ${pat.label.lowercase()} on every line", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = kindColor(PR))
+        Text("Pans ${pat.label.lowercase()} on every line", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = Color.White)
         ValueRow(listOf(vi(pat.openPerLine, PR, "Open a line"), v(fillBags, 1, PR, "Bags to fill"), v(o.fillPct, 0, PR, "Each fills %")), "pans")
         if (pat.birdsPerPan < 1e6) RangeParam("Birds a pan", "", SpacePlan.FEW_BIRDS_PER_PAN, SpacePlan.AIM_BIRDS_PER_PAN, d.birdsPerPanMax, null,
             projected = pat.birdsPerPan)
-        FarmTopView(d, pat, plan?.penFt ?: d.barricadeFtNow, plan?.pansInPen ?: d.pansInArea)
+        FarmTopView(d, pat, plan?.penFt ?: d.barricadeFtNow, plan?.pansInPen ?: d.pansInArea, plan?.penStartFt ?: d.penStartFt)
         KeyLine(kindColor(PR) to "on", Color.White.copy(alpha = 0.6f) to "off", Color.White to "sensor", kindColor(ValueKind.MIN) to "drinker")
         feedLog()
         BagsWorkedOut(d)
@@ -146,11 +146,11 @@ fun SpaceCard(d: OutputData) {
         RangeParam("Floor a bird", "ft²", s.needFt2, null, null, s.ft2PerBird, 2, d.vk)
         Param("Room", "", v(s.roomRatio, 2, PR, "Has ÷ needs"), v(s.birdsM2, 1, d.vk, "Birds a m²"), v(d.roam, 2, PR, "Roaming ×"))
         RoomGauge(s.roomRatio)
-        Text(s.why, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.testTag("space_why"))
+        Text(s.why, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium), modifier = Modifier.testTag("space_why"))
         listOf("Floor", "Pans", "Feed").zip(s.steps).forEachIndexed { k, (name, step) ->
             Row(Modifier.fillMaxWidth().border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 7.dp)
                 .testTag("plan_step_$k"), verticalAlignment = Alignment.CenterVertically) {
-                Text("${k + 1} $name", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = kindColor(PR), modifier = Modifier.width(72.dp))
+                Text("${k + 1} $name", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = Color.White, modifier = Modifier.width(72.dp))
                 Text(step, style = MaterialTheme.typography.bodySmall.copy(fontFamily = com.example.ui.theme.NumberFont), color = Color.White.copy(alpha = 0.9f))
             }
         }
@@ -159,7 +159,7 @@ fun SpaceCard(d: OutputData) {
                 val best = i == s.best
                 Column(Modifier.fillMaxWidth().border(if (best) 2.dp else 1.dp, Color.White.copy(alpha = if (best) 0.9f else 0.25f), RoundedCornerShape(8.dp))
                     .padding(horizontal = 10.dp, vertical = 6.dp)) {
-                    Text((if (best) "✓ " else "") + o.title, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
+                    Text((if (best) "✓ " else "") + o.title, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium))
                     Text("${Fmt.n(o.kgM2, 1)} kg/m² · ${o.openPans} pans, ${Fmt.n(o.birdsPerPan, 1)} birds each · walk ${Fmt.n(o.walkM, 2)} m · " +
                         "${o.feedings} × ${Fmt.n(o.bagsPerFeeding, 1)} bags (fill ${Fmt.n(o.fillBags, 1)})",
                         style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont), color = Color.White.copy(alpha = 0.8f))
@@ -176,11 +176,11 @@ fun SuggestCard(d: OutputData) {
     Part("Last 3 and 7 days", "lastdays") {
         Row(Modifier.fillMaxWidth()) {
             Spacer(Modifier.weight(1.3f))
-            Text("3 days", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1)
-            Text("7 days", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1)
+            Text("3 days", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium), maxLines = 1)
+            Text("7 days", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium), maxLines = 1)
         }
         @Composable fun box(x: V, m: Modifier) = Text(x.text, m.border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)).padding(horizontal = 6.dp, vertical = 5.dp),
-            style = MaterialTheme.typography.bodyLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold),
+            style = MaterialTheme.typography.bodyLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium),
             color = kindColor(if (x.text == "—") NE else x.kind), maxLines = 1, softWrap = false,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         @Composable fun row(label: String, a: V, b: V) = Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -193,7 +193,7 @@ fun SuggestCard(d: OutputData) {
         row("Company gain", v(s.w3.comGainG, 1, C), v(s.w7.comGainG, 1, C))
         row("CV, first → last", vt(cvText(s.w3), P), vt(cvText(s.w7), P))
         s.lines.forEach { l ->
-            Text(l.text, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = if (l.level > 0) FontWeight.Bold else FontWeight.Normal),
+            Text(l.text, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = if (l.level > 0) FontWeight.Medium else FontWeight.Normal),
                 color = when (l.level) { 2 -> StatusCrit; 1 -> StatusWarn; else -> Color.White.copy(alpha = 0.9f) })
         }
     }

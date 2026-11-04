@@ -51,7 +51,11 @@ object SpacePlan {
         /** the day's bags, the bags that fill one whole line from empty, the most birds a pan serves at this size */
         val dayBags: Double = 0.0, val bagsFullLine: Double = 3.0, val birdsPerPanMax: Double = 80.0,
         /** the feedings a day the farm gives at this age */
-        val feedingsWanted: Int = 2
+        val feedingsWanted: Int = 2,
+        /** the front barricade, ft from the front wall (0: none); [penFt] is the back one */
+        val penStartFt: Double = 0.0,
+        /** bags that fill a line with every pan shut: the tube alone, filled with the pans (0: not counted) */
+        val bagsShutLine: Double = 0.0
     )
 
     data class Option(
@@ -62,7 +66,9 @@ object SpacePlan {
         /** bags that fill every open pan once (all lines), feedings a day, bags a feeding, bags a line a feeding */
         val fillBags: Double = 0.0, val feedings: Int = 2, val bagsPerFeeding: Double = 0.0, val bagsPerLine: Double = 0.0,
         /** true when each feeding reaches the last open pan */
-        val feedReaches: Boolean = true
+        val feedReaches: Boolean = true,
+        /** where the birds' floor starts (the front barricade, ft from the front wall) */
+        val penStartFt: Double = 0.0
     ) {
         val openPerLine get() = if (on + off == 0) 0 else (0 until pansInPen).count { it % (on + off) < on }
         val series get() = if (off == 0) "all on" else "$on on · $off off"
@@ -112,25 +118,34 @@ object SpacePlan {
             else -> Room.RIGHT
         }
         val lines = max(1, i.feederLines)
-        val pansPerBag = max(1, i.pansPerLine) / max(0.1, i.bagsFullLine)
-        fun pansUpTo(penFt: Double) = floor((penFt - i.lineStartFt) / i.panSpacingFt).toInt().coerceIn(1, max(1, i.pansPerLine))
+        // filling a line takes the tube as well as the open pans: tube + (whole line − tube) × open ÷ all pans
+        val tube = i.bagsShutLine.coerceIn(0.0, i.bagsFullLine * 0.9)
+        val pansPerBag = max(1, i.pansPerLine) / max(0.05, i.bagsFullLine - tube)
+        val n = max(1, i.pansPerLine)
+        /** the first pan inside a floor starting at [startFt], and the pans up to [endFt] (pans counted from the hopper) */
+        fun firstPan(startFt: Double) = if (startFt <= i.lineStartFt) 0 else ceil((startFt - i.lineStartFt) / i.panSpacingFt).toInt().coerceIn(0, n - 1)
+        fun pansIn(startFt: Double, endFt: Double): Int {
+            val end = if (endFt >= i.houseLenFt - 0.5) n else floor((endFt - i.lineStartFt) / i.panSpacingFt).toInt().coerceIn(1, n)
+            return (end - firstPan(startFt)).coerceAtLeast(1)
+        }
+        fun pansUpTo(penFt: Double) = pansIn(0.0, penFt)
 
-        /** One way to set the floor: the barricade at [penFt] and the series ([on], [off]) in it, with its feedings. */
-        fun option(key: String, title: String, penFt: Double, on: Int, off: Int): Option {
-            val inPen = if (penFt >= i.houseLenFt - 0.5) max(1, i.pansPerLine) else pansUpTo(penFt)
+        /** One way to set the floor: from [startFt] to the barricade at [penFt], the series ([on], [off]) in it, its feedings. */
+        fun option(key: String, title: String, penFt: Double, on: Int, off: Int, startFt: Double = 0.0): Option {
+            val inPen = pansIn(startFt, penFt)
             val perLine = (0 until inPen).count { it % (on + off) < on }
             val open = max(1, lines * perLine)
-            val a = (if (penFt >= i.houseLenFt - 0.5) i.houseLenFt else penFt) * i.widthFt
-            val fill = open / pansPerBag
+            val a = ((if (penFt >= i.houseLenFt - 0.5) i.houseLenFt else penFt) - startFt).coerceAtLeast(10.0) * i.widthFt
+            val fill = open / pansPerBag + lines * tube
             // the farm's feedings while each pour still reaches the last open pan, else fewer
             val wanted = max(1, i.feedingsWanted)
             val feedings = (wanted downTo 1).firstOrNull { i.dayBags / it >= fill * 0.97 } ?: 1
             return Option(key, title, penFt, a, live * i.avgKg / (a / FT2_PER_M2), a / live, open, live.toDouble() / open,
                 walk(i.feederGapFt, (off + 1) * i.panSpacingFt, i.drinkerGapFt), on, off, inPen, max(0, i.pansPerLine - inPen),
-                fill, feedings, i.dayBags / feedings, i.dayBags / feedings / lines, i.dayBags <= 0 || i.dayBags / feedings >= fill * 0.97)
+                fill, feedings, i.dayBags / feedings, i.dayBags / feedings / lines, i.dayBags <= 0 || i.dayBags / feedings >= fill * 0.97, startFt)
         }
         /** the series for a floor: pans nearest [AIM_BIRDS_PER_PAN] birds each, the walk within 2 m, the pans not too full */
-        fun seriesFor(penFt: Double): Pair<Int, Int>? = SERIES.drop(1).map { (on, off) -> option("x", "", penFt, on, off) }
+        fun seriesFor(penFt: Double, startFt: Double = 0.0): Pair<Int, Int>? = SERIES.drop(1).map { (on, off) -> option("x", "", penFt, on, off, startFt) }
             .filter { it.walkM <= MAX_WALK_M && it.birdsPerPan <= i.birdsPerPanMax && it.feedReaches }
             .minByOrNull { abs(it.birdsPerPan - AIM_BIRDS_PER_PAN) }?.let { it.on to it.off }
 
@@ -154,8 +169,20 @@ object SpacePlan {
             opts += option("pen", "Barricade at ${pen.toInt()} ft" + if (off > 0) ", $on on · $off off" else "", pen, on, off)
         }
 
+        // D: the floor as the farm set it (a front and / or a back barricade): the pans and feedings for that floor
+        val setEnd = i.penFt ?: i.houseLenFt
+        val isSet = i.penStartFt > 0.5 || setEnd < i.houseLenFt - 0.5
+        if (isSet) {
+            val inPen = pansIn(i.penStartFt, setEnd)
+            val setFew = live.toDouble() / (lines * inPen) < FEW_BIRDS_PER_PAN
+            val (on, off) = if (setFew) seriesFor(setEnd, i.penStartFt) ?: (1 to 0) else 1 to 0
+            opts += option("set", "As set: ${i.penStartFt.toInt()}–${setEnd.toInt()} ft" + if (off > 0) ", $on on · $off off" else "", setEnd, on, off, i.penStartFt)
+        }
+
         val idx = { k: String -> opts.indexOfFirst { it.key == k }.takeIf { it >= 0 } }
         val (best, why) = when {
+            isSet && room == Room.TIGHT -> (idx("house") ?: 0) to "Too tight: move the barricades out"
+            isSet && idx("set") != null -> idx("set")!! to (if (opts[idx("set")!!].off > 0) "Floor as set: shut some pans in it" else "Floor as set: every pan in it on")
             room == Room.TIGHT && i.penFt != null -> (idx("house") ?: 0) to "Too tight: open the barricade"
             room == Room.TIGHT -> (idx("house") ?: 0) to "Too tight: lift or thin soon"
             brooding -> (idx("house") ?: 0) to "Brooding: open the floor as planned"
@@ -176,9 +203,10 @@ object SpacePlan {
 
     /** The chosen way, in three short steps the farm can follow: floor, pans, feed. */
     private fun steps(o: Option, i: In): List<String> {
-        val pen = o.penFt < i.houseLenFt - 0.5
-        val floor = (if (pen) "Barricade at ${o.penFt.toInt()} ft" else "Whole house") + " · ${n1(o.kgM2)} kg/m²"
-        val pans = "${o.series} · ${o.openPerLine} a line" + (if (pen) " · shut ${o.shutPastPen} past it" else "") +
+        val pen = o.penFt < i.houseLenFt - 0.5 || o.penStartFt > 0.5
+        val floor = (if (o.penStartFt > 0.5) "Barricades at ${o.penStartFt.toInt()} and ${o.penFt.toInt()} ft"
+            else if (pen) "Barricade at ${o.penFt.toInt()} ft" else "Whole house") + " · ${n1(o.kgM2)} kg/m²"
+        val pans = "${o.series} · ${o.openPerLine} a line" + (if (pen) " · shut ${o.shutPastPen} outside" else "") +
             " · ${n1(o.birdsPerPan)} birds a pan · walk ${n2(o.walkM)} m"
         val feed = if (i.dayBags <= 0) "nothing planned"
             else if (!o.feedReaches) "${n1(i.dayBags)} bags can't fill ${o.openPans} pans · shut more"

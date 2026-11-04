@@ -299,13 +299,21 @@ fun FlockBookCard(d: OutputData, onSelectDay: ((Int) -> Unit)?) {
         OutlinedButton(onClick = { full = true }, border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine), modifier = Modifier.fillMaxWidth().testTag("book_full")) {
             Text("Full screen", color = Color.White)
         }
+        // the model log: every day's inputs (entries, weather, sensors) and what the models gave, as a file
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        var none by remember { mutableStateOf(false) }
+        OutlinedButton(onClick = { none = !com.example.flock.models.ModelStore.export(ctx, d.flock?.flockId ?: "none") },
+            border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine), modifier = Modifier.fillMaxWidth().testTag("export_models")) {
+            Text("Export the model log", color = Color.White)
+        }
+        if (none) Text("Nothing kept yet: the log starts with today's page.", style = MaterialTheme.typography.labelMedium, color = Color.White)
     }
     if (full) androidx.compose.ui.window.Dialog(onDismissRequest = { full = false },
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
         Column(Modifier.fillMaxSize().background(Color.Black).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Flock book · ${d.flock?.name ?: ""}", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
-                Text("Close", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = Color.White,
+                Text("Flock book · ${d.flock?.name ?: ""}", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium), modifier = Modifier.weight(1f))
+                Text("Close", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = Color.White,
                     modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).clickable { full = false }.padding(horizontal = 12.dp, vertical = 6.dp))
             }
             FlockBookGrid(d, Modifier.fillMaxWidth().weight(1f)) { day -> onSelectDay?.invoke(day); full = false }
@@ -318,8 +326,8 @@ private fun FlockBookGrid(d: OutputData, modifier: Modifier, onSelectDay: ((Int)
     val cols = remember { bookCols() }
     val days = remember(d) { d.rows.filter { it.dayNumber <= max(d.day, d.lastEnteredDay) }.sortedByDescending { it.dayNumber } }
     val h = rememberScrollState()
-    val mono = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp)
-    val head = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+    val mono = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium, letterSpacing = (-0.3).sp)
+    val head = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium)
     Column(modifier.border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(8.dp)).testTag("flock_book")) {
         // the titles
         Row(Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.06f)).padding(vertical = 6.dp)) {

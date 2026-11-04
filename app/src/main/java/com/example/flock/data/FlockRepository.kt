@@ -74,7 +74,7 @@ class FlockRepository(
      * Pulls the whole farm workspace from the sheet, then recomputes every flock locally.
      * No-op (success) when offline. Used on farm open and on login.
      */
-    suspend fun refreshFromCloud(spreadsheetId: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun refreshFromCloud(spreadsheetId: String, quiet: Boolean = false): Boolean = withContext(Dispatchers.IO) {
         val s = sync ?: return@withContext false
         if (!s.isOnline()) return@withContext false
         // one load or save at a time: a load never lands on top of a save in flight (or the other way round)
@@ -86,7 +86,7 @@ class FlockRepository(
                 lastLoadedAt[spreadsheetId] = System.currentTimeMillis()
                 true
             } else {
-                _syncNote.value = "Couldn't load latest from Google Sheet: ${res.exceptionOrNull()?.message ?: "unknown"}"
+                if (!quiet) _syncNote.value = "Couldn't load latest from Google Sheet: ${res.exceptionOrNull()?.message ?: "unknown"}"
                 false
             }
         }

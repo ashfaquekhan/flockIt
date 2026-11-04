@@ -58,11 +58,23 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O55 | The radars' scales are a choice | Birds: 100 = the company, evenness against an 8 % CV, drawn up to 150. The other three: 100 inside the ideal band, 50 at the limit, 0 as far again past it; eaten loses 2 points per % off the company's feed. Say if other weights suit the farm better. |
 | O56 | The floor plan's pan figures are rules of thumb | About 45 birds a pan aimed for, under 25 counted as too few (feed goes stale), 2 m the longest walk (Ross). Say if the company uses others. |
 | O57 | The walk limits between the first days and grown birds are rules of thumb | Published: chicks within 1 m of water in the first 24 h (Aviagen), no bird more than 3 m from feed or water (management guides). Days 4–10 (1.5 / 2.5 m) and the 2 m "safe" for grown birds are in between. The walk to water takes nipples 25 cm apart and the drinker lines spread evenly over the width. |
+| O59 | The house map is a model, not fitted to this house | Heat and moisture carried by the air (tunnel: end to end; minimum ventilation: 20 % of it shows), birds drawn to the lines and away from the warm end, litter wetter under the drinkers and where birds crowd. Which end the fans are at is taken as the back (setting `house_map.fans_at_back` in the weights file). Sensors can be added as readings; until then it shows where to look, not a measurement. |
+| O60 | The tube is counted only once "Bags to fill 1 line, pans shut" is entered | Without it every pan takes its share of the whole line (as before v51), which overstates how far a pour reaches when many pans are shut. Fill a line once with every pan shut and enter the bags; the settings box shows about 0.72 kg a metre of line as a guide. Whether the tube stays full between feedings (so later pours fill pans only) is not modelled: every feeding is planned as a fill. |
+| O61 | The model log grows on the phone only | One line a day and model in the app's files; export it from the flock book. A sheet tab or a server copy can come later. |
+| O62 | Sensor readings have a place but no source yet | `models/SensorReading`; the house map pulls its field to a reading near it. Nothing reads sensors yet. |
 | O58 | Water has no company standard | The company's chart has no water column, so water shows "co NA"; the ideal is 1.8 × the breed's feed (Ross: 1.6–2.0 at 21 °C). |
 
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v51 | Could not unlock a saved day after updating | A day with only a lifting saved was locked, but the banner and Unlock button showed only for days with weights, deaths or feed saved | Every locked day shows the lock and Unlock; unlocking survives a reload |
+| v51 | "Couldn't load latest from Google Sheet" popped up over other apps | The 3-minute auto-load kept running in the background and its failure was shown as a toast (toasts float over other apps) | Auto-load only while on screen; its failures go to the sync chip; no toast while away |
+| v51 | Entry would not take some decimals | Fields read with toDouble: "3,5" and "12.0" (as a count) were dropped | A reader for numbers as typed |
+| v51 | Pan plan had no way to trim the floor at both ends; closing half the pans halved the bags | One barricade from the front; bags per pan = whole line ÷ pans (the tube shared out over the pans) | Front and back barricades; a line's fill = tube + open pans' share; "pans shut" fill setting |
+| v51 | Four radars hard to read; filled shapes hid each other | Every group on its own small radar, the flock filled | One birds radar, outlines only: entered, projected, company, ideal |
+| v51 | Graphs: zoom upright, ends cut, tap to read, lifting not numbered | Portrait dialog; no end padding; tap / drag only | Landscape zoom, end padding, cursor and range sliders, values by the dots, L1, L2 … |
+| v51 | Text too bold; labels and marks in value colours | Bold / black weights; marks drawn in the projected colour | Medium type, white marks and headings, key words in their colour |
+| v51 | Named birds (Pip, Dot …) and their table | Kept since v34 | Gone; shares of birds by activity and the day's numbers in small type |
 | v50 | Ideal missing where the company was shown (glance, feed bags, FCR card …) | v48–v49 cut the numbers to tiles and chips with the company only | Company and ideal under every number with the v46 line; "NA" where there is none |
 | v50 | Colours had no key (radar scores, arrows, the day slider's periods, range lines) | Keys were dropped to keep cards short | A one-line key where colours are used; the slider names its periods in its own track |
 | v50 | Still too many cards; feed, water and air far down the page | 26 cards; the glance and the jump buttons above them | 15 cards, feed / water / walk / air first, tabs that stay at the top and light the section being read |
@@ -196,3 +208,10 @@ is not made twice. Newest first. Open items at the top. Update together with
   breaks the Kotlin settings script.
 - Bash heredocs containing Python triple quotes break in the agent shell — write scripts to a file.
 - Compose tests with infinite animations: set `mainClock.autoAdvance = false`, then advance time.
+- A sed over every `FontWeight.Black` also hits the wordmark (`FlockLoader.kt`): branding is kept as it is — check
+  the diff of components before committing a sweeping change.
+- An Android toast from an app in the background shows over other apps: never show one unless the activity is resumed.
+- A new Room version needs its migration added to `MigrationTest` too (12 → current), or the test fails.
+- A Compose test that hangs can run for hours (v51: two hours in `performScrollTo` on a tab off the row's edge): unit
+  tests time out after 20 minutes (`build.gradle.kts`); tap an off-screen chip with `SemanticsActions.OnClick`.
+- Read the day's figures (`OutputData`) on the main thread; only file writes go to `Dispatchers.IO`.

@@ -44,6 +44,14 @@ val MIGRATION_14_15 = object : androidx.room.migration.Migration(14, 15) {
 
 /** v15 → v16: sample locations beyond the fifth, and how many locations a day shows. */
 /** v17: the time the day's weights were saved (the projections that move with the clock start from it). */
+/** v19: the front barricade of each day, and the bags that fill a line with its pans shut (the tube alone). */
+val MIGRATION_18_19 = object : androidx.room.migration.Migration(18, 19) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE daily_data ADD COLUMN penStartFt REAL")
+        db.execSQL("ALTER TABLE farm ADD COLUMN lineFillBagsShut REAL NOT NULL DEFAULT 0")
+    }
+}
+
 val MIGRATION_17_18 = object : androidx.room.migration.Migration(17, 18) {
     override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE daily_data ADD COLUMN liftedAt INTEGER NOT NULL DEFAULT 0")
@@ -76,7 +84,7 @@ val MIGRATION_15_16 = object : androidx.room.migration.Migration(15, 16) {
         DailyDataEntity::class,
         TaskEntity::class
     ],
-    version = 18,
+    version = 19,
     exportSchema = false
 )
 abstract class FlockDatabase : RoomDatabase() {
@@ -101,7 +109,7 @@ abstract class FlockDatabase : RoomDatabase() {
                     FlockDatabase::class.java,
                     "flockit_database"
                 )
-                    .addMigrations(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
+                    .addMigrations(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
                     .fallbackToDestructiveMigration()
                     .addCallback(FlockDatabaseCallback(scope))
                     .build()

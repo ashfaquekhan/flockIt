@@ -30,6 +30,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import com.example.flock.ui.Fmt
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -142,12 +143,14 @@ fun EntriesScreen(
     var birdsLifted by remember { mutableStateOf("") }
     var weightLifted by remember { mutableStateOf("") }
     var lameSeparated by remember { mutableStateOf("") }
-    // where the barricade stands today, ft from the front wall (empty: the whole house, or the brooding plan)
+    // the barricades today: the front one, ft from the front wall; the back one, ft from the back wall (empty: none)
     var penFt by remember { mutableStateOf("") }
+    var penFrontFt by remember { mutableStateOf("") }
+    val houseLen = farm?.usableLengthFt?.takeIf { it > 0 }
     // when what is entered happened: null = the time already saved, else now (today) / 08:00 (a past day)
     var pickedAt by remember(draftKey) { mutableStateOf<String?>(null) }
     // a saved day is locked (so it is not saved again by mistake) until unlocked here; it locks again once saved
-    var unlocked by remember(draftKey) { mutableStateOf(false) }
+    var unlocked by androidx.compose.runtime.saveable.rememberSaveable(draftKey) { mutableStateOf(false) }
     var askUnlock by remember(draftKey) { mutableStateOf(false) }
 
     var feedRecB1 by remember { mutableStateOf("") }
@@ -177,7 +180,7 @@ fun EntriesScreen(
         "locs" to locs.size.toString(), "indiv" to singles,
         "mort" to mortality,
         "feed" to feedUse.joinToString(";") { "${it.type}=${it.bags}" },
-        "lift" to birdsLifted, "liftKg" to weightLifted, "lame" to lameSeparated, "pen" to penFt,
+        "lift" to birdsLifted, "liftKg" to weightLifted, "lame" to lameSeparated, "penBack" to penFt, "penFront" to penFrontFt,
         "rec1" to feedRecB1, "rt1" to feedTypeB1, "rec2" to feedRecB2, "rt2" to feedTypeB2,
         "rec3" to feedRecB3, "rt3" to feedTypeB3, "notes" to noteItems.joinToString("\n"), "noteNew" to newNote,
         "diesel" to dieselCansUsed
@@ -191,7 +194,7 @@ fun EntriesScreen(
         val shown = listOf(
             entry?.locCount ?: 0,
             savedSamples.indexOfLast { it.first != null || it.second != null } + 1,
-            if ((entry?.locCount ?: 0) > 0 || "W" in saved) 0 else (draft0["locs"]?.toIntOrNull() ?: previousCounts.size.takeIf { it > 0 } ?: 5)
+            if ((entry?.locCount ?: 0) > 0 || "W" in saved) 0 else (draft0["locs"]?.toCount() ?: previousCounts.size.takeIf { it > 0 } ?: 5)
         ).max().coerceIn(1, com.example.flock.data.MAX_LOCATIONS)
         locs.clear()
         repeat(shown) { i -> locs.add(LocRow(savedSamples.getOrNull(i)?.first?.fmt() ?: "", savedSamples.getOrNull(i)?.second?.toString() ?: "")) }
@@ -212,7 +215,9 @@ fun EntriesScreen(
         birdsLifted = entry?.birdsLifted?.let { if (it > 0) it.toString() else "" } ?: ""
         weightLifted = entry?.weightLifted?.let { if (it > 0) it.toString() else "" } ?: ""
         lameSeparated = entry?.lameSeparated?.let { if (it > 0) it.toString() else "" } ?: ""
-        penFt = entry?.broodingLength?.takeIf { it > 0 }?.fmt() ?: ""
+        // the back barricade is kept as ft from the front wall (BroodingLength); typed and shown as ft from the back wall
+        penFt = entry?.broodingLength?.takeIf { it > 0 && (houseLen == null || it < houseLen - 0.5) }?.let { if (houseLen != null) houseLen - it else it }?.fmt() ?: ""
+        penFrontFt = entry?.penStartFt?.takeIf { it > 0 }?.fmt() ?: ""
 
         feedRecB1 = entry?.feedRecB1?.let { if (it > 0) it.toString() else "" } ?: ""
         feedTypeB1 = entry?.feedTypeB1?.ifEmpty { "B1" } ?: (feedTypes.getOrNull(0)?.code ?: "B1")
@@ -230,7 +235,7 @@ fun EntriesScreen(
         // Unsaved draft typed earlier (on a saved day only what stays open there: notes and feed received).
         val keepOpen = setOf("rec1", "rt1", "rec2", "rt2", "rec3", "rt3", "notes", "noteNew")
         val d = EntryDrafts.load(context, draftKey).let { all ->
-            if ((entry?.updatedAt ?: 0L) > 0 && entry?.savedGroups().orEmpty().isNotEmpty()) all.filterKeys { it in keepOpen } else all
+            if (!unlocked && (entry?.updatedAt ?: 0L) > 0 && entry?.savedGroups().orEmpty().isNotEmpty()) all.filterKeys { it in keepOpen } else all
         }
         locs.forEachIndexed { i, l -> d["w${i + 1}"]?.let { l.w = it }; d["n${i + 1}"]?.let { l.n = it } }
         d["indiv"]?.let { singles = it }
@@ -241,7 +246,7 @@ fun EntriesScreen(
             val rows = f.split(";").mapNotNull { part -> part.split("=").takeIf { it.size == 2 }?.let { FeedUseRow(it[0], it[1]) } }
             if (rows.isNotEmpty()) { feedUse.clear(); feedUse.addAll(rows) }
         }
-        d["lift"]?.let { birdsLifted = it }; d["liftKg"]?.let { weightLifted = it }; d["lame"]?.let { lameSeparated = it }; d["pen"]?.let { penFt = it }
+        d["lift"]?.let { birdsLifted = it }; d["liftKg"]?.let { weightLifted = it }; d["lame"]?.let { lameSeparated = it }; d["penBack"]?.let { penFt = it }; d["penFront"]?.let { penFrontFt = it }
         d["rec1"]?.let { feedRecB1 = it }; d["rt1"]?.let { feedTypeB1 = it }
         d["rec2"]?.let { feedRecB2 = it }; d["rt2"]?.let { feedTypeB2 = it }
         d["rec3"]?.let { feedRecB3 = it }; d["rt3"]?.let { feedTypeB3 = it }
@@ -277,14 +282,14 @@ fun EntriesScreen(
         if (pickedAt == null && savedAtMs != null) return savedAtMs
         if (pickedAt == null && isToday) return null
         val date = try { java.time.LocalDate.parse(dayIso) } catch (e: Exception) { return null }
-        val h = shownHHmm.substringBefore(":").toIntOrNull() ?: return null
-        val m = shownHHmm.substringAfter(":").toIntOrNull() ?: return null
+        val h = shownHHmm.substringBefore(":").toCount() ?: return null
+        val m = shownHHmm.substringAfter(":").toCount() ?: return null
         val t = date.atTime(h, m).atZone(zone).toInstant().toEpochMilli()
         return t.coerceAtMost(System.currentTimeMillis())
     }
     val scrollState = rememberScrollState()
 
-    val liveSamples = locs.map { PhysiologicalEngine.LocationSample(it.w.toDoubleOrNull() ?: 0.0, it.n.toIntOrNull() ?: 0) }
+    val liveSamples = locs.map { PhysiologicalEngine.LocationSample(it.w.toNum() ?: 0.0, it.n.toCount() ?: 0) }
     val liveSampleRes = PhysiologicalEngine.computeWeightSamples(liveSamples, PhysiologicalEngine.parseWeights(singles))
 
     Column(
@@ -296,10 +301,11 @@ fun EntriesScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // a saved day: what was saved and when; locked until unlocked (notes and feed received stay open)
-        if (saved.isNotEmpty() && (entry?.updatedAt ?: 0L) > 0) {
+        if (dayLocked || (saved.isNotEmpty() && (entry?.updatedAt ?: 0L) > 0)) {
             val names = mapOf("W" to "weights", "M" to "mortality", "F" to "feed used")
             val at = java.time.Instant.ofEpochMilli(entry!!.updatedAt).atZone(zone)
-            val what = listOf("W", "M", "F").filter { it in saved }.mapNotNull { names[it] }.joinToString(", ")
+            val what = (listOf("W", "M", "F").filter { it in saved }.mapNotNull { names[it] } +
+                listOfNotNull("lifting".takeIf { entry.birdsLifted > 0 })).joinToString(", ")
             val by = entry.updatedBy.substringBefore("@").takeIf { it.isNotBlank() }?.let { " by $it" } ?: ""
             val change = at.toLocalDate().let { if (it.toString() == dayIso) "" else "${it.dayOfMonth} ${it.month.name.take(3).lowercase().replaceFirstChar { c -> c.uppercase() }} " } +
                 String.format("%02d:%02d", at.hour, at.minute)
@@ -350,7 +356,7 @@ fun EntriesScreen(
             }
             // more or fewer locations; the number is kept for the next weighing
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("${locs.size} locations", style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Bold),
+                Text("${locs.size} locations", style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Medium),
                     modifier = Modifier.weight(1f), maxLines = 1, softWrap = false)
                 OutlinedButton(onClick = { if (locs.size > 1) locs.removeAt(locs.size - 1) },
                     enabled = weightsEnabled && locs.size > 1 && locs.last().w.isBlank(),
@@ -381,7 +387,7 @@ fun EntriesScreen(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val mono = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, fontFamily = com.example.ui.theme.NumberFont)
+                    val mono = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium, fontFamily = com.example.ui.theme.NumberFont)
                     Column {
                         Text("Average", style = MaterialTheme.typography.labelSmall)
                         Text(if (liveSampleRes.hasSample) String.format("%.1f g", liveSampleRes.flockAvgG) else "—", style = mono)
@@ -506,8 +512,8 @@ fun EntriesScreen(
                     enabled = othersEnabled, modifier = Modifier.weight(1f).testTag("weight_lifted_input")
                 )
             }
-            val liftN = birdsLifted.toIntOrNull() ?: 0
-            val liftKg = weightLifted.replace(",", ".").toDoubleOrNull() ?: 0.0
+            val liftN = birdsLifted.toCount() ?: 0
+            val liftKg = weightLifted.replace(",", ".").toNum() ?: 0.0
             if (liftN > 0 && liftKg > 0) Text("Lifted average ${String.format("%.3f", liftKg / liftN)} kg a bird",
                 style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont), color = com.example.ui.theme.ValuePresent)
             OutlinedTextField(
@@ -517,15 +523,31 @@ fun EntriesScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 enabled = othersEnabled, modifier = Modifier.fillMaxWidth().testTag("lame_separated_input")
             )
-            OutlinedTextField(
-                colors = entryFieldColors(),
-                value = penFt, onValueChange = { penFt = it.filter { c -> c.isDigit() || c == '.' } },
-                label = { Text("Barricade at (ft from the front)") },
-                supportingText = { Text("Where the birds' floor ends today; it holds until changed. Empty or ${farm?.usableLengthFt?.fmt() ?: "the house length"}: the whole house") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                enabled = othersEnabled, modifier = Modifier.fillMaxWidth().testTag("pen_input")
-            )
+            // the birds' floor between two barricades: each holds until changed; empty = no barricade at that end
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    colors = entryFieldColors(),
+                    value = penFrontFt, onValueChange = { penFrontFt = it.filter { c -> c.isDigit() || c == '.' || c == ',' } },
+                    label = { Text("Front barricade, ft") },
+                    supportingText = { Text("from the front wall") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    enabled = othersEnabled, modifier = Modifier.weight(1f).testTag("pen_front_input")
+                )
+                OutlinedTextField(
+                    colors = entryFieldColors(),
+                    value = penFt, onValueChange = { penFt = it.filter { c -> c.isDigit() || c == '.' || c == ',' } },
+                    label = { Text("Back barricade, ft") },
+                    supportingText = { Text("from the back wall") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    enabled = othersEnabled, modifier = Modifier.weight(1f).testTag("pen_input")
+                )
+            }
+            val front = penFrontFt.toNum() ?: 0.0; val back = penFt.toNum() ?: 0.0
+            if (houseLen != null && (front > 0 || back > 0)) Text(
+                "Birds' floor ${Fmt.n(front, 1)} – ${Fmt.n(houseLen - back, 1)} ft · ${Fmt.n(houseLen - front - back, 1)} ft long",
+                style = MaterialTheme.typography.labelMedium, color = Color.White)
         }
 
         // SECTION 5: Notes & diesel (only miscellaneous section kept)
@@ -581,42 +603,45 @@ fun EntriesScreen(
                 else (if (saved.isNotEmpty()) "Hold to update day $dayNumber" else "Hold to save day $dayNumber") + " · at $shownHHmm",
             enabled = openDay,
             onComplete = {
-                val rows = feedUse.filter { (it.bags.toDoubleOrNull() ?: 0.0) > 0.0 }
-                val breakdown = rows.joinToString(";") { "${it.type}=${it.bags.toDoubleOrNull() ?: 0.0}" }
-                val feedSum = rows.sumOf { it.bags.toDoubleOrNull() ?: 0.0 }
+                val rows = feedUse.filter { (it.bags.toNum() ?: 0.0) > 0.0 }
+                val breakdown = rows.joinToString(";") { "${it.type}=${it.bags.toNum() ?: 0.0}" }
+                val feedSum = rows.sumOf { it.bags.toNum() ?: 0.0 }
                 val firstType = rows.firstOrNull()?.type ?: (feedTypes.firstOrNull()?.code ?: "B1")
                 onSave(
                     DailyInputs(
-                        w1 = locs.getOrNull(0)?.w?.toDoubleOrNull(), n1 = locs.getOrNull(0)?.n?.toIntOrNull(),
-                        w2 = locs.getOrNull(1)?.w?.toDoubleOrNull(), n2 = locs.getOrNull(1)?.n?.toIntOrNull(),
-                        w3 = locs.getOrNull(2)?.w?.toDoubleOrNull(), n3 = locs.getOrNull(2)?.n?.toIntOrNull(),
-                        w4 = locs.getOrNull(3)?.w?.toDoubleOrNull(), n4 = locs.getOrNull(3)?.n?.toIntOrNull(),
-                        w5 = locs.getOrNull(4)?.w?.toDoubleOrNull(), n5 = locs.getOrNull(4)?.n?.toIntOrNull(),
-                        moreSamples = com.example.flock.data.formatMoreSamples(locs.drop(5).map { it.w.toDoubleOrNull() to it.n.toIntOrNull() }),
+                        w1 = locs.getOrNull(0)?.w?.toNum(), n1 = locs.getOrNull(0)?.n?.toCount(),
+                        w2 = locs.getOrNull(1)?.w?.toNum(), n2 = locs.getOrNull(1)?.n?.toCount(),
+                        w3 = locs.getOrNull(2)?.w?.toNum(), n3 = locs.getOrNull(2)?.n?.toCount(),
+                        w4 = locs.getOrNull(3)?.w?.toNum(), n4 = locs.getOrNull(3)?.n?.toCount(),
+                        w5 = locs.getOrNull(4)?.w?.toNum(), n5 = locs.getOrNull(4)?.n?.toCount(),
+                        moreSamples = com.example.flock.data.formatMoreSamples(locs.drop(5).map { it.w.toNum() to it.n.toCount() }),
                         locCount = locs.size,
                         indivWeights = PhysiologicalEngine.parseWeights(singles).joinToString(", ") { it.fmt() },
-                        mortality = mortality.trim().toIntOrNull(),
+                        mortality = mortality.trim().toCount(),
                         feedBagsUsed = feedSum,
                         feedUsedType = firstType,
                         feedUsedBreakdown = breakdown,
-                        birdsLifted = birdsLifted.toIntOrNull() ?: 0,
-                        weightLifted = weightLifted.toDoubleOrNull() ?: 0.0,
-                        lameSeparated = lameSeparated.toIntOrNull() ?: 0,
-                        feedRecB1 = feedRecB1.toDoubleOrNull() ?: 0.0, feedTypeB1 = feedTypeB1,
-                        feedRecB2 = feedRecB2.toDoubleOrNull() ?: 0.0, feedTypeB2 = feedTypeB2,
-                        feedRecB3 = feedRecB3.toDoubleOrNull() ?: 0.0, feedTypeB3 = feedTypeB3,
-                        broodingLength = penFt.toDoubleOrNull() ?: entry?.broodingLength?.let { 0.0 }, actualFans = null, actualFanTime = null,
+                        birdsLifted = birdsLifted.toCount() ?: 0,
+                        weightLifted = weightLifted.toNum() ?: 0.0,
+                        lameSeparated = lameSeparated.toCount() ?: 0,
+                        feedRecB1 = feedRecB1.toNum() ?: 0.0, feedTypeB1 = feedTypeB1,
+                        feedRecB2 = feedRecB2.toNum() ?: 0.0, feedTypeB2 = feedTypeB2,
+                        feedRecB3 = feedRecB3.toNum() ?: 0.0, feedTypeB3 = feedTypeB3,
+                        // the back barricade as ft from the front wall (0: the whole house); the front one as typed (0: none)
+                        broodingLength = penFt.toNum()?.takeIf { it > 0 }?.let { b -> if (houseLen != null) (houseLen - b).coerceAtLeast(10.0) else b }
+                            ?: entry?.broodingLength?.let { 0.0 }, actualFans = null, actualFanTime = null,
                         outTemp = null, outRH = null,
                         // the notes as saved when nothing in them was changed (an untouched note is not re-sent over another phone's)
                         notes = (noteItems + listOfNotNull(cleanNote(newNote).takeIf { v -> v.isNotEmpty() && noteItems.none { noteKey(it) == noteKey(v) } })).let { items ->
                             if (entry != null && items == parseNoteItems(entry.notes)) entry.notes else items.joinToString("\n") { "- $it" }
                         },
-                        dieselCansUsed = dieselCansUsed.toDoubleOrNull() ?: 0.0,
+                        dieselCansUsed = dieselCansUsed.toNum() ?: 0.0,
                         entered = buildSet {
-                            if (mortEnabled && mortality.trim().toIntOrNull() != null) add("M")
-                            if (feedEnabled && feedUse.any { it.bags.trim().toDoubleOrNull() != null }) add("F")
+                            if (mortEnabled && mortality.trim().toCount() != null) add("M")
+                            if (feedEnabled && feedUse.any { it.bags.trim().toNum() != null }) add("F")
                         },
-                        at = entryAt()
+                        at = entryAt(),
+                        penStartFt = penFrontFt.toNum()?.coerceAtLeast(0.0) ?: entry?.penStartFt?.let { 0.0 }
                     )
                 )
                 pickedAt = null
@@ -658,7 +683,7 @@ fun SampleMap(locations: Int, farm: com.example.flock.data.FarmEntity, occupiedF
     val spots = (0 until n).map { i -> ((i + 0.5) / n) to (if (n == 1) 0.5 else if (i % 2 == 0) 0.28 else 0.72) }
     val gold = com.example.ui.theme.ValuePredicted; val blue = com.example.ui.theme.ValueMin
     Column(modifier.fillMaxWidth().testTag("sample_map"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("Where to catch the birds", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
+        Text("Where to catch the birds", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium))
         androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(118.dp)) {
             val px = density
             val padL = 34f * px; val padR = 8f * px; val padT = 6f * px; val padB = 20f * px
@@ -677,7 +702,7 @@ fun SampleMap(locations: Int, farm: com.example.flock.data.FarmEntity, occupiedF
             val pts = listOf(androidx.compose.ui.geometry.Offset(padL, y(0.5))) + spots.map { androidx.compose.ui.geometry.Offset(x(it.first), y(it.second)) }
             for (i in 1 until pts.size) drawLine(Color.White.copy(alpha = 0.55f), pts[i - 1], pts[i], 1.4f * px,
                 pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6f * px, 5f * px)))
-            val paint = android.graphics.Paint().apply { isAntiAlias = true; textAlign = android.graphics.Paint.Align.CENTER; typeface = com.example.ui.theme.AppFonts.mono; isFakeBoldText = true }
+            val paint = android.graphics.Paint().apply { isAntiAlias = true; textAlign = android.graphics.Paint.Align.CENTER; typeface = com.example.ui.theme.AppFonts.mono; isFakeBoldText = false }
             spots.forEachIndexed { i, s ->
                 val c = androidx.compose.ui.geometry.Offset(x(s.first), y(s.second))
                 drawCircle(Color.Black, 10.5f * px, c); drawCircle(Color.White, 10.5f * px, c, style = androidx.compose.ui.graphics.drawscope.Stroke(1.6f * px))
@@ -730,6 +755,19 @@ fun parseNoteItems(raw: String): List<String> =
     raw.lines().map { cleanNote(it) }.filter { it.isNotEmpty() }.distinctBy { noteKey(it) }
 
 private fun Double.fmt(): String = if (this % 1.0 == 0.0) this.toInt().toString() else this.toString()
+
+/** A number as typed: "3.5", "3,5" (a keyboard's comma decimal), " 12 " and "1,234.5" all read. */
+internal fun String.toNum(): Double? {
+    val t = trim().replace(" ", "")
+    if (t.isEmpty()) return null
+    return (if ('.' in t) t.replace(",", "") else t.replace(',', '.')).toDoubleOrNull()
+}
+
+/** A count as typed: "12", "12.0" or "1,234"; a fraction is not a count. */
+internal fun String.toCount(): Int? {
+    val x = trim().replace(" ", "").replace(",", "").toDoubleOrNull() ?: return null
+    return if (kotlin.math.abs(x - Math.rint(x)) < 1e-9) Math.rint(x).toInt() else null
+}
 
 /**
  * A full-width button that must be pressed and held for [holdSeconds] to fire, so it can't be triggered by an
@@ -835,7 +873,7 @@ fun HoldButton(
                     else -> label
                 },
                 color = Color.White,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 maxLines = 3
             )
@@ -856,7 +894,7 @@ private fun Section(
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+            Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium))
             if (subtitle != null) {
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -876,7 +914,7 @@ private fun InfoBanner(
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(8.dp))
-            Text(text, color = tint, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold))
+            Text(text, color = tint, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium))
         }
     }
 }
@@ -897,7 +935,7 @@ fun WeightSampleRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(loc, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), modifier = Modifier.weight(1.2f))
+        Text(loc, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium), modifier = Modifier.weight(1.2f))
         OutlinedTextField(
             colors = entryFieldColors(),
             value = weight, onValueChange = onWeightChange,
