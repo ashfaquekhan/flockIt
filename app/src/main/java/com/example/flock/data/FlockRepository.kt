@@ -310,7 +310,8 @@ class FlockRepository(
             birdsPlaced = birdsPlaced,
             receptionMort = receptionMort,
             targetWeight = targetWeight,
-            harvestAge = harvestAge.coerceIn(14, PhysiologicalEngine.MAX_FLOCK_DAY),
+            // 0: no harvest age — the flock's days are added as it runs on (v56)
+            harvestAge = if (harvestAge <= 0) 0 else harvestAge.coerceIn(14, PhysiologicalEngine.MAX_FLOCK_DAY),
             season = season,
             status = "active"
         )

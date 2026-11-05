@@ -105,7 +105,7 @@ fun isoFarmOf(d: OutputData, pattern: OutputData.PanPattern, fromFt: Double, toF
 }
 
 private const val YAW = 0.0             // v54: straight — the house runs left to right, not turned
-private const val ELEV = 0.96           // 55°: seen from above and the near side
+private const val ELEV = 0.66           // 38° (v56: lower — 55° looked too much from the top)
 private const val VZ = 1.5              // walls drawn a little taller than they are, to read at this size
 
 /**

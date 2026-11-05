@@ -198,6 +198,26 @@ class LiftingSpaceTest {
         assertEquals(67.0, d.rhMin, 1e-9); assertEquals(90.0, d.rhMax, 1e-9)
     }
 
+    /**
+     * v56: yesterday's gain is yesterday's own: its weighing against the one before — entered (green) when yesterday was
+     * weighed, whatever has been entered today; and with no harvest age the lights stay at 18 h after the first week.
+     */
+    @Test fun yesterdaysGainIsYesterdays() {
+        val r = KgfFlock.computed(44)
+        val weighed = r.filter { it.avgWeight != null && it.dayNumber in 5..43 }.map { it.dayNumber }
+        val dY = weighed.first { (it + 1) !in weighed }           // a day weighed, the next one not
+        val prev = r.filter { it.avgWeight != null && it.dayNumber < dY }.maxByOrNull { it.dayNumber }!!
+        val dd = com.example.flock.ui.screens.OutputData(KgfFlock.flock, KgfFlock.farm, r.first { it.dayNumber == dY + 1 }, r, KgfFlock.feedTypes, null, emptyList(), false, false)
+        assertEquals(com.example.flock.ui.screens.ValueKind.PRESENT, dd.gainYesterdayKind)
+        assertEquals((r.first { it.dayNumber == dY }.avgWeight!! - prev.avgWeight!!) / (dY - prev.dayNumber), dd.gainYesterday!!, 1e-9)
+        // the day after a day nobody weighed: projected
+        val notWeighed = (6..43).first { it !in weighed }
+        val de = com.example.flock.ui.screens.OutputData(KgfFlock.flock, KgfFlock.farm, r.first { it.dayNumber == notWeighed + 1 }, r, KgfFlock.feedTypes, null, emptyList(), false, false)
+        assertEquals(com.example.flock.ui.screens.ValueKind.PREDICTED, de.gainYesterdayKind)
+        assertEquals(18.0, com.example.flock.engine.PhysiologicalEngine.lightHours(30, 0), 1e-9)
+        assertEquals(23.0, com.example.flock.engine.PhysiologicalEngine.lightHours(40, 42), 1e-9)
+    }
+
     @Test fun theLitterGetsDeeperWetterAndGivesOffAmmoniaWithAge() {
         fun at(day: Int, feedKg: Double, rh: Double = 70.0, speed: Double = 0.3) =
             Litter.state(Litter.In(day = day, kgM2 = 30.0, feedKgTD = feedKg, floorM2 = 1083.0, airC = 26.0, rhPct = rh, airSpeedMs = speed))

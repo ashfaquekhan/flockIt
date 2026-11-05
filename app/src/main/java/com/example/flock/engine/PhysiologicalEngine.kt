@@ -204,6 +204,7 @@ object PhysiologicalEngine {
      */
     fun lightHours(day: Int, harvestAge: Int): Double {
         if (day <= 7) return interpolate(listOf(0.0 to 23.0, 2.0 to 23.0, 7.0 to 18.0), day.toDouble())
+        if (harvestAge <= 0) return 18.0
         val h = max(harvestAge, 21).toDouble()
         return interpolate(listOf(7.0 to 18.0, h - 7 to 18.0, h - 3 to 23.0), day.toDouble())
     }

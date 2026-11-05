@@ -172,7 +172,7 @@ fun FlockAppRoot(viewModel: FlockViewModel) {
                     onBack = { viewModel.goToFarms() },
                     onOpenFlock = { viewModel.openFlock(it) },
                     onCreateFlock = { name, breed, startDate, startTime, placed, transitMort, harvestAge ->
-                        viewModel.createFlock(name, breed, startDate, placed, transitMort, 3200.0, harvestAge, "Monsoon", startTime)
+                        viewModel.createFlock(name, breed, startDate, placed, transitMort, 0.0, harvestAge, "Monsoon", startTime)
                     },
                     onDeleteFlock = { viewModel.deleteFlock(it) },
                     onToggleLock = { flockId, locked -> viewModel.toggleFlockLock(flockId, locked) },

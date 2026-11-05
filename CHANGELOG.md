@@ -8,6 +8,30 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v56 — 2026-11-05 · Right colours, one FCR and one cFCR, no targets, the walk drawn again, thin sliders, turning fans · no DB or sheet-layout change
+- **Fixed: yesterday's gain** showed today's gain (projected, amber, until today's weighing) under yesterday's name. It is
+  yesterday's own now: yesterday's weighing against the one before, entered (green) when yesterday was weighed.
+- **Colours**: the notes under a number take the colour of what they are (2 × 9.5 per line amber, 0.76 ft² per bird
+  like the weight, the reception count green …) instead of grey; the outside weather is green for the hours gone by and
+  amber for the hours forecast (it was uncoloured).
+- **One FCR and one cFCR**, both in Birds: cFCR is the company's formula only — FCR + (2 − the average weight of every
+  bird produced) × 0.25, written out under it with the numbers. The "cFCR, breed" and "FCR, dead counted" lines are gone
+  (also from the sheet's Computed tab and its Formulas).
+- **No weight or age target**: no target weight, harvest day, "reaches target" or "at harvest" in Lifting, and no harvest
+  age asked for a new flock (the app follows the flock, its curves and its record). The day bar runs to tomorrow (and the
+  days entered), its periods by age only; the graphs run a week ahead; the flock list shows "Day N". With no harvest age
+  the lights stay at 18 h after the first week.
+- **The walk to feed and to water is drawn again** (it went in v53): the floor from above to scale, the pans or nipples,
+  the furthest bird and its walk, the walk now, the ideal and the most — under each walk line, with no box.
+- **Where the meat is** reads at a glance: one line each — in the house, lifted, dead and culled — with its kilos and
+  share above a thin bar filled to that share.
+- **Thin barricade slider** (two small handles on a thin line, drag or tap); **the graphs have no sliders**: a finger along
+  the chart reads a day, Zoom opens it in landscape where two fingers spread or close the days shown.
+- **The fans turn**: the fans running spin (on their timer they turn for the on part of each cycle); the others stand still.
+- **"Fans by outside air" grid removed** (the fans for the air outside, with its dials, stays).
+- **Lower camera** on the house drawings and the farm window (less from straight above).
+- **Plain names**: per bird, per nipple, per pan, per line, per hour.
+
 ## v55 — 2026-11-05 · Safer sync for two phones: asked again when Google is busy, sent in the background, no silent overwrite · **DB 20 → 21**, no sheet change
 - **When Google is busy or has a passing fault** (too many requests, unavailable, a server error, a timeout) the request is
   asked again after 1, 2 and 4 seconds (or as long as Google asks) instead of failing to the next load. Only requests that

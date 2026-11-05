@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.flock.data.locationsShown
+import com.example.flock.data.savedGroups
 import com.example.flock.data.sampleList
 import com.example.flock.ui.components.TopFlockBar
 import com.example.flock.ui.components.WeatherForecastDialog
@@ -137,7 +138,9 @@ fun MainFlockScreen(
     }
 
     // no fixed last day: the planned harvest age, or tomorrow once the flock has run past it (up to the oldest a broiler is kept)
-    val lastDay = maxOf(activeFlock?.harvestAge ?: 42, currentFlockDay + 1).coerceIn(1, com.example.flock.engine.PhysiologicalEngine.MAX_FLOCK_DAY)
+    // v56: no harvest age ahead — up to tomorrow, and the days entered (the flock runs on day by day)
+    val lastDay = maxOf(currentFlockDay + 1, dailyRows.filter { it.savedGroups().isNotEmpty() }.maxOfOrNull { it.dayNumber } ?: 0)
+        .coerceIn(1, com.example.flock.engine.PhysiologicalEngine.MAX_FLOCK_DAY)
 
     Scaffold(
         modifier = modifier.fillMaxSize().testTag("main_flock_screen"),
@@ -245,7 +248,6 @@ fun MainFlockScreen(
                     isToday = selectedDay == currentFlockDay,
                     onCloseBatch = activeFlock?.let { f -> { viewModel.closeFlock(f.flockId) } },
                     onFarmChange = { viewModel.updateFarm(it) },
-                    onFlockPlan = { w, h -> viewModel.updateFlockPlan(w, h) },
                     onLogFeeding = { bags, at -> viewModel.logFeeding(bags, at) },
                     onUndoFeeding = { viewModel.undoLastFeeding() },
                     onBarricades = { s, e -> viewModel.setBarricades(s, e) },
@@ -263,7 +265,7 @@ fun MainFlockScreen(
                 FlockNavTab.TASKS -> TasksScreen(
                     allTasks = tasks,
                     dayNumber = selectedDay,
-                    harvestAge = lastDay,
+                    harvestAge = com.example.flock.engine.PhysiologicalEngine.MAX_FLOCK_DAY,
                     onSaveTask = { id, block, label, time, s, e, rec, n, alert, kind ->
                         viewModel.saveTask(id, block, label, time, s, e, rec, n, alert, kind)
                     },

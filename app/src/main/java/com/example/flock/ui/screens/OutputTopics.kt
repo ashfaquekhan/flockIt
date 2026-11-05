@@ -201,9 +201,8 @@ fun VentSection(d: OutputData, hour: Int = d.hour) {
     }
     val tC = manual?.first ?: autoT
     val rh = manual?.second ?: autoRh
-    FanFinderCard(d, tC, rh, if (manual != null) left else null, { manual = it to rh }, { manual = tC to it }) {
-        CoolingGridCard(d) { t, h -> manual = t to h }
-    }
+    // the fans for the air outside (the dials); v56: the "fans by outside air" grid is gone
+    FanFinderCard(d, tC, rh, if (manual != null) left else null, { manual = it to rh }, { manual = tC to it })
 }
 
 /** how long a temperature or humidity set by hand holds before the dials go back to the weather */
@@ -234,33 +233,6 @@ private fun FanFinderCard(d: OutputData, tC: Double, rh: Double, heldS: Int?, se
         RangeParam("Air speed", "ft/min", null, null, PhysiologicalEngine.maxAirSpeedFpm(d.day), null, projected = d.airFpm(s.fans))
         Param("Heat and pads", "", v(s.heaterKw, 1, PR, "Heat kW"), v(s.padEff * 100, 1, PR, "Pads %"))
         more()
-    }
-}
-
-@Composable
-private fun CoolingGridCard(d: OutputData, onPick: (Double, Double) -> Unit) {
-    val states = remember(d) { d.gridTemps.map { t -> d.gridRh.map { h -> d.sim(t, h) } } }
-    Part("Fans by outside air", "grid") {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Spacer(Modifier.width(56.dp))
-            d.gridRh.forEach { h -> Text("${Fmt.n(h, 1)}%", Modifier.weight(1f), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelLarge, color = RhDial) }
-        }
-        d.gridTemps.forEachIndexed { i, t ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("${Fmt.n(t, 1)}°", Modifier.width(56.dp), style = MaterialTheme.typography.labelLarge, color = TempDial)
-                d.gridRh.forEachIndexed { j, h ->
-                    val s = states[i][j]
-                    val over = s.feltC - d.plan.comfort
-                    val col = when { over > 4 -> StatusCrit; over > 2 -> StatusWarn; over < -3 -> ValueIdeal; else -> ValuePresent }
-                    Column(Modifier.weight(1f).border(1.dp, GlassLine, RoundedCornerShape(10.dp)).clickable { onPick(t, h) }.padding(vertical = 8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(Fmt.n(s.fans, 1), style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Normal), color = col)
-                        Text("${Fmt.n(s.feltC, 1)}°", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.7f))
-                    }
-                }
-            }
-        }
-        KeyLine(ValuePresent to "comfy", StatusWarn to "warm", StatusCrit to "hot", ValueIdeal to "cool")
     }
 }
 

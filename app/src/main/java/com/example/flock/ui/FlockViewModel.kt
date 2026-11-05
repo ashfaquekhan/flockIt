@@ -531,17 +531,6 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Sets the active flock's target weight (g) and planned harvest age (days). */
-    fun updateFlockPlan(targetWeightG: Double, harvestAge: Int) {
-        val flock = _activeFlock.value ?: return
-        busy("Saving the target") {
-            repository.updateFlockPlan(_selectedSpreadsheetId.value, flock.flockId, targetWeightG, harvestAge)
-            _activeFlock.value = _flocks.value.firstOrNull { it.flockId == flock.flockId }
-                ?: flock.copy(targetWeight = targetWeightG, harvestAge = harvestAge)
-            _userMessage.value = "Target ${targetWeightG.toInt()} g at day $harvestAge saved"
-        }
-    }
-
     /** Clears every entry of the selected day (and unlocks it). */
     fun clearDay() {
         val flock = _activeFlock.value ?: return

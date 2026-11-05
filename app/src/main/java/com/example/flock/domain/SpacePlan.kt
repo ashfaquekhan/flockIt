@@ -165,7 +165,7 @@ object SpacePlan {
             room == Room.TIGHT -> "Too tight: lift or thin soon"
             brooding -> "Brooding: trays, paper and every pan"
             young -> "Growing birds: every pan"
-            off > 0 -> "Few birds a pan: shut some pans"
+            off > 0 -> "Few birds per pan: shut some pans"
             else -> "Every pan on"
         }
         return Out(kgM2, live / (area / FT2_PER_M2), ft2PerBird, target, need, ratio, room, opts[0].walkM, opts, best, why, young,

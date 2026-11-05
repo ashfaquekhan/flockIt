@@ -240,7 +240,7 @@ fun TopFlockBar(
                     ) {
                         // the dot carries the colour of the period the day is in (the same colours as the slider)
                         Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            val period = dayPeriods(harvestAge, flock?.harvestAge ?: harvestAge).firstOrNull { selectedDay in it.from..it.to }
+                            val period = dayPeriods(harvestAge, harvestAge).firstOrNull { selectedDay in it.from..it.to }
                             if (period != null) {
                                 Box(Modifier.size(8.dp).clip(CircleShape).background(period.color))
                                 Spacer(Modifier.width(6.dp))
@@ -309,7 +309,7 @@ fun TopFlockBar(
                     Icon(Icons.Default.ChevronLeft, contentDescription = "Previous day")
                 }
                 // the slider and the flock's periods in one: the track is coloured by period
-                DaySlider(selectedDay, harvestAge, flock?.harvestAge ?: harvestAge, currentFlockDay, onSelectDay, Modifier.weight(1f))
+                DaySlider(selectedDay, harvestAge, harvestAge, currentFlockDay, onSelectDay, Modifier.weight(1f))
                 IconButton(onClick = onNextDay, enabled = selectedDay < harvestAge, modifier = Modifier.size(36.dp).testTag("next_day")) {
                     Icon(Icons.Default.ChevronRight, contentDescription = "Next day")
                 }

@@ -617,7 +617,7 @@ internal class CoopSim {
 /** View of the window: turned by [yaw], looked at from [elev] above the floor, [zoom] × the fitted size. */
 internal class CoopCam {
     /** home view: the window's long side (across the house) runs left to right, seen from fairly high */
-    val homeYaw = PI / 4; val homeElev = 0.95
+    val homeYaw = PI / 4; val homeElev = 0.72      // v56: a little lower (0.95 looked too much from the top)
     var yaw = homeYaw; var elev = homeElev; var zoom = 1.0
     var yawVel = 0.0
     var resetting = false

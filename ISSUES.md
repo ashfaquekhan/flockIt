@@ -36,7 +36,7 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O30 | Stock page does not plan orders | By request: received, used and in store only. Needed / to order / days left can come back later. |
 | O31 | Which chart day is which flock day is an assumption | Taken as: the chart's day 1 is the placement day (the app's day 0). If the company counts the day AFTER placement as day 1, feed and commercial mortality should move back one row — say so and it is a one-line change (`CompanyStandard.duringDay`). |
 | O32 | Curves past day 49 (breed) and day 55 (company) are modelled, not from a table | Gompertz weight, maintenance + growth feed. Replace with the published rows if the farm keeps flocks that long. |
-| O33 | Growth forecast (target day) still uses the v41 share-of-curve filter | Replaying the farm's flock, it lags when the flock changes pace (7.8 % one-step miss against 4.2 % for the weighing carried along the curve). The daily projection already uses the better one; the target-day forecast should follow. |
+| O33 | The growth forecast (target day, harvest weight) is no longer shown | v56 removed targets; the forecast still runs inside the app. Say if a "where the flock will be in N days" line is wanted (without a target). |
 | O34 | Sheet schema 7 upgrade is tested on data, not against a live Google account | The schema 6 upgrade did run on the farm's live sheet (4 Oct 2026, ActivityLog); schema 7 uses the same path and adds three report tabs and one column. A snapshot of the old sheet is made first. |
 | O35 | The weather → house → bird model is not calibrated to this house | The house is worked out from the weather (no sensors) and the bird responses are from published trials. It shows direction and the hours to watch; it is not a measurement. Add sensors (the model takes them as a source) or compare with a thermometer on hot days. |
 | O36 | Past days' plans carry no weather effect | The weather switch acts on the selected day's plan and on "now"; the appetite learned from past entries already contains whatever the weather did. |
@@ -73,6 +73,14 @@ is not made twice. Newest first. Open items at the top. Update together with
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v56 | Yesterday's gain shown amber on a day after a weighing | The line showed today's gain (today's weighing − the one before), projected until today was weighed | Yesterday's own gain: yesterday's weighing − the one before; entered when yesterday was weighed |
+| v56 | Numbers in the notes under a value and the outside weather had no colour | Notes drawn grey; weather marked "neutral" | Notes coloured by what they are; weather green for hours gone by, amber for the forecast |
+| v56 | Three FCRs and two cFCRs (company, breed, dead counted) — which is real? | v47 showed every way of working it out | One FCR (feed ÷ kg in the house + kg lifted) and the company's cFCR, with its formula written out |
+| v56 | A target weight and harvest day were assumed (3,200 g, day 42) | Defaults from the first versions | No target: the flock runs day by day; the day bar to tomorrow; lights 18 h after week 1 when no harvest age is set |
+| v56 | The walk to feed and water drawing was gone | Removed with the Walk card in v53 | Drawn again under the walk lines (no box) |
+| v56 | The meat bar's colours and words did not go together; bar too thick | One thick stacked bar with words in a row under it | A line each: name, kilos and share above a thin bar of that share |
+| v56 | Sliders too thick; graph sliders not needed | Material's sliders; cursor and range sliders under every chart | A thin slider of our own for the barricades; no slider on the graphs (finger along the chart; pinch in the landscape zoom) |
+| v56 | Fans did not move | Seen side-on from the front (v54), drawn as still circles | The fan row turns the running fans on their timer |
 | v55 | Two phones changing the same value: the later save silently replaced the other (was O52) | A save wrote this phone's value without knowing the sheet had changed since this phone loaded it | Each phone keeps what the sheet held when it changed a value; a different value on the sheet is a clash, shown with both values for the farm to choose |
 | v55 | Entries saved without a network reached the sheet only when FlockIt was opened again | Unsent rows were re-sent on the next load only | Sent in the background once the network is back (WorkManager) |
 | v55 | A busy moment at Google left a save unsent until the next load | One try per request (a refused token was the only retry) | Asked again after 1, 2, 4 s on busy / passing faults / timeouts; never for requests that could happen twice |

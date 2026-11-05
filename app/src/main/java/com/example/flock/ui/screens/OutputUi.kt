@@ -305,10 +305,12 @@ fun KpiLine(k: Kpi, plan: Boolean = false) {
  */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-fun CompactLine(label: String, unit: String, sub: String?, value: V, trend: TrendMark?, refs: List<Pair<String, Color>>, projected: V? = null) {
+fun CompactLine(label: String, unit: String, sub: String?, value: V, trend: TrendMark?, refs: List<Pair<String, Color>>, projected: V? = null,
+                /** the note's colour: a number in it takes the colour of what it is (v56); words stay grey */
+                subColor: Color? = null) {
     Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(label, Modifier.weight(1f).padding(end = 8.dp), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Normal), maxLines = 2)
+            Text(label, Modifier.weight(1f).padding(end = 8.dp), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Normal), color = Color.White, maxLines = 2)
             if (trend != null) { TrendIcon(trend); Spacer(Modifier.width(5.dp)) }
             Text(value.text, style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Normal),
                 color = kindColor(if (value.text == "—") ValueKind.NEUTRAL else value.kind), maxLines = 1, softWrap = false)
@@ -319,7 +321,7 @@ fun CompactLine(label: String, unit: String, sub: String?, value: V, trend: Tren
                 style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Normal),
                 color = kindColor(ValueKind.PREDICTED), maxLines = 1, softWrap = false)
             else if (sub != null) Text(sub, Modifier.padding(end = 8.dp), style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont),
-                color = Color.White.copy(alpha = 0.6f), maxLines = 1, softWrap = false)
+                color = subColor ?: Color.White.copy(alpha = 0.6f), maxLines = 1, softWrap = false)
             androidx.compose.foundation.layout.FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                 refs.forEach { (t, c) -> Text(t, style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont), color = c, maxLines = 1, softWrap = false) }
             }

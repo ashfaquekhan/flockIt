@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -239,21 +240,42 @@ fun GraphsCard(d: OutputData) {
                 modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).clickable { zoomed = true }
                     .padding(horizontal = 12.dp, vertical = 6.dp).testTag("chart_zoom"))
         }
-        var win by remember(c.key) { mutableStateOf(c.fromDay.toFloat()..c.maxDay.toFloat()) }
-        val from = win.start.toDouble(); val to = win.endInclusive.toDouble()
-        ChartCanvas(c, from, to, sel, { sel = it }, Modifier.fillMaxWidth().height(260.dp).testTag("chart"), 11f, labelArgb)
-        ChartSliders(c, win, { win = it; sel = sel.coerceIn(it.start.roundToInt(), it.endInclusive.roundToInt()) }, sel, { sel = it })
+        ChartCanvas(c, c.fromDay.toDouble(), c.maxDay.toDouble(), sel, { sel = it }, Modifier.fillMaxWidth().height(240.dp).testTag("chart"), 11f, labelArgb)
     }
     if (zoomed) ZoomedChart(c, sel, { sel = it }) { zoomed = false }
 }
 
 /** The chart drawn over [from]–[to] with the cursor at [sel]; one finger along it moves the cursor. */
 @Composable
-private fun ChartCanvas(c: ChartSpec, from: Double, to: Double, sel: Int, onSel: (Int) -> Unit, modifier: Modifier, textSp: Float, labelArgb: Int, dotLabels: Boolean = false) {
+private fun ChartCanvas(c: ChartSpec, from: Double, to: Double, sel: Int, onSel: (Int) -> Unit, modifier: Modifier, textSp: Float, labelArgb: Int,
+                        dotLabels: Boolean = false, onWindow: ((Double, Double) -> Unit)? = null) {
     val setSel by androidx.compose.runtime.rememberUpdatedState(onSel)
     val f by androidx.compose.runtime.rememberUpdatedState(from)
     val t by androidx.compose.runtime.rememberUpdatedState(to)
-    Canvas(modifier.pointerInput(c.key) {
+    val setWin by androidx.compose.runtime.rememberUpdatedState(onWindow)
+    val pinch = if (onWindow == null) Modifier else Modifier.pointerInput(c.key) {
+        val lo = c.fromDay.toDouble(); val hi = c.maxDay.toDouble()
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false)
+            do {
+                val ev = awaitPointerEvent()
+                if (ev.changes.count { it.pressed } >= 2) {
+                    val padL = PAD_L * density + 12f * density
+                    val gw = (size.width - padL - 30f * density).coerceAtLeast(1f)
+                    val span = t - f
+                    val zoom = ev.calculateZoom().toDouble().coerceIn(0.5, 2.0)
+                    val cx = ev.calculateCentroid().x
+                    val cDay = f + ((cx - padL) / gw).coerceIn(0f, 1f) * span
+                    val newSpan = (span / zoom).coerceIn(3.0, hi - lo)
+                    var nf = cDay - (cDay - f) * newSpan / span - ev.calculatePan().x / gw * newSpan
+                    nf = nf.coerceIn(lo, hi - newSpan)
+                    setWin?.invoke(nf, nf + newSpan)
+                    ev.changes.forEach { it.consume() }
+                }
+            } while (ev.changes.any { it.pressed })
+        }
+    }
+    Canvas(modifier.then(pinch).pointerInput(c.key) {
         fun dayAt(x: Float): Int {
             val padL = PAD_L * density + 12f * density
             val gw = size.width - padL - 30f * density
@@ -272,25 +294,6 @@ private fun ChartCanvas(c: ChartSpec, from: Double, to: Double, sel: Int, onSel:
     }) { drawChart(c, from, to, sel, labelArgb, textSp * density, dotLabels) }
 }
 
-/** Under a chart: the days shown (drag either end) and the cursor (drag it to read every day, no tapping). */
-@Composable
-private fun ChartSliders(c: ChartSpec, win: ClosedFloatingPointRange<Float>, onWin: (ClosedFloatingPointRange<Float>) -> Unit, sel: Int, onSel: (Int) -> Unit) {
-    val colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White.copy(alpha = 0.8f),
-        inactiveTrackColor = Color.White.copy(alpha = 0.2f), activeTickColor = Color.Transparent, inactiveTickColor = Color.Transparent)
-    Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("day $sel", Modifier.width(64.dp), style = MaterialTheme.typography.labelLarge, color = Color.White)
-            androidx.compose.material3.Slider(value = sel.toFloat(), onValueChange = { onSel(it.roundToInt()) },
-                valueRange = win.start..max(win.start + 1f, win.endInclusive), colors = colors, modifier = Modifier.weight(1f).testTag("chart_cursor"))
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("d${win.start.roundToInt()}–${win.endInclusive.roundToInt()}", Modifier.width(64.dp), style = MaterialTheme.typography.labelMedium, color = Color.White)
-            androidx.compose.material3.RangeSlider(value = win, onValueChange = { r -> if (r.endInclusive - r.start >= 3f) onWin(r) },
-                valueRange = c.fromDay.toFloat()..c.maxDay.toFloat(), colors = colors, modifier = Modifier.weight(1f).testTag("chart_window"))
-        }
-    }
-}
-
 /** Lays [content] out sideways (turned a quarter) when the space is taller than wide: a chart full screen in landscape. */
 private fun Modifier.landscape(): Modifier = this.layout { m, cs ->
     val w = cs.maxWidth; val h = cs.maxHeight
@@ -299,7 +302,7 @@ private fun Modifier.landscape(): Modifier = this.layout { m, cs ->
     layout(w, h) { p.placeWithLayer((w - p.width) / 2, (h - p.height) / 2) { rotationZ = 90f } }
 }
 
-/** A chart full screen, in landscape: one finger reads the days, the sliders move the cursor and choose the days. */
+/** A chart full screen, in landscape: one finger reads the days; two fingers spread or close the days shown (no sliders). */
 @Composable
 private fun ZoomedChart(c: ChartSpec, sel0: Int, onSel: (Int) -> Unit, onClose: () -> Unit) {
     var sel by remember { mutableStateOf(sel0) }
@@ -316,14 +319,16 @@ private fun ZoomedChart(c: ChartSpec, sel0: Int, onSel: (Int) -> Unit, onClose: 
                         modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).clickable { onSel(sel); onClose() }
                             .padding(horizontal = 12.dp, vertical = 6.dp))
                 }
-                ChartCanvas(c, win.start.toDouble(), win.endInclusive.toDouble(), sel, { sel = it }, Modifier.fillMaxWidth().weight(1f), 12f, labelArgb, dotLabels = true)
-                ChartSliders(c, win, { win = it; sel = sel.coerceIn(it.start.roundToInt(), it.endInclusive.roundToInt()) }, sel, { sel = it })
+                ChartCanvas(c, win.start.toDouble(), win.endInclusive.toDouble(), sel, { sel = it }, Modifier.fillMaxWidth().weight(1f), 12f, labelArgb,
+                    dotLabels = true, onWindow = { a, b -> win = a.toFloat()..b.toFloat(); sel = sel.coerceIn(a.roundToInt(), b.roundToInt()) })
+                Text("Two fingers: more or fewer days · one finger: read a day", style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.5f))
             }
         }
     }
 }
 
-private fun chartMaxDay(d: OutputData) = max(d.harvestAge, d.day).coerceIn(14, CompanyStandard.MAX_DAY)
+private fun chartMaxDay(d: OutputData) = (d.day + 7).coerceIn(14, CompanyStandard.MAX_DAY)
 /** The top of an axis: the next whole [step] above [v] (with a little headroom). */
 private fun niceTop(v: Double, step: Double): Double = kotlin.math.ceil(v * 1.04 / step) * step
 

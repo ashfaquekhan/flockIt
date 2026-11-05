@@ -124,6 +124,18 @@ class OutputData(
     val gainKind = if (gainMeasured != null) ValueKind.PRESENT else ValueKind.PREDICTED
     val gainCom: Double? = CompanyStandard.gain(day)
     val gainIdeal = bwIdeal - PhysiologicalEngine.bwFromDay(max(0, day - 1).toDouble(), breed)
+    /**
+     * Yesterday's gain (v56): yesterday's weighing against the weighing before it, a day's worth — entered (green) when
+     * yesterday was weighed, whatever has or has not been entered today; else yesterday's projected gain. (v53–v55 showed
+     * today's gain under this name, projected until today's weighing.)
+     */
+    private val yWeighed = byDay[day - 1]?.takeIf { it.avgWeight != null }
+    private val yBefore = yWeighed?.let { y -> rows.filter { it.dayNumber < y.dayNumber && it.avgWeight != null }.maxByOrNull { it.dayNumber } }
+    val gainYesterday: Double? = if (yWeighed != null && yBefore != null) (yWeighed.avgWeight!! - yBefore.avgWeight!!) / (yWeighed.dayNumber - yBefore.dayNumber)
+        else byDay[day - 1]?.gainPerBird?.takeIf { it > 0 }
+    val gainYesterdayKind = if (yWeighed != null && yBefore != null) ValueKind.PRESENT else ValueKind.PREDICTED
+    val gainYesterdayCom: Double? = CompanyStandard.gain(max(0, day - 1))
+    val gainYesterdayIdeal: Double = PhysiologicalEngine.bwFromDay(max(0, day - 1).toDouble(), breed) - PhysiologicalEngine.bwFromDay(max(0, day - 2).toDouble(), breed)
     /** The gain to expect over today (this morning to tomorrow's), from the curves: the company's and the breed's, and the
      *  flock's — the company's day scaled by how the flock stands against it. */
     val gainTodayCom: Double? = CompanyStandard.gain(day + 1)

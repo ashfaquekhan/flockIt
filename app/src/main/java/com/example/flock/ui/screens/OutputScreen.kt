@@ -124,8 +124,6 @@ fun OutputScreen(
     onCloseBatch: (() -> Unit)? = null,
     onFarmChange: ((FarmEntity) -> Unit)? = null,
     modifier: Modifier = Modifier,
-    /** sets the flock's target weight (g) and planned harvest day */
-    onFlockPlan: ((Double, Int) -> Unit)? = null,
     /** a feeding poured: bags, at (epoch ms) — kept on the sheet with the day */
     onLogFeeding: (Double, Long) -> Unit = { _, _ -> },
     onUndoFeeding: () -> Unit = {},
@@ -267,7 +265,7 @@ fun OutputScreen(
         // 2. feed and floor: the bags, the pans and the barricades on the whole house (the feedings are the model's)
         Anchored("feed") { FeedSection(d, feedPick, { feedPick = it }, needsNow, onBarricades) }
         // 3. lifting (v54: above the air)
-        Anchored("lift") { LiftSection(d, onFlockPlan) }
+        Anchored("lift") { LiftSection(d) }
         // 4. air and ventilation: the house in four views, no sensors yet
         Anchored("air") { AirSection(d, hour, needsNow, weatherOn, onWeatherOn, houseMap) }
         // 5. water, 6. the graphs, the trends and the book

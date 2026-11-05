@@ -95,7 +95,7 @@ fun litterOf(d: OutputData, hour: Int): Litter.Out {
 fun LitterSideView(l: Litter.Out, idealC: Double) {
     val t = rememberInfiniteTransition(label = "litter")
     val phase by t.animateFloat(0f, 1f, infiniteRepeatable(tween(3200, easing = LinearEasing), RepeatMode.Restart), label = "gas")
-    Canvas(Modifier.fillMaxWidth().height(190.dp).border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(10.dp)).testTag("litter_view")) {
+    Canvas(Modifier.fillMaxWidth().height(190.dp).testTag("litter_view")) {
         val px = density
         val padL = 34f * px; val padR = 10f * px
         val w = size.width - padL - padR

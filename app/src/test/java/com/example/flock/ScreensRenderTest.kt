@@ -238,17 +238,19 @@ class ScreensRenderTest {
         // v53: the farm's order — birds (window, seven numbers, radar), feed and floor, air, lifting, water, graphs — each with its farm view
         listOf("glance", "radar_birds", "time_rail", "section_tabs", "feed_conclusion", "space_why", "coop_layers", "coop_facts",
             "tile_live", "tile_cv", "tile_pans", "tile_barricades", "farm_iso_feed", "farm_iso_air", "meat_bar", "tile_water",
-            "chart_cursor", "chart_window", "flock_book").forEach { rule.onNodeWithTag(it).assertExists() }
+            "walk_feed", "walk_water", "chart", "flock_book").forEach { rule.onNodeWithTag(it).assertExists() }
         listOf("jump_birds", "jump_feed", "jump_air", "jump_lift", "jump_water", "jump_graphs").forEach { rule.onNodeWithTag(it).assertExists() }
         // gone by request: the other radars, the feeding log, the nipple-line drawing, the named birds, the old walk and floor cards
-        listOf("radar_feed", "radar_air", "radar_floor", "feed_log", "nipple_view", "walk_feed", "plan_step_0", "farm_iso_water", "space_by_auto").forEach {
+        listOf("radar_feed", "radar_air", "radar_floor", "feed_log", "nipple_view", "plan_step_0", "farm_iso_water", "space_by_auto",
+            "chart_cursor", "chart_window").forEach {
             assertTrue(it, rule.onAllNodesWithTag(it).fetchSemanticsNodes().isEmpty()) }
         assertTrue(rule.onAllNodesWithText("Pip").fetchSemanticsNodes().isEmpty())
         assertTrue(rule.onAllNodesWithText("Choose what shows", substring = true).fetchSemanticsNodes().isEmpty())
         assertTrue(rule.onAllNodesWithText("At a glance").fetchSemanticsNodes().isEmpty())
         assertTrue(rule.onAllNodesWithText("Half", substring = true).fetchSemanticsNodes().isEmpty())
-        // v52: no labels on the arrows (green good, red bad — no middle grade), no sentence over the radar
-        listOf("a little off", "far off", "Birds against the company").forEach {
+        // v52: no labels on the arrows (green good, red bad — no middle grade), no sentence over the radar;
+        // v56: one FCR and one cFCR (the company's), no target or harvest day, no "fans by outside air" grid
+        listOf("a little off", "far off", "Birds against the company", "cFCR, breed", "dead counted", "Reaches target", "Fans by outside air").forEach {
             assertTrue(it, rule.onAllNodesWithText(it, substring = true).fetchSemanticsNodes().isEmpty()) }
         rule.onRoot().captureRoboImage("src/test/screenshots/screen_output_all_open_bigtext.png")
     }
@@ -262,7 +264,7 @@ class ScreensRenderTest {
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
             com.example.flock.ui.screens.FeedSection(d, d.recommendedOption, {}, needs) { _, _ -> }
             com.example.flock.ui.screens.AirSection(d, 14, needs, false, {}, com.example.flock.ui.screens.houseMapOf(d, 14))
-            com.example.flock.ui.screens.LiftSection(d) { _, _ -> }
+            com.example.flock.ui.screens.LiftSection(d)
             com.example.flock.ui.screens.WaterSection(d, needs) { }
         } } }
         rule.mainClock.advanceTimeBy(1600)

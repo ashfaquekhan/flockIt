@@ -137,7 +137,7 @@ object SheetReports {
         return com.example.flock.data.FlockCalc.compute(f, c.farm, cfg, rows, kgOf(c))
     }
 
-    /** A flock's meat balance day by day (lifted, live, dead; both cFCRs), exactly as the phone works it out. */
+    /** A flock's meat balance day by day (lifted, live, dead; the company's cFCR), exactly as the phone works it out. */
     private fun massOf(c: SheetSchema.Content, f: FlockEntity): Map<Int, com.example.flock.data.FlockCalc.Mass> {
         val rows = c.days.filter { it.flockId == f.flockId }.sortedBy { it.dayNumber }
         if (rows.isEmpty()) return emptyMap()
@@ -163,7 +163,7 @@ object SheetReports {
             // lifting: where the flock's meat is
             "Lifted birds", "Lifted kg", "Lifted average kg", "Lifted till date birds", "Lifted till date kg",
             "Average after lifting g", "Live mass kg", "Dead and culled mass kg", "Produced kg (live + lifted)", "Cumulative body weight kg",
-            "FCR with the dead", "cFCR company", "cFCR breed",
+            "cFCR company",
             "Feed plan g per bird", "Feed plan kg", "Feed plan bags", "Commercial feed g per bird", "Ideal feed g per bird",
             "Feed store bags",
             // water, house
@@ -202,8 +202,8 @@ object SheetReports {
                     *(mass[d.dayNumber]?.let { m ->
                         arrayOf<Any>(m.liftedToday, r(d.weightLifted, 1), o(m.liftAvgKg, 3), m.liftedBirds, r(m.liftedKg, 1),
                             r(m.avgAfterKg * 1000, 1), r(m.liveKg, 1), r(m.deadKg, 1), r(m.producedKg, 1), r(m.cumBwKg, 3),
-                            o(m.fcrAll, 3), o(m.cFcrCompany, 3), o(m.cFcrBreed, 3))
-                    } ?: Array<Any>(13) { "" }),
+                            o(m.cFcrCompany, 3))
+                    } ?: Array<Any>(11) { "" }),
                     r(d.feedPerBird, 1), r(d.totalFeedKg, 1), d.feedBags, o(std.feedPerDay(std.duringDay(d.dayNumber)), 1),
                     r(PhysiologicalEngine.dailyFeedFromDay((d.dayNumber + 1).toDouble(), f.breed), 1),
                     r(d.stockOnHand),
@@ -281,9 +281,7 @@ object SheetReports {
         listOf("Feed till date kg", "kg", "Sum of the bags entered × that variety's bag weight", "Used B1 / B2 / B3 · _FeedTypes: bagKg"),
         listOf("Feed g per bird (a day)", "g", "Feed entered on a day × 1,000 ÷ the birds alive the day before (the entry is what they ate the day before)", "Feed entered kg · Live birds"),
         listOf("FCR", "", "Feed till date kg ÷ produced kg (live birds × weight + kg lifted till date)", "Feed till date · Produced kg"),
-        listOf("FCR with the dead", "", "Feed till date kg ÷ (produced kg + dead and culled mass): feed per kilo the flock grew", "Feed till date · Produced kg · Dead and culled mass"),
         listOf("cFCR (company)", "", "FCR + (2 − cumulative body weight kg) × 0.25: every kilo the average bird is under 2 kg adds 0.25, every kilo over takes 0.25 off, so flocks lifted at different weights can be compared", "FCR · Cumulative body weight · _Config: cFcrDivisor"),
-        listOf("cFCR breed", "", "FCR − (breed table FCR at the cumulative body weight − breed table FCR at 2.0 kg): the same correction along the breed's own curve", "FCR · Cumulative body weight · breed table"),
         listOf("EPEF", "", "Livability % × weight kg × 100 ÷ (day × FCR), from day 7", "Livability · Weight g · FCR"),
         listOf("Feed plan g per bird", "g", "The company chart's feed for a bird of the flock's weight (the chart day after the one that has that weight)", "Weight g · company chart"),
         listOf("Feed plan kg / bags", "kg, bags", "Feed plan g per bird × live birds ÷ 1,000; bags = that ÷ bag weight, rounded up", "Feed plan g per bird · Live birds · feedBagKg"),

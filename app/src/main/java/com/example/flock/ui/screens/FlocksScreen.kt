@@ -253,7 +253,7 @@ private fun FlockCard(
                 FilterChip(
                     selected = !isClosed,
                     onClick = onOpen,
-                    label = { Text(if (isClosed) "closed" else "Day $curDay/${flock.harvestAge}") }
+                    label = { Text(if (isClosed) "closed" else "Day $curDay") }
                 )
                 Box {
                     IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(34.dp)) {
@@ -305,7 +305,6 @@ private fun CreateFlockDialog(
     var startTime by remember { mutableStateOf("08:00") }
     var placed by remember { mutableStateOf("") }
     var transitMort by remember { mutableStateOf("0") }
-    var harvest by remember { mutableStateOf("42") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -325,15 +324,14 @@ private fun CreateFlockDialog(
                     OutlinedTextField(placed, { placed = it.filter { c -> c.isDigit() } }, label = { Text("Birds placed") }, singleLine = true, modifier = Modifier.weight(1f))
                     OutlinedTextField(transitMort, { transitMort = it.filter { c -> c.isDigit() } }, label = { Text("Transit mortality") }, singleLine = true, modifier = Modifier.weight(1f))
                 }
-                OutlinedTextField(harvest, { harvest = it.filter { c -> c.isDigit() } }, label = { Text("Harvest age (days)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
             TextButton(onClick = {
                 val p = placed.toIntOrNull() ?: 0
                 val tm = transitMort.toIntOrNull() ?: 0
-                val h = harvest.toIntOrNull() ?: 42
-                if (name.isNotBlank() && p > 0) onCreate(name.trim(), breed, startDate.trim(), startTime.trim(), p, tm, h)
+                // no harvest age (0): the flock runs on day by day
+                if (name.isNotBlank() && p > 0) onCreate(name.trim(), breed, startDate.trim(), startTime.trim(), p, tm, 0)
             }) { Text("Create") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
