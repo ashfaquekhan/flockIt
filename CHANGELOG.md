@@ -8,6 +8,26 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v58 — 2026-11-08 · Events and properties: an event log with two times, the flock as a property graph, the Map · **DB 21 → 22 (adds a table, nothing cleared)** · a new Events tab in the sheet
+- **The event log**: every save is kept as events — weighing, deaths, culls, feed used, feed received, a lifting, a feeding,
+  the barricades moved, the weather kept, house readings, notes, diesel, chicks placed, farm settings — each with when it
+  happened (the weighing's time, the lifting's, the feeding's …) and when it was entered, who entered it, and the values
+  before and after. Written once, never changed. Kept on the phone (new table) and sent to a new **Events** tab in the
+  sheet (added the first time; one row per event, readable time first); the other phones read it back on load. The
+  background sender sends unsent events too.
+- **The flock as a property graph** (`graph/FlockGraph`): 91 points — every number, part of the house and kind of event —
+  in seven groups, with 167 links: what each number is worked out from (raises / lowers / shapes, how strongly, and the
+  feedbacks that act later), how the parts hang together (relations that carry their own figures: lines, pans a line, ft
+  apart …) and which events change what. It checks itself (no unknown key, no number worked out from itself).
+- **Map** (Output, after Graphs): the whole graph as one dense mind map round the flock — dots coloured by the value's kind,
+  links green (raises), red (lowers), white (shapes), violet (events), dashed when they act later. Two fingers or a double
+  tap zoom; a tap on a point shows its value, what it comes from, what it moves, the parts it hangs with, the events that set
+  it, and — when it is worked out — which of its inputs are not entered. The event log under it, newest first, with both times.
+- **Barricade slider under the house drawing**: the house front to back as a line, the birds' floor bright between two
+  barricade uprights with round grips and their feet above them; "front" and "back" at the ends.
+- **Ideal ♀/♂ split in the weight box**: from the counts typed — half and half for an as-hatched flock (e.g. 25 ♀ 25 ♂ a spot).
+- **No outline round the top bar** (it was cut by round screen corners).
+
 ## v57 — 2026-11-08 · The lifting saved on its own with its own time, a reminder after it, no house drawing in the weight box · no DB or sheet-layout change
 - **The lifting has its own Save and its own time** (Entry → Lifting: birds lifted, lift weight, "Hold to save the lifting",
   then the time the trucks were loaded — as saved, now, or 20:00 on a past day). It stays open on a locked day, like the

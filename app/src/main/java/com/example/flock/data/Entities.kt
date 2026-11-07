@@ -437,3 +437,25 @@ fun DailyDataEntity.savedGroups(): Set<String> =
         if (feedBagsUsed > 0.0 || dayNumber == 0) add("F")
     }
     else emptySet()
+
+/**
+ * One thing that happened on the farm (v58): the event log kept beside the day rows. [happenedAt] is when it happened at
+ * the farm, [enteredAt] when it was put into the app — a lifting entered the next morning keeps its evening. [newValues] and
+ * [oldValues] are the event's new and old values (JSON, column → text). Never changed once written; [sent] once the sheet's
+ * Events tab has it.
+ */
+@Entity(tableName = "flock_events")
+data class FlockEventEntity(
+    @PrimaryKey val id: String,
+    val spreadsheetId: String,
+    val flockId: String,
+    val day: Int,
+    val kind: String,
+    val happenedAt: Long,
+    val enteredAt: Long,
+    val enteredBy: String,
+    val touches: String = "",
+    val newValues: String = "",
+    val oldValues: String = "",
+    val sent: Boolean = false
+)

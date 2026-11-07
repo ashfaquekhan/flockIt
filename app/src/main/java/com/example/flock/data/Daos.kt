@@ -193,3 +193,22 @@ interface TaskDao {
     @Query("DELETE FROM tasks WHERE spreadsheetId = :spreadsheetId")
     suspend fun deleteAllTasks(spreadsheetId: String)
 }
+
+/** The event log (v58): written once, read in time order. */
+@Dao
+interface FlockEventDao {
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(events: List<FlockEventEntity>)
+
+    @Query("SELECT * FROM flock_events WHERE spreadsheetId = :spreadsheetId AND (flockId = :flockId OR flockId = '') ORDER BY happenedAt DESC, enteredAt DESC")
+    fun eventsFlow(spreadsheetId: String, flockId: String): Flow<List<FlockEventEntity>>
+
+    @Query("SELECT * FROM flock_events WHERE spreadsheetId = :spreadsheetId AND (flockId = :flockId OR flockId = '') ORDER BY happenedAt DESC, enteredAt DESC")
+    suspend fun events(spreadsheetId: String, flockId: String): List<FlockEventEntity>
+
+    @Query("SELECT * FROM flock_events WHERE spreadsheetId = :spreadsheetId AND sent = 0 ORDER BY enteredAt")
+    suspend fun unsent(spreadsheetId: String): List<FlockEventEntity>
+
+    @Query("UPDATE flock_events SET sent = 1 WHERE id IN (:ids)")
+    suspend fun markSent(ids: List<String>)
+}

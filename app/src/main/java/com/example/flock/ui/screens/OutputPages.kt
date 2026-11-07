@@ -45,6 +45,8 @@ import com.example.flock.domain.SpacePlan
 import com.example.flock.engine.PhysiologicalEngine
 import com.example.flock.ui.Fmt
 import kotlin.math.abs
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.nativeCanvas
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -322,18 +324,22 @@ fun FeedSection(d0: OutputData, pick: Int, onPick: (Int) -> Unit, needs: com.exa
         }
     }
     SectionCard(GIcon.BAGS, "Feed and floor", "plan") {
+        PickChips(d.feedOptions.mapIndexed { i, opt -> i.toString() to "${opt.feedings} ×" }, pick.toString(), { onPick(it.toInt()) },
+            "feedings_pick", subs = d.feedOptions.mapIndexed { i, opt -> i.toString() to when { !opt.safe -> "too few bags"; i == d.recommendedOption -> "best"; else -> "ok" } }.toMap())
+        Text(d.space.why, style = MaterialTheme.typography.labelLarge, color = Color.White, modifier = Modifier.testTag("space_why"))
+        FarmIso(iso, IsoView.FEED)
         // the first and last barricade: drag them along the house (5 ft steps), then set them from this day on
         if (onBarricades != null) {
             val shown = pending ?: (curFrom to curTo)
             fun snap(x: Float) = ((x / 5f).roundToInt() * 5f).toDouble().let { if (it > L - 2.5) L else it }
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                BarricadeSlider(shown.first.toFloat(), shown.second.toFloat(), L.toFloat(), pending != null || !isSet, { a0, b0 ->
+                    val a = snap(a0); val b = snap(b0); if (b - a >= 10) pending = a to b }, Modifier.testTag("barricade_slider"))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Barricades", style = MaterialTheme.typography.labelLarge, color = Color.White, modifier = Modifier.weight(1f))
-                    Text("first " + (if (shown.first > 0.5) ft(shown.first) + " ft" else "none") + " · last " + (if (shown.second < L - 0.5) ft(shown.second) + " ft" else "none"),
+                    Text("Drag the barricades", style = MaterialTheme.typography.labelLarge, color = Color.White, maxLines = 1, modifier = Modifier.weight(1f))
+                    Text(if (shown.first < 0.5 && shown.second > L - 0.5) "none" else ft(shown.first) + "–" + ft(shown.second) + " ft",
                         style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont), color = kindColor(if (pending != null || !isSet) PR else P))
                 }
-                ThinRangeSlider(shown.first.toFloat(), shown.second.toFloat(), L.toFloat(), { a0, b0 ->
-                    val a = snap(a0); val b = snap(b0); if (b - a >= 10) pending = a to b }, Modifier.testTag("barricade_slider"))
                 if (pending != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Set from day ${d0.day}", style = MaterialTheme.typography.labelLarge, color = Color.Black,
                         modifier = Modifier.background(Color.White, RoundedCornerShape(10.dp)).clickable {
@@ -345,10 +351,6 @@ fun FeedSection(d0: OutputData, pick: Int, onPick: (Int) -> Unit, needs: com.exa
                 }
             }
         }
-        PickChips(d.feedOptions.mapIndexed { i, opt -> i.toString() to "${opt.feedings} ×" }, pick.toString(), { onPick(it.toInt()) },
-            "feedings_pick", subs = d.feedOptions.mapIndexed { i, opt -> i.toString() to when { !opt.safe -> "too few bags"; i == d.recommendedOption -> "best"; else -> "ok" } }.toMap())
-        Text(d.space.why, style = MaterialTheme.typography.labelLarge, color = Color.White, modifier = Modifier.testTag("space_why"))
-        FarmIso(iso, IsoView.FEED)
         KeyLine(kindColor(PR) to "pan on", Color.White.copy(alpha = 0.55f) to "off", Color.White to "barricade")
         LineList(lines)
     }
@@ -619,6 +621,59 @@ fun TrendsSection(d: OutputData) {
  * Two handles on a thin line (v56: the Material slider was too thick): drag the nearer handle, or tap to move it there.
  * [from] and [to] are in 0…[max]; [onChange] gets the handles where the finger puts them.
  */
+/**
+ * The barricades under the house drawing (v58): the house from front to back as a thin line, the birds' floor between the
+ * two barricades drawn bright, each barricade a short upright with a round grip and its feet above it — drag either one,
+ * or tap where it should go. [moving]: not set yet (amber), else as set (green).
+ */
+@Composable
+fun BarricadeSlider(from: Float, to: Float, max: Float, moving: Boolean, onChange: (Float, Float) -> Unit, modifier: Modifier = Modifier) {
+    val cur by androidx.compose.runtime.rememberUpdatedState(from to to)
+    val change by androidx.compose.runtime.rememberUpdatedState(onChange)
+    // the house drawing above leaves 24 dp each side: the slider's ends sit under the house's ends
+    val pad = 24.dp
+    fun moved(xPx: Float, width: Float, padPx: Float, which: Int) {
+        val v = ((xPx - padPx) / (width - 2 * padPx) * max).coerceIn(0f, max)
+        if (which == 0) change(minOf(v, cur.second), cur.second) else change(cur.first, maxOf(v, cur.first))
+    }
+    fun nearer(x: Float, width: Float, padPx: Float): Int {
+        val w = width - 2 * padPx
+        return if (abs(x - (padPx + cur.first / max * w)) <= abs(x - (padPx + cur.second / max * w))) 0 else 1
+    }
+    val accent = kindColor(if (moving) PR else P)
+    Canvas(modifier.fillMaxWidth().height(54.dp)
+        .pointerInput(max) {
+            var which = 0
+            detectHorizontalDragGestures(onDragStart = { o -> which = nearer(o.x, size.width.toFloat(), pad.toPx()) }) { ch, _ ->
+                ch.consume(); moved(ch.position.x, size.width.toFloat(), pad.toPx(), which) }
+        }
+        .pointerInput(max) {
+            detectTapGestures { o -> moved(o.x, size.width.toFloat(), pad.toPx(), nearer(o.x, size.width.toFloat(), pad.toPx())) }
+        }) {
+        val padPx = pad.toPx(); val w = size.width - 2 * padPx
+        val y = size.height - 16.dp.toPx()
+        val xa = padPx + from / max * w; val xb = padPx + to / max * w
+        val paint = android.graphics.Paint().apply { isAntiAlias = true; typeface = com.example.ui.theme.AppFonts.mono; textSize = 11.dp.toPx() }
+        // the house, front to back, and its ends named
+        drawLine(Color.White.copy(alpha = 0.3f), Offset(padPx, y), Offset(padPx + w, y), 1.5.dp.toPx())
+        listOf(padPx, padPx + w).forEach { x -> drawLine(Color.White.copy(alpha = 0.3f), Offset(x, y - 5.dp.toPx()), Offset(x, y + 5.dp.toPx()), 1.dp.toPx()) }
+        paint.color = Color.White.copy(alpha = 0.5f).toArgb(); paint.textSize = 10.dp.toPx()
+        paint.textAlign = android.graphics.Paint.Align.LEFT; drawContext.canvas.nativeCanvas.drawText("front", padPx, size.height - 1.dp.toPx(), paint)
+        paint.textAlign = android.graphics.Paint.Align.RIGHT; drawContext.canvas.nativeCanvas.drawText("back", padPx + w, size.height - 1.dp.toPx(), paint)
+        // the birds' floor
+        drawLine(accent, Offset(xa, y), Offset(xb, y), 3.dp.toPx())
+        // each barricade: an upright, a grip, its feet
+        paint.textSize = 11.dp.toPx(); paint.color = Color.White.toArgb(); paint.textAlign = android.graphics.Paint.Align.CENTER
+        listOf(xa to from, xb to to).forEach { (x, ft) ->
+            drawLine(Color.White, Offset(x, y - 13.dp.toPx()), Offset(x, y + 5.dp.toPx()), 2.dp.toPx())
+            drawCircle(Color.White, 6.dp.toPx(), Offset(x, y - 13.dp.toPx()))
+            drawCircle(Color.Black, 2.dp.toPx(), Offset(x, y - 13.dp.toPx()))
+            val tx = x.coerceIn(padPx + 12.dp.toPx(), padPx + w - 12.dp.toPx())
+            drawContext.canvas.nativeCanvas.drawText(Math.round(ft).toString(), tx, y - 23.dp.toPx(), paint)
+        }
+    }
+}
+
 @Composable
 fun ThinRangeSlider(from: Float, to: Float, max: Float, onChange: (Float, Float) -> Unit, modifier: Modifier = Modifier) {
     val cur by androidx.compose.runtime.rememberUpdatedState(from to to)

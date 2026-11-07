@@ -166,6 +166,13 @@ class SyncSafetyTest {
         assertEquals(morning, l.weighedAt); assertEquals(6000.0, l.w1!!, 0.0); assertEquals(3, l.mortality)
         assertEquals(evening, l.liftedAt); assertEquals(1200, l.birdsLifted); assertEquals(3000.0, l.weightLifted, 0.0)
         assertTrue("liftedat" in l.dirtyFields.split(","))
+        // the event log: the weighing at 08:15, the lifting at 20:30, both entered now
+        val evs = db.flockEventDao().events(sid, "F1")
+        assertEquals(morning, evs.first { it.kind == "weighing" }.happenedAt)
+        assertEquals(evening, evs.first { it.kind == "lifting" }.happenedAt)
+        assertTrue(evs.first { it.kind == "lifting" }.enteredAt >= evening)
+        assertEquals("3", com.example.flock.graph.FlockEvents.map(evs.first { it.kind == "deaths" }.newValues)["mortality"])
+        assertTrue(evs.any { it.kind == "placed" } || evs.none { it.kind == "placed" })
         // the house: the morning's birds until 20:30, the birds left from then
         val rows = dao.getDailyDataList(sid, "F1").sortedBy { it.dayNumber }
         val od = com.example.flock.ui.screens.OutputData(flock, com.example.flock.data.FarmEntity(spreadsheetId = sid), rows.first { it.dayNumber == 12 }, rows,

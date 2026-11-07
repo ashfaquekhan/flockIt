@@ -83,6 +83,7 @@ fun MainFlockScreen(
     }
 
     val activeFlock by viewModel.activeFlock.collectAsState()
+    val flockEvents by viewModel.flockEvents.collectAsState()
     val farm by viewModel.farm.collectAsState()
     val feedTypes by viewModel.feedTypes.collectAsState()
 
@@ -252,6 +253,7 @@ fun MainFlockScreen(
                     onLogFeeding = { bags, at -> viewModel.logFeeding(bags, at) },
                     onUndoFeeding = { viewModel.undoLastFeeding() },
                     onBarricades = { s, e -> viewModel.setBarricades(s, e) },
+                    flockEvents = flockEvents,
                     weatherOn = weatherOn,
                     onWeatherOn = { weatherOn = it; com.example.flock.network.ViewPrefs.setWeatherOn(ctx, it) },
                     onSelectDay = { viewModel.selectDay(it) }

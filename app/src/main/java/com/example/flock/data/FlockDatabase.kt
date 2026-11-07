@@ -70,6 +70,15 @@ val MIGRATION_20_21 = object : androidx.room.migration.Migration(20, 21) {
     }
 }
 
+/** v22 (v58): the event log — a new table, nothing else touched. */
+val MIGRATION_21_22 = object : androidx.room.migration.Migration(21, 22) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `flock_events` (`id` TEXT NOT NULL, `spreadsheetId` TEXT NOT NULL, `flockId` TEXT NOT NULL, " +
+            "`day` INTEGER NOT NULL, `kind` TEXT NOT NULL, `happenedAt` INTEGER NOT NULL, `enteredAt` INTEGER NOT NULL, `enteredBy` TEXT NOT NULL, " +
+            "`touches` TEXT NOT NULL, `newValues` TEXT NOT NULL, `oldValues` TEXT NOT NULL, `sent` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+    }
+}
+
 val MIGRATION_17_18 = object : androidx.room.migration.Migration(17, 18) {
     override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE daily_data ADD COLUMN liftedAt INTEGER NOT NULL DEFAULT 0")
@@ -100,9 +109,10 @@ val MIGRATION_15_16 = object : androidx.room.migration.Migration(15, 16) {
         FeedTypeEntity::class,
         FlockEntity::class,
         DailyDataEntity::class,
-        TaskEntity::class
+        TaskEntity::class,
+        FlockEventEntity::class
     ],
-    version = 21,
+    version = 22,
     exportSchema = false
 )
 abstract class FlockDatabase : RoomDatabase() {
@@ -115,6 +125,7 @@ abstract class FlockDatabase : RoomDatabase() {
     abstract fun flockDao(): FlockDao
     abstract fun dailyDataDao(): DailyDataDao
     abstract fun taskDao(): TaskDao
+    abstract fun flockEventDao(): FlockEventDao
 
     companion object {
         @Volatile
@@ -127,7 +138,7 @@ abstract class FlockDatabase : RoomDatabase() {
                     FlockDatabase::class.java,
                     "flockit_database"
                 )
-                    .addMigrations(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21)
+                    .addMigrations(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22)
                     .fallbackToDestructiveMigration()
                     .addCallback(FlockDatabaseCallback(scope))
                     .build()

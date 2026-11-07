@@ -61,6 +61,8 @@ import com.example.flock.ui.screens.EntriesScreen
 import com.example.flock.ui.screens.FarmsScreen
 import com.example.flock.ui.screens.FlocksScreen
 import com.example.flock.ui.screens.OutputScreen
+import com.example.flock.ui.screens.OutputData
+import com.example.flock.ui.screens.MindMapSection
 import com.example.flock.ui.screens.TasksScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -561,7 +563,8 @@ class ScreensRenderTest {
         rule.setContent { MyApplicationTheme { Dash(0) { EntriesScreen(saved, 11, "30 Sep", "29 Sep", feedTypes, lock, "k57", listOf(50), emptyList(), { got = it }, {},
             farm = farm, isToday = false, onSaveLift = { n, kg, t, done -> lift = Triple(n, kg, t); done() }) } } }
         rule.mainClock.advanceTimeBy(1000)
-        rule.onNodeWithTag("sexes_mark").assertExists()
+        // the ideal mix for the birds caught (2 at the one spot): 1 female, 1 male
+        rule.onNodeWithTag("sex_split_f").assertTextEquals("1"); rule.onNodeWithTag("sex_split_m").assertTextEquals("1")
         assertTrue(rule.onAllNodesWithTag("sample_map").fetchSemanticsNodes().isEmpty())
         // locked for the morning's entries, open for the lifting
         rule.onNodeWithTag("mortality_input").assertIsNotEnabled()
@@ -598,6 +601,31 @@ class ScreensRenderTest {
         rule.onNodeWithTag("lift_reminder_ok").performClick()
         rule.mainClock.advanceTimeBy(400)
         assertTrue(rule.onAllNodesWithTag("lift_reminder").fetchSemanticsNodes().isEmpty())
+    }
+    /** v58: the map of every property, part and event, a point picked, and the event log under it. */
+    @Config(qualifiers = "w360dp-h2400dp-xhdpi") @Test fun mindMap() {
+        val r = rows(11)
+        val d = OutputData(flock, farm, r.last(), r, feedTypes, null, emptyList(), true, false)
+        val now = System.currentTimeMillis()
+        val evs = listOf(
+            com.example.flock.graph.FlockEvents.single(com.example.flock.graph.EventKind.LIFTING, "t", "f", 11, "ashfaque@x", now, mapOf("birdslifted" to "1200", "weightlifted" to "3000"),
+                happenedAt = now - 10 * 3_600_000L),
+            com.example.flock.graph.FlockEvents.single(com.example.flock.graph.EventKind.DEATHS, "t", "f", 11, "ashfaque@x", now - 12 * 3_600_000L, mapOf("mortality" to "4"), mapOf("mortality" to "3"),
+                happenedAt = now - 12 * 3_600_000L))
+        rule.mainClock.autoAdvance = false
+        rule.setContent { MyApplicationTheme { androidx.compose.foundation.layout.Column(Modifier.background(Color.Black).padding(12.dp)) { MindMapSection(d, evs, initial = "weightNow") } } }
+        rule.mainClock.advanceTimeBy(800)
+        rule.onNodeWithTag("mind_map").assertExists()
+        rule.onAllNodesWithText("Comes from")[0].assertExists()
+        rule.onAllNodesWithText("Moves")[0].assertExists()
+        rule.onNodeWithTag("event_log").assertExists()
+        rule.onAllNodesWithText("Lifting · day 11")[0].assertExists()
+        rule.onAllNodesWithText("entered", substring = true)[0].assertExists()
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_mind_map.png")
+        // a link in the panel picks that point
+        rule.onNodeWithTag("map_link_weight").performClick()
+        rule.mainClock.advanceTimeBy(400)
+        rule.onAllNodesWithText("Weight", substring = false)[0].assertExists()
     }
     @Config(qualifiers = "w360dp-h1500dp-xhdpi") @Test fun stockSmall() = shoot("stock_small") { stock() }
     /** The quarter-width window and its stats grid. */

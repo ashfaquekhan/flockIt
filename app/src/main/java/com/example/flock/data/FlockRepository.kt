@@ -57,6 +57,28 @@ class FlockRepository(
     private val flockDao = database.flockDao()
     private val dailyDataDao = database.dailyDataDao()
     private val taskDao = database.taskDao()
+    private val eventDao = database.flockEventDao()
+
+    /** The flock's event log (v58), newest first; farm-wide events (settings) are kept with flockId "". */
+    fun eventsFlow(spreadsheetId: String, flockId: String): Flow<List<FlockEventEntity>> = eventDao.eventsFlow(spreadsheetId, flockId)
+
+    /** Keeps [events] in the log, then sends what the sheet's Events tab does not have yet. */
+    private suspend fun keepEvents(spreadsheetId: String, events: List<FlockEventEntity>) {
+        if (events.isNotEmpty()) eventDao.insertAll(events)
+        sendEvents(spreadsheetId)
+    }
+
+    /** Sends the farm's unsent events (quietly: a failure waits for the next save or the background sender). */
+    private suspend fun sendEvents(spreadsheetId: String): Boolean {
+        val s = sync ?: return false
+        if (!s.isOnline()) return false
+        val unsent = eventDao.unsent(spreadsheetId)
+        if (unsent.isEmpty()) return true
+        val zone = try { java.time.ZoneId.of(getFarm(spreadsheetId).timeZone) } catch (e: Exception) { java.time.ZoneId.systemDefault() }
+        val ok = try { s.pushEvents(spreadsheetId, unsent, zone) } catch (e: Exception) { false }
+        if (ok) eventDao.markSent(unsent.map { it.id })
+        return ok
+    }
 
     /** Set by the ViewModel once the auth/sync layer is ready. Null → offline (Room only). */
     var sync: SheetsSyncManager? = null
@@ -165,6 +187,7 @@ class FlockRepository(
                 rows.forEach { r -> if (pushDirtyDay(null, sid, r.flockId, r.dayNumber, updateReports = false)) sent++ }
                 if (sent > 0) try { s.pushReports(sid) } catch (e: Exception) { }
             }
+            dailyDataDao.getDirtyDays().map { it.spreadsheetId }.plus(farmRegistryDao.getAllFarmsOnce().map { it.spreadsheetId }).distinct().forEach { sendEvents(it) }
             dailyDataDao.getDirtyDays().count { it.conflicts.isBlank() }
         }
     }
@@ -262,12 +285,21 @@ class FlockRepository(
         feedTypeDao.getFeedTypes(spreadsheetId)
     }
 
-    suspend fun updateFarm(farm: FarmEntity) = withContext(Dispatchers.IO) {
+    suspend fun updateFarm(farm: FarmEntity, userEmail: String = "") = withContext(Dispatchers.IO) {
+        val old = farmDao.getFarm(farm.spreadsheetId)
         farmDao.insertOrUpdateFarm(farm)
+        if (old != null) {
+            fun kv(f: FarmEntity) = SheetSchema.farmToKV(f).drop(1).associate { it[0].toString() to (it.getOrNull(1)?.toString() ?: "") }
+            val a = kv(old); val b = kv(farm)
+            val diff = b.keys.filter { a[it] != b[it] }
+            if (diff.isNotEmpty()) eventDao.insertAll(listOf(com.example.flock.graph.FlockEvents.single(com.example.flock.graph.EventKind.SETTINGS,
+                farm.spreadsheetId, "", -1, userEmail, System.currentTimeMillis(), diff.associateWith { b[it] ?: "" }, diff.associateWith { a[it] ?: "" })))
+        }
         farmRegistryDao.getFarm(farm.spreadsheetId)?.let { reg ->
             farmRegistryDao.insertOrUpdate(reg.copy(farmName = farm.farmName, lastOpened = System.currentTimeMillis()))
         }
         cloudPush("Farm settings") { it.pushFarmSettings(farm.spreadsheetId, farm) }
+        sendEvents(farm.spreadsheetId)
     }
 
     suspend fun updateConfig(config: ConfigEntity) = withContext(Dispatchers.IO) {
@@ -316,6 +348,10 @@ class FlockRepository(
             status = "active"
         )
         flockDao.insertFlock(flock)
+        val placedAt = try { java.time.LocalDate.parse(flock.startDate).atTime(java.time.LocalTime.parse(flock.startTime)).atZone(java.time.ZoneId.of(farm.timeZone)).toInstant().toEpochMilli() }
+            catch (e: Exception) { System.currentTimeMillis() }
+        eventDao.insertAll(listOf(com.example.flock.graph.FlockEvents.single(com.example.flock.graph.EventKind.PLACED, spreadsheetId, flockId, 0, "",
+            System.currentTimeMillis(), mapOf("birds" to birdsPlaced.toString(), "breed" to flock.breed, "reception" to receptionMort.toString()), happenedAt = placedAt)))
 
         // Generate day rows 0..harvestAge (more are added as the flock runs on, see ensureDayRows)
         val parsedStart = try {
@@ -400,6 +436,7 @@ class FlockRepository(
             )
             ioLock.withLock {
                 val changed = SheetSchema.changedColumns(existing, cleared)
+                eventDao.insertAll(com.example.flock.graph.FlockEvents.fromSave(existing, cleared, changed, userEmail, cleared.updatedAt))
                 saveAndPushDay("Day $dayNumber cleared", spreadsheetId,
                     cleared.copy(dirtyFields = mergeDirtyFields(existing.dirty, existing.dirtyFields, changed), dirtyBase = SheetSchema.addBase(existing, changed)))
             }
@@ -570,7 +607,10 @@ class FlockRepository(
             )
             val sheetCols = SheetSchema.changedColumns(existing, stamped)
             val toSave = stamped.copy(dirtyFields = mergeDirtyFields(existing.dirty, existing.dirtyFields, sheetCols), dirtyBase = SheetSchema.addBase(existing, sheetCols))
+            // the event log (v58): what this save changed, each kind with when it happened and when it was entered
+            eventDao.insertAll(com.example.flock.graph.FlockEvents.fromSave(existing, stamped, sheetCols, userEmail, now, stamp))
             saveAndPushDay("Day $dayNumber", spreadsheetId, toSave)
+            sendEvents(spreadsheetId)
             Result.success(Unit)
         }
     }
@@ -600,22 +640,27 @@ class FlockRepository(
                     updatedAt = now, updatedBy = userEmail)
                 val cols = SheetSchema.changedColumns(existing, row)
                 if (cols.isEmpty()) return@withLock Result.success(Unit)
+                eventDao.insertAll(com.example.flock.graph.FlockEvents.fromSave(existing, row, cols, userEmail, now))
                 saveAndPushDay("Lifting", spreadsheetId, row.copy(dirtyFields = mergeDirtyFields(existing.dirty, existing.dirtyFields, cols),
                     dirtyBase = SheetSchema.addBase(existing, cols)))
+                sendEvents(spreadsheetId)
                 Result.success(Unit)
             }
         }
 
     /** The feedings poured on a day ("HH:mm=bags;…"), sent to the sheet like any other entry. */
-    suspend fun setFeedings(spreadsheetId: String, flockId: String, dayNumber: Int, feedings: String, userEmail: String): Result<Unit> =
+    suspend fun setFeedings(spreadsheetId: String, flockId: String, dayNumber: Int, feedings: String, userEmail: String, at: Long? = null): Result<Unit> =
         withContext(Dispatchers.IO) {
             ioLock.withLock {
                 val existing = dailyDataDao.getDayEntry(spreadsheetId, flockId, dayNumber)
                     ?: return@withLock Result.failure(Exception("Day entry not found"))
                 if (existing.feedings == feedings) return@withLock Result.success(Unit)
-                val row = existing.copy(feedings = feedings, updatedAt = System.currentTimeMillis(), updatedBy = userEmail)
+                val now = System.currentTimeMillis()
+                val row = existing.copy(feedings = feedings, updatedAt = now, updatedBy = userEmail)
+                eventDao.insertAll(com.example.flock.graph.FlockEvents.fromSave(existing, row, setOf("feedings"), userEmail, now, feedingAt = at))
                 saveAndPushDay("Feeding", spreadsheetId, row.copy(dirtyFields = mergeDirtyFields(existing.dirty, existing.dirtyFields, setOf("feedings")),
                     dirtyBase = SheetSchema.addBase(existing, setOf("feedings"))))
+                sendEvents(spreadsheetId)
                 Result.success(Unit)
             }
         }
@@ -632,9 +677,12 @@ class FlockRepository(
                 val start = startFt.coerceIn(0.0, max(0.0, houseLenFt - 10))
                 val end = if (endFt >= houseLenFt - 0.5) 0.0 else endFt.coerceIn(start + 10, houseLenFt)
                 if (existing.penStartFt == start && existing.broodingLength == end) return@withLock Result.success(Unit)
-                val row = existing.copy(penStartFt = start, broodingLength = end, updatedAt = System.currentTimeMillis(), updatedBy = userEmail)
+                val now = System.currentTimeMillis()
+                val row = existing.copy(penStartFt = start, broodingLength = end, updatedAt = now, updatedBy = userEmail)
+                eventDao.insertAll(com.example.flock.graph.FlockEvents.fromSave(existing, row, SheetSchema.changedColumns(existing, row), userEmail, now))
                 saveAndPushDay("Barricades", spreadsheetId, row.copy(dirtyFields = mergeDirtyFields(existing.dirty, existing.dirtyFields, setOf("penstartft", "broodinglength")),
                     dirtyBase = SheetSchema.addBase(existing, setOf("penstartft", "broodinglength"))))
+                sendEvents(spreadsheetId)
                 Result.success(Unit)
             }
         }

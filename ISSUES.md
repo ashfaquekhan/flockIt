@@ -53,6 +53,10 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O48 | Lifting time may be wrong for the liftings already entered | Those saved without a time are taken as 20:00; any updated together with the morning entries before v57 took the morning time. Open the day, Entry → Lifting, hold Update the lifting and pick the real time. |
 | O70 | The lifting reminder's feed is the company chart for the birds left | "Bags a day" is the chart's feed per bird × the birds before and after, rounded up; the feed plan on Output (with the flock's own appetite) is the one to pour by. |
 | O71 | Only the Birds numbers follow the lifting's time | Live birds, weight and density switch at the lifting's time; the feed plan, floor, water and air work on the birds left for the whole day of the lifting. |
+| O72 | The numbers still come from the day rows, not from the events | Step one of the change: the log is kept beside the rows (both written by every save). Next: work the rows out from the events, so two phones only ever add events (no cell to clash on). Events entered before v58 are not in the log. |
+| O73 | The links' strengths in the graph are set by hand | 1 a little, 3 strongly, from how the app's sums work and the published trials. Learning them from the farm's own flocks (Bayesian updating) comes later. |
+| O74 | The ideal ♀/♂ split assumes an as-hatched flock | About half and half. A sexed flock (all males or all females) would need a flock setting. |
+| O75 | The Events tab is append-only and can hold a row twice | Appends are not repeated after a fault (v55), but an answer lost after Google wrote the row leaves it unsent here, so it is sent again. Reading back goes by the event's id, so the phones see it once. |
 | O51 | "Comfortable" density on hot days (30 / 34 kg/m²) is a rule of thumb | From heat-stress guidance; the farm's cap (39 kg/m²) stays the most. Say if the company uses other figures. |
 | O68 | Clashes are found for day entries only | Farm settings, flocks, tasks and feed types still go by the later save, and are not sent in the background (they are sent with the next save). |
 | O69 | The background sender needs Google sign-in to renew by itself | It uses the account signed in on the phone; if Google wants the sign-in confirmed again, it waits until FlockIt is opened. |
@@ -75,6 +79,8 @@ is not made twice. Newest first. Open items at the top. Update together with
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v58 | The barricade slider was not seen | It sat above the feedings chips, far from the house drawing, as a thin line with no ends drawn | Right under the drawing: the house front to back, the floor bright between two barricade uprights with grips and their feet |
+| v58 | The top bar's outline was cut at the phone's round corners | A square 1 dp frame round the whole bar | No frame; the chips inside keep theirs |
 | v57 | Adding a lifting to a weighed day changed the morning average | One Save and one time for everything: an update at the morning time put the lifting in the morning (the birds left worked out from the morning weight), and a lifting without a time took the save's time | The lifting is saved on its own with its own time; the day's Save keeps the lifting and its time as they are; on Output the flock switches to the birds left at the lifting's time |
 | v57 | The weight box drew the whole house with feeder and drinker lines | "Where to catch the birds" map (by v43) | Removed; a small ♂♀ mark by the title |
 | v56 | Yesterday's gain shown amber on a day after a weighing | The line showed today's gain (today's weighing − the one before), projected until today was weighed | Yesterday's own gain: yesterday's weighing − the one before; entered when yesterday was weighed |

@@ -56,6 +56,37 @@ object SheetSchema {
         "LiftedAt", "Feedings", "PenStartFt",
         "OutTempMin", "OutTempAvg", "OutTempMax", "OutRhMin", "OutRhAvg", "OutRhMax"
     )
+    /**
+     * The Events tab (v58): one row per event, appended, never rewritten — the event log beside the day rows. It is not
+     * one of [TABS] (the layout check and the upgrade leave it alone); it is added the first time an event is sent.
+     */
+    const val EVENTS_TAB = "Events"
+    val EVENT_HEADERS = listOf("When", "Kind", "Day", "What", "Values", "Before", "EnteredBy", "HappenedAt", "EnteredAt", "EventId", "FlockId", "Touches")
+
+    /** An event as a row of the Events tab ([zone]: the farm's, for the readable time). */
+    fun eventRow(e: com.example.flock.data.FlockEventEntity, zone: java.time.ZoneId): List<Any> = listOf(
+        java.time.Instant.ofEpochMilli(e.happenedAt).atZone(zone).let { String.format("%04d-%02d-%02d %02d:%02d", it.year, it.monthValue, it.dayOfMonth, it.hour, it.minute) },
+        e.kind, e.day, com.example.flock.graph.FlockEvents.summary(e, 8), e.newValues, e.oldValues, e.enteredBy, e.happenedAt, e.enteredAt, e.id, e.flockId, e.touches)
+
+    /** The Events tab read back (by header name; rows without an id or a kind are skipped). */
+    fun parseEvents(sid: String, values: List<List<Any?>>?): List<com.example.flock.data.FlockEventEntity> {
+        if (values.isNullOrEmpty()) return emptyList()
+        val head = values.first().map { norm(it?.toString() ?: "") }
+        fun col(name: String) = head.indexOf(norm(name))
+        val iId = col("EventId"); val iKind = col("Kind"); val iFlock = col("FlockId"); val iDay = col("Day")
+        val iHap = col("HappenedAt"); val iEnt = col("EnteredAt"); val iBy = col("EnteredBy"); val iTo = col("Touches")
+        val iVal = col("Values"); val iBef = col("Before")
+        if (iId < 0 || iKind < 0 || iFlock < 0) return emptyList()
+        fun List<Any?>.t(i: Int) = if (i < 0) "" else getOrNull(i)?.toString()?.trim() ?: ""
+        return values.drop(1).mapNotNull { r ->
+            val id = r.t(iId); val kind = r.t(iKind)
+            if (id.isEmpty() || kind.isEmpty()) return@mapNotNull null
+            com.example.flock.data.FlockEventEntity(id = id, spreadsheetId = sid, flockId = r.t(iFlock), day = r.t(iDay).toDoubleOrNull()?.toInt() ?: 0,
+                kind = kind, happenedAt = r.t(iHap).toDoubleOrNull()?.toLong() ?: 0L, enteredAt = r.t(iEnt).toDoubleOrNull()?.toLong() ?: 0L,
+                enteredBy = r.t(iBy), touches = r.t(iTo), newValues = r.t(iVal), oldValues = r.t(iBef), sent = true)
+        }
+    }
+
     /** The columns of the day's kept weather (written by the app once a day is over, not typed in). */
     val WEATHER_HEADERS = listOf("OutTempMin", "OutTempAvg", "OutTempMax", "OutRhMin", "OutRhAvg", "OutRhMax")
 

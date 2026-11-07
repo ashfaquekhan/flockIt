@@ -114,6 +114,9 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _dailyRows = MutableStateFlow<List<DailyDataEntity>>(emptyList())
     val dailyRows: StateFlow<List<DailyDataEntity>> = _dailyRows.asStateFlow()
+    /** The active flock's event log (v58), newest first. */
+    private val _flockEvents = MutableStateFlow<List<com.example.flock.data.FlockEventEntity>>(emptyList())
+    val flockEvents: StateFlow<List<com.example.flock.data.FlockEventEntity>> = _flockEvents.asStateFlow()
 
     /** Values of the open flock that two phones changed differently, waiting for the farm's choice (v55). */
     val clashes: StateFlow<List<Clash>> = _dailyRows.map { rows -> clashesOf(rows) }
@@ -386,6 +389,9 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
             val clampedDay = curDay.coerceIn(0, repository.lastDayFor(flock, _farm.value.timeZone))
             _selectedDay.value = clampedDay
 
+            // the event log
+            launch { repository.eventsFlow(spreadsheetId, flockId).collect { _flockEvents.value = it } }
+
             // Collect DailyData
             launch {
                 repository.getDailyDataFlow(spreadsheetId, flockId).collect { rows ->
@@ -644,7 +650,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         val row = _dailyRows.value.firstOrNull { it.dayNumber == day } ?: return
         val list = com.example.flock.data.parseFeedings(row.feedings) + (String.format("%02d:%02d", t.hour, t.minute) to bags)
         busy("Saving the feeding") {
-            repository.setFeedings(_selectedSpreadsheetId.value, flock.flockId, day, com.example.flock.data.formatFeedings(list), authState.value.email)
+            repository.setFeedings(_selectedSpreadsheetId.value, flock.flockId, day, com.example.flock.data.formatFeedings(list), authState.value.email, at)
         }
     }
 
@@ -811,7 +817,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateFarmSettings(farm: FarmEntity, config: ConfigEntity) {
         busy("Saving the farm settings") {
-            repository.updateFarm(farm)
+            repository.updateFarm(farm, authState.value.email)
             repository.updateConfig(config)
             _farm.value = farm
             _config.value = config
@@ -827,7 +833,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
     /** Save a farm setting changed from the Output page (e.g. the water refill multiplier). */
     fun updateFarm(farm: FarmEntity) {
         busy("Saving the setting") {
-            repository.updateFarm(farm)
+            repository.updateFarm(farm, authState.value.email)
             _farm.value = farm
         }
     }

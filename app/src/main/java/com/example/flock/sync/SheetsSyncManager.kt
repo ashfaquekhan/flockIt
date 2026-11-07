@@ -8,6 +8,7 @@ import com.example.flock.data.FarmRegistryEntity
 import com.example.flock.data.FeedTypeEntity
 import com.example.flock.data.FlockDatabase
 import com.example.flock.data.FlockEntity
+import com.example.flock.data.FlockEventEntity
 import com.example.flock.data.TaskEntity
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.Dispatchers
@@ -1122,6 +1123,38 @@ class SheetsSyncManager(
     }
 
     /**
+     * Sends events to the sheet's Events tab (v58), adding the tab the first time. Appends are not repeated after a fault
+     * (v55), so a lost answer can leave a row twice — reading back goes by the event's id, so that does no harm.
+     */
+    suspend fun pushEvents(spreadsheetId: String, events: List<FlockEventEntity>, zone: java.time.ZoneId): Boolean = withContext(Dispatchers.IO) {
+        if (events.isEmpty()) return@withContext true
+        val authHeader = authManager.getAuthHeader() ?: return@withContext false
+        try {
+            val grid = gridOf(authHeader, spreadsheetId) ?: return@withContext false
+            if (SheetSchema.EVENTS_TAB !in grid) {
+                val r = GoogleApiClientProvider.sheetsApi.batchUpdateSpreadsheet(authHeader, spreadsheetId, BatchUpdateSpreadsheetRequest(listOf(
+                    SheetRequest(addSheet = AddSheetRequest(SheetProperties(title = SheetSchema.EVENTS_TAB,
+                        gridProperties = GridProperties(rowCount = 1000, columnCount = SheetSchema.EVENT_HEADERS.size)))))))
+                if (!r.isSuccessful) { Log.w(TAG, "add Events tab -> ${r.code()}"); return@withContext false }
+                if (!putBlock(authHeader, spreadsheetId, SheetSchema.EVENTS_TAB, listOf(SheetSchema.EVENT_HEADERS))) return@withContext false
+            }
+            appendRows(authHeader, spreadsheetId, SheetSchema.EVENTS_TAB, events.map { SheetSchema.eventRow(it, zone) })
+        } catch (e: Exception) { Log.w(TAG, "pushEvents: ${e.message}"); false }
+    }
+
+    /** The sheet's Events tab (null: no tab yet, or it could not be read). */
+    suspend fun pullEvents(spreadsheetId: String): List<FlockEventEntity>? = withContext(Dispatchers.IO) {
+        val authHeader = authManager.getAuthHeader() ?: return@withContext null
+        try {
+            val grid = gridOf(authHeader, spreadsheetId) ?: return@withContext null
+            if (SheetSchema.EVENTS_TAB !in grid) return@withContext null
+            val res = GoogleApiClientProvider.sheetsApi.batchGet(authHeader, spreadsheetId, listOf(quoted(SheetSchema.EVENTS_TAB)))
+            if (!res.isSuccessful) return@withContext null
+            SheetSchema.parseEvents(spreadsheetId, res.body()?.valueRanges?.firstOrNull()?.values)
+        } catch (e: Exception) { Log.w(TAG, "pullEvents: ${e.message}"); null }
+    }
+
+    /**
      * Appends an action log to the ActivityLog tab in the spreadsheet for multi-user audit trail.
      */
     suspend fun logActivity(spreadsheetId: String, action: String, details: String) = withContext(Dispatchers.IO) {
@@ -1283,6 +1316,8 @@ class SheetsSyncManager(
             }
             // --- tasks ---
             c.tasks.forEach { db.taskDao().insertTask(it) }
+            // --- the event log (v58): the other phones' events join this phone's (by id; nothing is overwritten) ---
+            runCatching { pullEvents(spreadsheetId)?.let { if (it.isNotEmpty()) db.flockEventDao().insertAll(it) } }
 
             // An older layout is brought up to date here, once (a snapshot of the old sheet stays in Drive).
             if (SheetSchema.upgradeReasons(raw).isEmpty()) layoutOk += spreadsheetId

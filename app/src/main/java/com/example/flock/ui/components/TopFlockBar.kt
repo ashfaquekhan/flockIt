@@ -90,13 +90,14 @@ fun TopFlockBar(
     lastDay: Int? = null
 ) {
     val harvestAge = lastDay ?: flock?.harvestAge ?: 42
-    Surface(border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.GlassLine), 
+    // no outline round the bar (v58): a square frame is cut by a phone's round corners; the chips inside keep theirs
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("top_flock_bar"),
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 0.dp,
-        shadowElevation = 3.dp
+        shadowElevation = 0.dp
     ) {
         Column(
             modifier = Modifier

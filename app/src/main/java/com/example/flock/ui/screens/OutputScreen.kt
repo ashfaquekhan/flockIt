@@ -133,7 +133,9 @@ fun OutputScreen(
     /** opens another day (a day tapped in the flock book) */
     onSelectDay: ((Int) -> Unit)? = null,
     /** sets the first and last barricade (ft from the front wall) from the day shown on */
-    onBarricades: ((Double, Double) -> Unit)? = null
+    onBarricades: ((Double, Double) -> Unit)? = null,
+    /** the flock's event log (v58), newest first: shown under the map */
+    flockEvents: List<com.example.flock.data.FlockEventEntity> = emptyList()
 ) {
     // one scroll position for every day; the section being read stays put when the day changes
     val scroll = rememberScrollState()
@@ -241,7 +243,7 @@ fun OutputScreen(
 
     // the page's sections in the farm's order (v53): the birds (the window and their numbers), feed and floor, air and
     // ventilation, lifting, water, then the graphs and the records
-    val tabs = listOf("birds" to "Birds", "feed" to "Feed", "lift" to "Lifting", "air" to "Air", "water" to "Water", "graphs" to "Graphs")
+    val tabs = listOf("birds" to "Birds", "feed" to "Feed", "lift" to "Lifting", "air" to "Air", "water" to "Water", "graphs" to "Graphs", "map" to "Map")
     val dens = androidx.compose.ui.platform.LocalDensity.current
     var tabsPx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     val tabsDp = with(dens) { tabsPx.toDp() }
@@ -275,6 +277,8 @@ fun OutputScreen(
             TrendsSection(d)
             FlockBookCard(d, onSelectDay)
         }
+        // 7. the map: every property, part and event and how they link; the event log under it (v58)
+        Anchored("map") { MindMapSection(d, flockEvents) }
         if (onCloseBatch != null && flock?.status != "closed") {
             OutlinedButton(onClick = { confirmClose = true }, modifier = Modifier.fillMaxWidth(),
                 border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine)) {

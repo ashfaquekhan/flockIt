@@ -414,7 +414,7 @@ fun EntriesScreen(
         }
 
         // (the time of the entries is picked at Save, v52: no separate box)
-        Section(title = "Weight samples", trailing = { SexesMark() }) {
+        Section(title = "Weight samples", trailing = { SexSplit(locs.map { it.n.toCount() ?: 0 }) }) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -788,6 +788,54 @@ private fun ReminderStep(icon: GIcon, title: String, figure: String, color: Colo
         Column {
             Text(title, style = MaterialTheme.typography.bodyLarge, color = Color.White)
             Text(figure, style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont), color = color)
+        }
+    }
+}
+
+/**
+ * The ideal mix of the birds caught (v58): an as-hatched flock is about half males and half females, and males grow
+ * heavier, so each spot's catch should be half and half too — worked out from the counts typed (a spot each when they are
+ * all the same, else in all). With no count yet, the ♀♂ mark alone.
+ */
+@Composable
+private fun SexSplit(counts: List<Int>) {
+    val typed = counts.filter { it > 0 }
+    val same = typed.distinct().singleOrNull()
+    val n = same ?: typed.sum()
+    if (n <= 0) { SexesMark(); return }
+    val males = (n + 1) / 2; val females = n - males
+    val num = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont)
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("sex_split")) {
+        Text("ideal ", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
+        Text("$females", style = num, color = com.example.ui.theme.ValueIdeal, modifier = Modifier.testTag("sex_split_f"))
+        SexGlyph(male = false)
+        Spacer(Modifier.width(6.dp))
+        Text("$males", style = num, color = com.example.ui.theme.ValueIdeal, modifier = Modifier.testTag("sex_split_m"))
+        SexGlyph(male = true)
+        Text(if (same != null) " a spot" else " in all", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
+    }
+}
+
+/** One sign, thin and white: ♂ ([male]) a ring with its arrow, ♀ a ring with its cross. */
+@Composable
+private fun SexGlyph(male: Boolean) {
+    androidx.compose.foundation.Canvas(Modifier.padding(start = 2.dp).size(14.dp)) {
+        val px = density; val w = 1.3f * px
+        val col = Color.White.copy(alpha = 0.85f); val round = androidx.compose.ui.graphics.StrokeCap.Round
+        val r = 3.6f * px
+        if (male) {
+            val c = androidx.compose.ui.geometry.Offset(5.5f * px, 8.5f * px)
+            drawCircle(col, r, c, style = androidx.compose.ui.graphics.drawscope.Stroke(w))
+            val k = 0.7071f
+            val a0 = androidx.compose.ui.geometry.Offset(c.x + r * k, c.y - r * k); val a1 = androidx.compose.ui.geometry.Offset(12.5f * px, 1.5f * px)
+            drawLine(col, a0, a1, w, round)
+            drawLine(col, a1, androidx.compose.ui.geometry.Offset(a1.x - 3.2f * px, a1.y), w, round)
+            drawLine(col, a1, androidx.compose.ui.geometry.Offset(a1.x, a1.y + 3.2f * px), w, round)
+        } else {
+            val c = androidx.compose.ui.geometry.Offset(7f * px, 5f * px)
+            drawCircle(col, r, c, style = androidx.compose.ui.graphics.drawscope.Stroke(w))
+            drawLine(col, androidx.compose.ui.geometry.Offset(c.x, c.y + r), androidx.compose.ui.geometry.Offset(c.x, 13.5f * px), w, round)
+            drawLine(col, androidx.compose.ui.geometry.Offset(c.x - 2.8f * px, 11f * px), androidx.compose.ui.geometry.Offset(c.x + 2.8f * px, 11f * px), w, round)
         }
     }
 }
