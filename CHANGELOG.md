@@ -8,6 +8,18 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v57 — 2026-11-08 · The lifting saved on its own with its own time, a reminder after it, no house drawing in the weight box · no DB or sheet-layout change
+- **The lifting has its own Save and its own time** (Entry → Lifting: birds lifted, lift weight, "Hold to save the lifting",
+  then the time the trucks were loaded — as saved, now, or 20:00 on a past day). It stays open on a locked day, like the
+  notes. The day's own Save no longer touches the lifting, and its time never becomes the lifting's: the morning weighing
+  keeps its time and its weights, so updating a day with a lifting no longer changes the morning average.
+- **The flock changes at the lifting's time**: on Output, before that time the house holds the birds as weighed that
+  morning (live birds, weight, stocking density and ft² per bird); from it, the birds left and their average.
+- **After the lifting, a reminder**: spread the flock (birds left), lower the feed (bags a day now and before), move the
+  barricades (ft² per bird now and before).
+- **The weight box**: the "Where to catch the birds" house drawing (whole house, feeder and drinker lines) is gone; a
+  small ♂♀ mark sits by the title.
+
 ## v56 — 2026-11-05 · Right colours, one FCR and one cFCR, no targets, the walk drawn again, thin sliders, turning fans · no DB or sheet-layout change
 - **Fixed: yesterday's gain** showed today's gain (projected, amber, until today's weighing) under yesterday's name. It is
   yesterday's own now: yesterday's weighing against the one before, entered (green) when yesterday was weighed.

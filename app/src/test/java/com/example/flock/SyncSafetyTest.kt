@@ -143,4 +143,46 @@ class SyncSafetyTest {
         assertEquals(14, b.mortality); assertEquals("", b.conflicts); assertEquals("12", SheetSchema.decodeCells(b.dirtyBase)["mortality"]); assertTrue(b.dirty)
         db.close()
     }
+
+    /** v57: the lifting is saved on its own, at its own time; the morning weighing keeps its time and its weights. */
+    @Test fun theLiftingKeepsItsOwnTime() = runBlocking {
+        val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val db = Room.inMemoryDatabaseBuilder(ctx, FlockDatabase::class.java).allowMainThreadQueries().build()
+        val repo = FlockRepository(db)
+        val dao = db.dailyDataDao()
+        val zone = java.time.ZoneId.of("Asia/Kolkata")
+        val start = java.time.LocalDate.now(zone).minusDays(20)
+        val flock = com.example.flock.data.FlockEntity(spreadsheetId = sid, flockId = "F1", name = "T", startDate = start.toString(), birdsPlaced = 5000, harvestAge = 0)
+        db.flockDao().insertFlock(flock)
+        dao.insertDailyData((0..20).map { d -> DailyDataEntity(spreadsheetId = sid, flockId = "F1", dayNumber = d, date = start.plusDays(d.toLong()).toString()) })
+        fun at(h: Int, m: Int) = start.plusDays(12).atTime(h, m).atZone(zone).toInstant().toEpochMilli()
+        val morning = at(8, 15); val evening = at(20, 30)
+        // the morning: weights and deaths
+        repo.saveDayEntry(sid, "F1", 12, "a@b", setOf("M"), morning) { it.copy(w1 = 6000.0, n1 = 10, mortality = 3) }.getOrThrow()
+        assertEquals(morning, dao.getDayEntry(sid, "F1", 12)!!.weighedAt)
+        // the evening: the lifting, on its own — the weighing and its time stay
+        repo.saveLifting(sid, "F1", 12, 1200, 3000.0, evening, "a@b").getOrThrow()
+        val l = dao.getDayEntry(sid, "F1", 12)!!
+        assertEquals(morning, l.weighedAt); assertEquals(6000.0, l.w1!!, 0.0); assertEquals(3, l.mortality)
+        assertEquals(evening, l.liftedAt); assertEquals(1200, l.birdsLifted); assertEquals(3000.0, l.weightLifted, 0.0)
+        assertTrue("liftedat" in l.dirtyFields.split(","))
+        // the house: the morning's birds until 20:30, the birds left from then
+        val rows = dao.getDailyDataList(sid, "F1").sortedBy { it.dayNumber }
+        val od = com.example.flock.ui.screens.OutputData(flock, com.example.flock.data.FarmEntity(spreadsheetId = sid), rows.first { it.dayNumber == 12 }, rows,
+            emptyList(), null, emptyList(), false, false)
+        assertEquals(20.5, od.liftHour!!, 1e-9)
+        assertFalse(od.liftedBy(20.0)); assertTrue(od.liftedBy(20.5))
+        assertEquals(600.0, od.bw, 1e-9)
+        // the morning's entries updated again (their time as first saved): the lifting keeps its time and birds
+        repo.saveDayEntry(sid, "F1", 12, "a@b", setOf("M"), morning) { it.copy(mortality = 4) }.getOrThrow()
+        dao.getDayEntry(sid, "F1", 12)!!.let { assertEquals(evening, it.liftedAt); assertEquals(1200, it.birdsLifted); assertEquals(morning, it.weighedAt) }
+        // a lifting kept before its time was (no time): another save of the day does not give it the morning's
+        dao.insertOrUpdateDay(dao.getDayEntry(sid, "F1", 12)!!.copy(liftedAt = 0L))
+        repo.saveDayEntry(sid, "F1", 12, "a@b", setOf("M"), morning) { it.copy(mortality = 5) }.getOrThrow()
+        assertEquals(0L, dao.getDayEntry(sid, "F1", 12)!!.liftedAt)
+        // nothing lifted: the lifting and its time cleared
+        repo.saveLifting(sid, "F1", 12, 0, 0.0, null, "a@b").getOrThrow()
+        dao.getDayEntry(sid, "F1", 12)!!.let { assertEquals(0, it.birdsLifted); assertEquals(0L, it.liftedAt); assertEquals(morning, it.weighedAt) }
+        db.close()
+    }
 }

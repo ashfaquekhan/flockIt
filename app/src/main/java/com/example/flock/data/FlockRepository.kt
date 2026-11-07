@@ -560,7 +560,8 @@ class FlockRepository(
             val stamped = modified.copy(
                 // when the weights were taken: the time-based projections start from here
                 weighedAt = if (!hasSample) 0L else if (weightsChanged || existing.weighedAt == 0L) stamp else existing.weighedAt,
-                liftedAt = if (modified.birdsLifted <= 0) 0L else if (liftChanged || existing.liftedAt == 0L) stamp else existing.liftedAt,
+                // the lifting keeps its own time (v57: saved with [saveLifting]); this save's time never becomes the lifting's
+                liftedAt = if (modified.birdsLifted <= 0) 0L else if (liftChanged) stamp else existing.liftedAt,
                 sampleEntered = hasSample,
                 savedFields = listOf("W", "M", "F").filter { it in groups }.joinToString(","),
                 committed = groups.containsAll(listOf("W", "M", "F")),
@@ -573,6 +574,37 @@ class FlockRepository(
             Result.success(Unit)
         }
     }
+
+    /**
+     * A day's lifting, saved on its own (v57): [birds] and [kg] lifted and when the trucks were loaded ([at], epoch ms;
+     * null = now). The day's weighing, its time and its other entries are left as they are, so the morning's average stays
+     * the morning's; the birds left and their average change from the lifting's time. 0 birds clears the lifting.
+     */
+    suspend fun saveLifting(spreadsheetId: String, flockId: String, dayNumber: Int, birds: Int, kg: Double, at: Long?, userEmail: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            val flock = flockDao.getFlockById(spreadsheetId, flockId)
+                ?: return@withContext Result.failure(Exception("Flock not found"))
+            if (flock.locked) return@withContext Result.failure(IllegalStateException("This flock is locked. Unlock it to edit."))
+            if (farmRegistryDao.getFarm(spreadsheetId)?.locked == true) return@withContext Result.failure(IllegalStateException("This farm is locked. Unlock it to edit."))
+            ioLock.withLock {
+                val existing = dailyDataDao.getDayEntry(spreadsheetId, flockId, dayNumber)
+                    ?: return@withLock Result.failure(Exception("Day entry not found"))
+                if (dayNumber > calculateCurrentDay(flock.startDate, getFarm(spreadsheetId).timeZone)) {
+                    return@withLock Result.failure(IllegalStateException("Day $dayNumber has not come yet — nothing to enter."))
+                }
+                val now = System.currentTimeMillis()
+                val n = birds.coerceAtLeast(0)
+                val row = existing.copy(
+                    birdsLifted = n, weightLifted = if (n > 0) kg.coerceAtLeast(0.0) else 0.0,
+                    liftedAt = if (n <= 0) 0L else at?.takeIf { it in 1..(now + 60_000) } ?: now,
+                    updatedAt = now, updatedBy = userEmail)
+                val cols = SheetSchema.changedColumns(existing, row)
+                if (cols.isEmpty()) return@withLock Result.success(Unit)
+                saveAndPushDay("Lifting", spreadsheetId, row.copy(dirtyFields = mergeDirtyFields(existing.dirty, existing.dirtyFields, cols),
+                    dirtyBase = SheetSchema.addBase(existing, cols)))
+                Result.success(Unit)
+            }
+        }
 
     /** The feedings poured on a day ("HH:mm=bags;…"), sent to the sheet like any other entry. */
     suspend fun setFeedings(spreadsheetId: String, flockId: String, dayNumber: Int, feedings: String, userEmail: String): Result<Unit> =

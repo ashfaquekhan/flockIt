@@ -464,6 +464,15 @@ class OutputData(
     val mass: com.example.flock.data.FlockCalc.Mass? get() = massByDay[day]
     /** The flock's average for the birds in the house now: after any lifting today. */
     val bwNow: Double get() = mass?.avgAfterKg?.let { it * 1000 } ?: bw
+    /** The hour (farm time) of this day's lifting: as saved, 20:00 for one saved without a time; null: no lifting this day. */
+    val liftHour: Double? = if (e.birdsLifted <= 0) null else if (e.liftedAt <= 0) 20.0 else try {
+        java.time.Instant.ofEpochMilli(e.liftedAt).atZone(java.time.ZoneId.of(farm.timeZone)).let { it.hour + it.minute / 60.0 }
+    } catch (ex: Exception) { 20.0 }
+    /**
+     * Whether this day's lifting has happened by [hourOfDay] (v57): before it the house holds the birds as weighed that
+     * morning; from it, the birds left and their average. Always true on a day without a lifting.
+     */
+    fun liftedBy(hourOfDay: Double): Boolean = liftHour?.let { hourOfDay >= it } ?: true
     /** Reception (transit) deaths as a share of the birds placed; and all deaths with them. */
     val receptionPct: Double? = if (placed > 0) reception * 100.0 / placed else null
     val mortWithReceptionPct: Double? = if (placed > 0) (mortTD + reception) * 100.0 / placed else null

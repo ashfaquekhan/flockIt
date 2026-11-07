@@ -197,9 +197,9 @@ fun OutputScreen(
     val feeder = remember(events, viewMs, d) {
         feederState(events, zone, needsNow, (d.bagsFillOpen * d.kgPerBag(d.phase)).takeIf { it > 0 } ?: d.giveKg)
     }
-    // when the day's entries were made: the weighing, else the lifting, else the last save on that day
+    // when the day's entries were made: the weighing, else the last save on that day (the lifting keeps its own time, v57)
     val entryHHmm = remember(entry) {
-        listOf(entry.weighedAt, entry.liftedAt).firstOrNull { it > 0 }?.let { java.time.Instant.ofEpochMilli(it).atZone(zone).toLocalTime() }
+        entry.weighedAt.takeIf { it > 0 }?.let { java.time.Instant.ofEpochMilli(it).atZone(zone).toLocalTime() }
             ?.let { String.format("%02d:%02d", it.hour, it.minute) }
             ?: entry.updatedAt.takeIf { it > 0 && entry.savedGroups().isNotEmpty() }?.let { java.time.Instant.ofEpochMilli(it).atZone(zone) }
                 ?.takeIf { it.toLocalDate() == dayDate }?.let { String.format("%02d:%02d", it.hour, it.minute) }
@@ -237,7 +237,7 @@ fun OutputScreen(
 
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     fun minutesOf(ms: Long) = java.time.Instant.ofEpochMilli(ms).atZone(zone).let { it.hour * 60 + it.minute }
-    val entryMin = listOf(entry.weighedAt, entry.liftedAt).firstOrNull { it > 0 }?.let { minutesOf(it) }
+    val entryMin = entry.weighedAt.takeIf { it > 0 }?.let { minutesOf(it) }
 
     // the page's sections in the farm's order (v53): the birds (the window and their numbers), feed and floor, air and
     // ventilation, lifting, water, then the graphs and the records

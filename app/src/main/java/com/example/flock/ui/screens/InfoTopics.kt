@@ -198,7 +198,7 @@ object InfoTopics {
         "lifting" to InfoTopic("Lifting",
             "Where the flock's meat is — in the house, lifted, dead and culled — each with its kilos and its share of all of it; the birds lifted and their average; livability, EPEF and what was produced. FCR and cFCR are in Birds (one of each). There is no target weight or harvest day: the app follows the flock, its curves and its own record.",
             "In the house = live birds × their weight. Lifted = the kilos weighed on the trucks. Dead and culled = each day's deaths and culls × the weight on that day. Produced = in the house + lifted; per bird = produced ÷ the birds that made it.",
-            "Birds lifted and the truck's kg (Entry, section 4) and their time (the time picked at Save); the weighings, deaths, culls and feed.",
+            "Birds lifted and the truck's kg (Entry → Lifting, with its own Save and its own time: the morning weighing keeps its time; the birds left and their average count from the lifting's time on); the weighings, deaths, culls and feed.",
             "Every lifting, weighing and feed entry.",
             "Why the company's rule: a heavier bird needs more feed for each kilo (it spends more on keeping its body going), so a flock lifted at 3 kg shows a higher FCR than the same flock at 2 kg. Bringing every flock to 2 kg — 0.25 per kg — lets them be compared. Both ways are shown: the company's (the one it pays on) and the breed curve's (the Ross table's own slope, about 0.2–0.3 per kg). Enter the lifting time when the trucks leave: it decides whether the morning's weighing is grown on before the lifted kg are taken out."),
         "reception" to InfoTopic("Start and removals",

@@ -578,8 +578,9 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
                     feedBagsUsed = if (day == 0) 0.0 else if (keepF) existing.feedBagsUsed else inputs.feedBagsUsed,
                     feedUsedType = if (keepF) existing.feedUsedType else inputs.feedUsedType,
                     feedUsedBreakdown = if (day == 0) "" else if (keepF) existing.feedUsedBreakdown else inputs.feedUsedBreakdown,
-                    birdsLifted = inputs.birdsLifted,
-                    weightLifted = inputs.weightLifted,
+                    // the lifting has its own save and time ([saveLifting], v57)
+                    birdsLifted = existing.birdsLifted,
+                    weightLifted = existing.weightLifted,
                     lameSeparated = inputs.lameSeparated,
                     feedRecB1 = inputs.feedRecB1,
                     feedTypeB1 = inputs.feedTypeB1,
@@ -617,6 +618,17 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
                 _userMessage.value = err.message ?: "Failed to save entry"
                 onError(err.message ?: "Failed to save entry")
             }
+        }
+    }
+
+    /** The selected day's lifting, on its own: [birds], [kg] and when ([at], epoch ms; null = now); [onSuccess] once saved. */
+    fun saveLifting(birds: Int, kg: Double, at: Long?, onSuccess: () -> Unit = {}) {
+        val flock = _activeFlock.value ?: return
+        val day = _selectedDay.value
+        busy("Saving the lifting") {
+            val res = repository.saveLifting(_selectedSpreadsheetId.value, flock.flockId, day, birds, kg, at, authState.value.email)
+            res.onSuccess { _userMessage.value = if (birds > 0) "Saved the lifting of day $day" else "Lifting of day $day cleared"; onSuccess() }
+                .onFailure { _userMessage.value = it.message ?: "Could not save the lifting" }
         }
     }
 

@@ -42,6 +42,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import com.example.flock.data.DailyDataEntity
@@ -545,6 +546,58 @@ class ScreensRenderTest {
         rule.onNodeWithTag("save_confirm").performClick()
         rule.mainClock.advanceTimeBy(400)
         assertEquals(at, got?.at)
+    }
+    /**
+     * v57: the lifting has its own Save and time, open on a locked day; the day's Save leaves it alone; once saved, the
+     * reminder (spread the flock, lower the feed, move the barricades). The weight box has the ♂♀ mark, no house drawing.
+     */
+    @Config(qualifiers = "w360dp-h3200dp-xhdpi") @Test fun liftingSavedOnItsOwn() {
+        val r = rows(11)
+        val at = java.time.LocalDate.now().atTime(8, 15).atZone(java.time.ZoneId.of(farm.timeZone)).toInstant().toEpochMilli()
+        val saved = r.last().copy(savedFields = "W,M,F", updatedAt = at + 60_000, weighedAt = at, w1 = 600.0, n1 = 2)
+        var got: com.example.flock.ui.DailyInputs? = null
+        var lift: Triple<Int, Double, Long?>? = null
+        rule.mainClock.autoAdvance = false
+        rule.setContent { MyApplicationTheme { Dash(0) { EntriesScreen(saved, 11, "30 Sep", "29 Sep", feedTypes, lock, "k57", listOf(50), emptyList(), { got = it }, {},
+            farm = farm, isToday = false, onSaveLift = { n, kg, t, done -> lift = Triple(n, kg, t); done() }) } } }
+        rule.mainClock.advanceTimeBy(1000)
+        rule.onNodeWithTag("sexes_mark").assertExists()
+        assertTrue(rule.onAllNodesWithTag("sample_map").fetchSemanticsNodes().isEmpty())
+        // locked for the morning's entries, open for the lifting
+        rule.onNodeWithTag("mortality_input").assertIsNotEnabled()
+        rule.onNodeWithTag("birds_lifted_input").assertIsEnabled()
+        rule.onNodeWithTag("birds_lifted_input").performTextInput("1200")
+        rule.onNodeWithTag("weight_lifted_input").performTextInput("3000")
+        rule.mainClock.advanceTimeBy(500)
+        // the day's own Save does not take the lifting with it
+        rule.onAllNodesWithTag("hold_button")[0].performTouchInput { down(center) }
+        rule.mainClock.advanceTimeBy(1200)
+        rule.onAllNodesWithTag("hold_button")[0].performTouchInput { up() }
+        rule.mainClock.advanceTimeBy(300)
+        assertEquals(0, got?.birdsLifted); assertEquals(at, got?.at)
+        // the lifting's Save: its own time (a past day: 20:00), then the reminder
+        rule.onNodeWithTag("lift_hold").performScrollTo()
+        rule.onNodeWithTag("lift_hold").performTouchInput { down(center) }
+        rule.mainClock.advanceTimeBy(1200)
+        rule.onNodeWithTag("lift_hold").performTouchInput { up() }
+        rule.mainClock.advanceTimeBy(400)
+        rule.onNodeWithTag("lift_time").assertTextEquals("20:00")
+        rule.onNodeWithTag("lift_save_confirm").performClick()
+        rule.mainClock.advanceTimeBy(400)
+        assertEquals(1200, lift?.first); assertEquals(3000.0, lift!!.second, 0.0)
+        // 20:00 that day — or now, when 20:00 has not come yet; never the morning's time
+        val eight = java.time.LocalDate.parse(saved.date).atTime(20, 0).atZone(java.time.ZoneId.of(farm.timeZone)).toInstant().toEpochMilli()
+        val liftAt = lift!!.third!!
+        assertTrue(liftAt == eight || (eight > System.currentTimeMillis() && liftAt <= System.currentTimeMillis()))
+        assertTrue(liftAt != at)
+        rule.onNodeWithTag("lift_reminder").assertExists()
+        rule.onAllNodesWithText("Spread the flock")[0].assertExists()
+        rule.onAllNodesWithText("Lower the feed")[0].assertExists()
+        rule.onAllNodesWithText("Move the barricades")[0].assertExists()
+        com.github.takahirom.roborazzi.captureScreenRoboImage("src/test/screenshots/screen_lift_reminder.png")
+        rule.onNodeWithTag("lift_reminder_ok").performClick()
+        rule.mainClock.advanceTimeBy(400)
+        assertTrue(rule.onAllNodesWithTag("lift_reminder").fetchSemanticsNodes().isEmpty())
     }
     @Config(qualifiers = "w360dp-h1500dp-xhdpi") @Test fun stockSmall() = shoot("stock_small") { stock() }
     /** The quarter-width window and its stats grid. */

@@ -231,6 +231,7 @@ fun MainFlockScreen(
                     recentNotes = recentNotes,
                     onSave = { inputs -> viewModel.saveDayEntry(inputs) },
                     onClearDay = { viewModel.clearDay() },
+                    onSaveLift = { n, kg, at, done -> viewModel.saveLifting(n, kg, at, done) },
                     farm = farm,
                     isToday = selectedDay == currentFlockDay,
                     lastFeedType = dailyRows.filter { it.dayNumber < selectedDay && it.feedBagsUsed > 0 }.maxByOrNull { it.dayNumber }

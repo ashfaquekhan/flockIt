@@ -50,7 +50,9 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O45 | The flock's own response to heat is unknown | The weather has been too steady since day 9 (outside high 31–32.6 °C every day) to learn it from the records; the published figures are used. |
 | O21 | Output review checklist (keep / change / drop) is waiting for the farm's choices | https://claude.ai/artifact/VDtyZmDKtLiJBu5Nxq6B3g |
 | O47 | Sheet schema 8 upgrade is tested on data, not yet run on the live sheet | It runs once on the first load after installing v47 and keeps a snapshot of the old sheet (same path as 6 → 7, which ran on this sheet on 9 Oct). A copy of the sheet as it stood on 3 Nov is also saved beside the APK. |
-| O48 | Lifting time is not known for the four liftings already entered | They are taken as 20:00 (the trucks loaded in the evening; the entries were saved 20:28–23:04). Pick the time when entering the next lifting. |
+| O48 | Lifting time may be wrong for the liftings already entered | Those saved without a time are taken as 20:00; any updated together with the morning entries before v57 took the morning time. Open the day, Entry → Lifting, hold Update the lifting and pick the real time. |
+| O70 | The lifting reminder's feed is the company chart for the birds left | "Bags a day" is the chart's feed per bird × the birds before and after, rounded up; the feed plan on Output (with the flock's own appetite) is the one to pour by. |
+| O71 | Only the Birds numbers follow the lifting's time | Live birds, weight and density switch at the lifting's time; the feed plan, floor, water and air work on the birds left for the whole day of the lifting. |
 | O51 | "Comfortable" density on hot days (30 / 34 kg/m²) is a rule of thumb | From heat-stress guidance; the farm's cap (39 kg/m²) stays the most. Say if the company uses other figures. |
 | O68 | Clashes are found for day entries only | Farm settings, flocks, tasks and feed types still go by the later save, and are not sent in the background (they are sent with the next save). |
 | O69 | The background sender needs Google sign-in to renew by itself | It uses the account signed in on the phone; if Google wants the sign-in confirmed again, it waits until FlockIt is opened. |
@@ -73,6 +75,8 @@ is not made twice. Newest first. Open items at the top. Update together with
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v57 | Adding a lifting to a weighed day changed the morning average | One Save and one time for everything: an update at the morning time put the lifting in the morning (the birds left worked out from the morning weight), and a lifting without a time took the save's time | The lifting is saved on its own with its own time; the day's Save keeps the lifting and its time as they are; on Output the flock switches to the birds left at the lifting's time |
+| v57 | The weight box drew the whole house with feeder and drinker lines | "Where to catch the birds" map (by v43) | Removed; a small ♂♀ mark by the title |
 | v56 | Yesterday's gain shown amber on a day after a weighing | The line showed today's gain (today's weighing − the one before), projected until today was weighed | Yesterday's own gain: yesterday's weighing − the one before; entered when yesterday was weighed |
 | v56 | Numbers in the notes under a value and the outside weather had no colour | Notes drawn grey; weather marked "neutral" | Notes coloured by what they are; weather green for hours gone by, amber for the forecast |
 | v56 | Three FCRs and two cFCRs (company, breed, dead counted) — which is real? | v47 showed every way of working it out | One FCR (feed ÷ kg in the house + kg lifted) and the company's cFCR, with its formula written out |

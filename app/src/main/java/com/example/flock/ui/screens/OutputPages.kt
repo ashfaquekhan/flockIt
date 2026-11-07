@@ -165,13 +165,23 @@ fun BirdsSection(d: OutputData, view: OutputData.NowView, entryHHmm: String?, li
     val m = d.mass
     val beforeToday = (d.mortTD - d.mortToday).coerceAtLeast(0).toDouble()
     val mort = if (d.mk == P) d.mortTDPct else (beforeToday + view.deaths) * 100.0 / d.entryBirds
-    val weight = if (d.vk == P) d.bwNow else view.weightG
+    // a lifting today counts from its own time (v57): before it the morning's birds and weighing, from it the birds left
+    val viewH = (view.hhmm.substringBefore(":").toIntOrNull() ?: hour) + (view.hhmm.substringAfter(":").toIntOrNull() ?: 0) / 60.0
+    val after = d.liftedBy(viewH)
+    val liftToday = d.liftHour != null
+    val stillIn = if (after) 0 else d.e.birdsLifted
+    val leftShare = m?.takeIf { liftToday && after && it.avgAtLiftKg > 0 }?.let { it.avgAfterKg / it.avgAtLiftKg } ?: 1.0
+    val weight = if (d.vk == P) (if (after) d.bwNow else d.bw) else view.weightG * leftShare
     val fcr = m?.fcr ?: view.fcr
-    val liveNow = if (d.mortEntered) d.live.toDouble() else view.live
+    val liveNow = if (d.mortEntered) (d.live + stillIn).toDouble() else (view.live - if (liftToday && after) d.e.birdsLifted else 0).coerceAtLeast(1.0)
     val s = d.space
+    // the floor before the trucks holds the lifted birds too
+    val crowd = if (stillIn > 0 && d.live > 0 && d.bwNow > 0) (d.live + stillIn) * d.bw / (d.live * d.bwNow) else 1.0
+    val kgM2 = s.kgM2 * crowd
+    val ft2PerBird = s.ft2PerBird * (if (stillIn > 0 && d.live > 0) d.live.toDouble() / (d.live + stillIn) else 1.0)
     val u = remember(d) { uniformityOf(d) }
     val lines = listOf(
-        PLine("Live birds", if (d.mortEntered) vi(d.live, P) else vi(Math.round(view.live).toInt(), PR), "",
+        PLine("Live birds", if (d.mortEntered) vi(d.live + stillIn, P) else vi(Math.round(liveNow).toInt(), PR), "",
             trendOf(liveNow, d.liveCom, Better.HIGHER, 1.0), d.liveCom, d.liveIdeal, 0, actual = liveNow, tag = "tile_live"),
         PLine("Weight", v(weight, 1, d.vk), "g", trendOf(weight, d.bwCom, Better.HIGHER), d.bwCom, d.bwIdeal, 1, actual = weight),
         PLine("FCR", v(fcr, 3, d.fcrKind), "", trendOf(fcr, d.fcrCom, Better.LOWER), d.fcrCom, d.fcrIdeal, 3, Better.LOWER, actual = fcr),
@@ -195,9 +205,9 @@ fun BirdsSection(d: OutputData, view: OutputData.NowView, entryHHmm: String?, li
                 Text(if (u.measured) "${u.n} birds weighed one by one" else "expected at this CV · weigh 10 one by one",
                     style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f))
             }),
-        PLine("Stocking density", v(s.kgM2, 1, d.vk), "kg/m²", trendOf(s.kgM2, s.targetKgM2, Better.LOWER, 5.0),
+        PLine("Stocking density", v(kgM2, 1, d.vk), "kg/m²", trendOf(kgM2, s.targetKgM2, Better.LOWER, 5.0),
             refs = listOf("ideal ≤ " + Fmt.n(s.targetKgM2, 1) to kindColor(I), "max " + Fmt.n(d.farm.densityCapDefault, 1) to kindColor(MX)),
-            sub = Fmt.n(s.ft2PerBird, 2) + " ft² per bird", subKind = d.vk, actual = s.kgM2, max = d.farm.densityCapDefault, band = 0.0 to s.targetKgM2)
+            sub = Fmt.n(ft2PerBird, 2) + " ft² per bird", subKind = d.vk, actual = kgM2, max = d.farm.densityCapDefault, band = 0.0 to s.targetKgM2)
     )
     SectionCard(GIcon.BIRDS, "Birds", "glance", Modifier.testTag("glance"), trailing = {
         val sky = d.hourly.firstOrNull { it.date == d.e.date && it.hour == hour }
