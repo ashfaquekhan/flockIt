@@ -10,7 +10,8 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ## v58 — 2026-11-08 · Events and properties: an event log with two times, the flock as a property graph, the Map · **DB 21 → 22 (adds a table, nothing cleared)** · a new Events tab in the sheet
 - **The event log**: every save is kept as events — weighing, deaths, culls, feed used, feed received, a lifting, a feeding,
-  the barricades moved, the weather kept, house readings, notes, diesel, chicks placed, farm settings — each with when it
+  the barricades moved, the weather kept (one event per run, not one a day), house readings, notes, diesel, chicks placed,
+  farm settings — each with when it
   happened (the weighing's time, the lifting's, the feeding's …) and when it was entered, who entered it, and the values
   before and after. Written once, never changed. Kept on the phone (new table) and sent to a new **Events** tab in the
   sheet (added the first time; one row per event, readable time first); the other phones read it back on load. The

@@ -712,12 +712,18 @@ class FlockRepository(
             list
         }
         if (changed.isEmpty()) return@withContext 0
+        // one event for the run (not one a day): which days were kept, and the last one's range
+        val last = changed.maxByOrNull { it.dayNumber }!!
+        eventDao.insertAll(listOf(com.example.flock.graph.FlockEvents.single(com.example.flock.graph.EventKind.WEATHER, spreadsheetId, flockId,
+            last.dayNumber, "", System.currentTimeMillis(), mapOf("days" to changed.map { it.dayNumber }.sorted().joinToString(","),
+                "outtempmin" to (last.outTempMin?.let { String.format("%.1f", it) } ?: ""), "outtempmax" to (last.outTempMax?.let { String.format("%.1f", it) } ?: "")))))
         // sent like rows saved offline: one at a time, quietly (no note), the report tabs once at the end
         val s = sync
         if (s != null && s.isOnline()) ioLock.withLock {
             var sent = 0
             changed.forEach { if (pushDirtyDay(null, spreadsheetId, flockId, it.dayNumber, updateReports = false)) sent++ }
             if (sent > 0) try { s.pushReports(spreadsheetId) } catch (e: Exception) { }
+            sendEvents(spreadsheetId)
         }
         changed.size
     }
