@@ -18,3 +18,4 @@ local.properties
 debug.keystore
 *.log
 $null
+build*.done
