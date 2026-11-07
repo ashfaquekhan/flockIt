@@ -630,27 +630,28 @@ fun TrendsSection(d: OutputData) {
 fun BarricadeSlider(from: Float, to: Float, max: Float, moving: Boolean, onChange: (Float, Float) -> Unit, modifier: Modifier = Modifier) {
     val cur by androidx.compose.runtime.rememberUpdatedState(from to to)
     val change by androidx.compose.runtime.rememberUpdatedState(onChange)
-    // the house drawing above leaves 24 dp each side: the slider's ends sit under the house's ends
-    val pad = 24.dp
+    // the house drawing above sits 12 dp in from the left and 8 dp from the right: the slider's ends sit under the house's ends
+    val padL = 12.dp; val padR = 8.dp
+    val dens = androidx.compose.ui.platform.LocalDensity.current.density
     fun moved(xPx: Float, width: Float, padPx: Float, which: Int) {
-        val v = ((xPx - padPx) / (width - 2 * padPx) * max).coerceIn(0f, max)
+        val v = ((xPx - padPx) / (width - padPx - padR.value * dens) * max).coerceIn(0f, max)
         if (which == 0) change(minOf(v, cur.second), cur.second) else change(cur.first, maxOf(v, cur.first))
     }
     fun nearer(x: Float, width: Float, padPx: Float): Int {
-        val w = width - 2 * padPx
+        val w = width - padPx - padR.value * dens
         return if (abs(x - (padPx + cur.first / max * w)) <= abs(x - (padPx + cur.second / max * w))) 0 else 1
     }
     val accent = kindColor(if (moving) PR else P)
     Canvas(modifier.fillMaxWidth().height(54.dp)
         .pointerInput(max) {
             var which = 0
-            detectHorizontalDragGestures(onDragStart = { o -> which = nearer(o.x, size.width.toFloat(), pad.toPx()) }) { ch, _ ->
-                ch.consume(); moved(ch.position.x, size.width.toFloat(), pad.toPx(), which) }
+            detectHorizontalDragGestures(onDragStart = { o -> which = nearer(o.x, size.width.toFloat(), padL.toPx()) }) { ch, _ ->
+                ch.consume(); moved(ch.position.x, size.width.toFloat(), padL.toPx(), which) }
         }
         .pointerInput(max) {
-            detectTapGestures { o -> moved(o.x, size.width.toFloat(), pad.toPx(), nearer(o.x, size.width.toFloat(), pad.toPx())) }
+            detectTapGestures { o -> moved(o.x, size.width.toFloat(), padL.toPx(), nearer(o.x, size.width.toFloat(), padL.toPx())) }
         }) {
-        val padPx = pad.toPx(); val w = size.width - 2 * padPx
+        val padPx = padL.toPx(); val w = size.width - padPx - padR.toPx()
         val y = size.height - 16.dp.toPx()
         val xa = padPx + from / max * w; val xb = padPx + to / max * w
         val paint = android.graphics.Paint().apply { isAntiAlias = true; typeface = com.example.ui.theme.AppFonts.mono; textSize = 11.dp.toPx() }
