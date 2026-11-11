@@ -314,6 +314,10 @@ data class DailyDataEntity(
     // The front barricade, ft from the front wall (null: not set that day; 0: none) — with [broodingLength] (the back
     // barricade, ft from the front wall) it bounds the birds' floor at both ends (v51)
     val penStartFt: Double? = null,
+    // Barricades along the house (v60): the birds' floor across the width, ft from the near side wall — where it starts
+    // (0: at the wall) and where it ends (0: at the far wall). null: not set that day (the last day's holds).
+    val penSideStartFt: Double? = null,
+    val penSideEndFt: Double? = null,
     // The day's outside weather at the farm — lowest, average and highest °C and % RH — kept once the day is over, for the
     // house and bird models (v53)
     val outTempMin: Double? = null, val outTempAvg: Double? = null, val outTempMax: Double? = null,

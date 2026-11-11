@@ -65,6 +65,7 @@ val ValuePredicted = Color(0xFFF2CF8A)   // projected estimate (no sample yet) �
 val ValuePredictedWash = Color(0x14F2CF8A)
 val ValueIdeal = Color(0xFFA9CCF0)       // breed-standard target — blue
 val ValueIdealWash = Color(0x14A9CCF0)
+val ValueOwn = Color(0xFFFF8F5A)         // the flock's own curve: the standard bent to this flock by its entries (v60) — orange
 val ValueCommercial = Color(0xFFCDB6F7)  // company / commercial standard — violet
 val ValueCommercialWash = Color(0x14CDB6F7)
 val ValueMin = Color(0xFF9CEBF2)        // lower limit — ice cyan

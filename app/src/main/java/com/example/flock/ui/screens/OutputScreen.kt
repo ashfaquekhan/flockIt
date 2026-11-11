@@ -133,7 +133,7 @@ fun OutputScreen(
     /** opens another day (a day tapped in the flock book) */
     onSelectDay: ((Int) -> Unit)? = null,
     /** sets the first and last barricade (ft from the front wall) from the day shown on */
-    onBarricades: ((Double, Double) -> Unit)? = null,
+    onBarricades: ((Double, Double, Double, Double) -> Unit)? = null,
     /** the flock's event log (v58), newest first: shown under the map */
     flockEvents: List<com.example.flock.data.FlockEventEntity> = emptyList()
 ) {
@@ -652,7 +652,8 @@ fun dayRecord(d: OutputData, flockId: String, atMs: Long): com.example.flock.mod
             "penStartFt" to d.penStartFt, "penEndFt" to d.barricadeFtNow, "lightHours" to e.lightHours,
             "outsideHours" to d.outsideHours.map { listOf(it.first, it.second, it.third) }, "weatherSource" to d.outsideSource.name,
             "sensors" to emptyList<Any>()),
-        outputs = mapOf("bwG" to d.bw, "bwNowG" to d.bwNow, "fcr" to m?.fcr, "cfcr" to m?.cFcrCompany, "epef" to d.epef,
+        outputs = mapOf("ownBwTomorrowG" to d.own.weight.at(d.day + 1), "ownFeedTomorrowG" to d.own.feed.at(d.day + 1), "ownMortTomorrowPct" to d.own.mort.at(d.day + 1),
+            "ownFcrTomorrow" to d.own.fcr.at(d.day + 1), "ownEntries" to d.own.weight.n.toDouble(), "bwG" to d.bw, "bwNowG" to d.bwNow, "fcr" to m?.fcr, "cfcr" to m?.cFcrCompany, "epef" to d.epef,
             "dayBags" to d.dayBags, "feedings" to d.feedings, "feedTimes" to d.modelFeedTimes(d.feedings), "waterL" to d.waterL,
             "kgM2" to d.space.kgM2, "walkFeedM" to d.feedWalkM(d.feedPattern), "walkWaterM" to d.waterWalkM,
             "expectedDeaths" to d.expectedDeaths, "litterMoistPct" to litterOf(d, 12).moisturePct))

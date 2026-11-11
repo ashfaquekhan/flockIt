@@ -72,11 +72,11 @@ val CompanyColor = ValueCommercial
 /** Lifting days on every chart. */
 private val LiftColor = ValueMax
 
-private enum class Style { ACTUAL, PROJECTED, IDEAL, COMPANY, LIFTED }
+private enum class Style { ACTUAL, PROJECTED, IDEAL, COMPANY, LIFTED, OWN }
 
 private class Line(val label: String, val style: Style, val valueAt: (Int) -> Double?)
 
-private fun colorOf(s: Style) = when (s) { Style.ACTUAL -> ValuePresent; Style.PROJECTED -> ValuePredicted; Style.IDEAL -> ValueIdeal; Style.COMPANY -> CompanyColor; Style.LIFTED -> Color.White }
+private fun colorOf(s: Style) = when (s) { Style.ACTUAL -> ValuePresent; Style.PROJECTED -> ValuePredicted; Style.IDEAL -> ValueIdeal; Style.COMPANY -> CompanyColor; Style.LIFTED -> Color.White; Style.OWN -> com.example.ui.theme.ValueOwn }
 
 /** What one chart shows: its lines, days, axis, and the lifting days (day → birds lifted). */
 private class ChartSpec(
@@ -86,7 +86,7 @@ private class ChartSpec(
 ) {
     /** a value as the chart shows it: head counts whole, the rest with their decimals */
     fun fmt(v: Double?) = if (decimals == 0) Fmt.i(v?.roundToInt()) else Fmt.n(v, decimals)
-    fun tagOf(s: Style) = when (s) { Style.ACTUAL -> "Present"; Style.PROJECTED -> "Projected"; Style.IDEAL -> "Ideal"; Style.COMPANY -> "Company"; Style.LIFTED -> "Lifted" }
+    fun tagOf(s: Style) = when (s) { Style.ACTUAL -> "Present"; Style.PROJECTED -> "Projected"; Style.IDEAL -> "Ideal"; Style.COMPANY -> "Company"; Style.LIFTED -> "Lifted"; Style.OWN -> "Own" }
 }
 
 private const val PAD_L = 48f
@@ -151,6 +151,8 @@ private fun DrawScope.drawChart(c: ChartSpec, from: Double, to: Double, sel: Int
                 Style.IDEAL -> drawPath(path, ValueIdeal.copy(alpha = 0.9f), style = Stroke(1.5f * px))
                 Style.COMPANY -> drawPath(path, CompanyColor, style = Stroke(2f * px, pathEffect = PathEffect.dashPathEffect(floatArrayOf(7f * px, 5f * px))))
                 Style.LIFTED -> drawPath(path, Color.White.copy(alpha = 0.85f), style = Stroke(2f * px))
+                // the flock's own curve (v60): a thin solid orange line
+                Style.OWN -> drawPath(path, com.example.ui.theme.ValueOwn, style = Stroke(1.6f * px, cap = StrokeCap.Round))
             }
         }
         // the cursor and the dots on it
@@ -357,7 +359,8 @@ private fun chartSpecs(d: OutputData): List<ChartSpec> {
             Line("Present", Style.ACTUAL) { day -> by[day]?.avgWeight?.takeIf { day <= d.day } },
             Line("Projected", Style.PROJECTED) { day -> d.proj[day]?.weightG },
             Line("Ideal", Style.IDEAL) { day -> PhysiologicalEngine.bwFromDay(day.toDouble(), d.breed) },
-            Line("Company", Style.COMPANY) { day -> CompanyStandard.bw(day) }
+            Line("Company", Style.COMPANY) { day -> CompanyStandard.bw(day) },
+            Line("Own", Style.OWN) { day -> d.own.weight.at(day) }
         ), 0, maxDay, 0.0, niceTop(maxOf(CompanyStandard.bw(maxDay) ?: 0.0, PhysiologicalEngine.bwFromDay(maxDay.toDouble(), d.breed)), 1000.0), 1000.0, 1, true, lifts),
         ChartSpec("birds", "Birds", "", listOf(
             Line("Present", Style.ACTUAL) { day -> by[day]?.takeIf { day <= minOf(d.day, d.lastEnteredDay) }?.liveBirds?.toDouble() },
@@ -365,32 +368,37 @@ private fun chartSpecs(d: OutputData): List<ChartSpec> {
             Line("Lifted", Style.LIFTED) { day -> if (day <= d.day && lifts.isNotEmpty()) d.rows.filter { it.dayNumber <= day }.sumOf { it.birdsLifted }.toDouble() else null },
             // the company's and the breed's deaths, with the birds lifted till then taken off both (as in the house)
             Line("Ideal", Style.IDEAL) { day -> d.entryBirds * (1 - PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MAXMORT_BY_AGE, day.toDouble()) / 100.0) - liftedBy(day) },
-            Line("Company", Style.COMPANY) { day -> d.entryBirds * (1 - CompanyStandard.cumMortPct(day) / 100.0) - liftedBy(day) }
+            Line("Company", Style.COMPANY) { day -> d.entryBirds * (1 - CompanyStandard.cumMortPct(day) / 100.0) - liftedBy(day) },
+            Line("Own", Style.OWN) { day -> d.own.mort.at(day)?.let { d.entryBirds * (1 - it / 100.0) - liftedBy(day) } }
         ), 0, maxDay, 0.0, niceTop(d.placed.toDouble().coerceAtLeast(1000.0), 2000.0), if (d.placed > 12000) 4000.0 else 2000.0, 0, false, lifts),
         ChartSpec("fcr", "FCR", "", listOf(
             Line("Present", Style.ACTUAL) { day -> by[day]?.takeIf { it.avgWeight != null && day in 5..d.day }?.let { mass[day]?.fcr ?: it.fcr } },
             Line("Projected", Style.PROJECTED) { day -> d.proj[day]?.fcr?.takeIf { day >= 5 } },
             Line("Ideal", Style.IDEAL) { day -> PhysiologicalEngine.stdFcrFromDay(day.toDouble(), d.breed) },
-            Line("Company", Style.COMPANY) { day -> CompanyStandard.fcr(day) }
+            Line("Company", Style.COMPANY) { day -> CompanyStandard.fcr(day) },
+            Line("Own", Style.OWN) { day -> d.own.fcr.at(day)?.takeIf { day >= 5 } }
         ), 5, maxDay, 0.6, 2.0, 0.2, 3, true, lifts),
         ChartSpec("cfcr", "cFCR", "2 kg", listOf(
             Line("Present", Style.ACTUAL) { day -> by[day]?.takeIf { it.avgWeight != null && day in 5..d.day }?.let { mass[day]?.cFcrCompany ?: it.cFcr } },
             Line("Projected", Style.PROJECTED) { day -> val pj = d.proj[day]; val w = pj?.weightG; val f = pj?.fcr
                 if (w != null && f != null && day >= 5) PhysiologicalEngine.computeCorrectedFcr(w / 1000, f) else null },
             Line("Ideal", Style.IDEAL) { day -> val bw = PhysiologicalEngine.bwFromDay(day.toDouble(), d.breed); PhysiologicalEngine.computeCorrectedFcr(bw / 1000, PhysiologicalEngine.stdFcrFromDay(day.toDouble(), d.breed)) },
-            Line("Company", Style.COMPANY) { day -> CompanyStandard.cfcr(day) }
+            Line("Company", Style.COMPANY) { day -> CompanyStandard.cfcr(day) },
+            Line("Own", Style.OWN) { day -> d.own.cfcr(day)?.takeIf { day >= 5 } }
         ), 5, maxDay, 1.0, 1.8, 0.2, 3, true, lifts),
         ChartSpec("mort", "Mortality", "%", listOf(
             Line("Present", Style.ACTUAL) { day -> by[day]?.cumMortPct?.takeIf { day <= minOf(d.day, d.lastEnteredDay) } },
             Line("Projected", Style.PROJECTED) { day -> d.proj[day]?.cumMortPct },
             Line("Ideal", Style.IDEAL) { day -> PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MAXMORT_BY_AGE, day.toDouble()) },
-            Line("Company", Style.COMPANY) { day -> CompanyStandard.cumMortPct(day) }
+            Line("Company", Style.COMPANY) { day -> CompanyStandard.cumMortPct(day) },
+            Line("Own", Style.OWN) { day -> d.own.mort.at(day) }
         ), 0, maxDay, 0.0, niceTop(maxOf(CompanyStandard.cumMortPct(maxDay), d.mortTDPct ?: 0.0), 1.0), if (maxDay > 49) 2.0 else 1.0, 2, false, lifts),
         ChartSpec("feed", "Feed a day", "g a bird", listOf(
             Line("Present", Style.ACTUAL) { day -> perBird(day) },
             Line("Projected", Style.PROJECTED) { day -> d.proj[day]?.feedPerBirdG },
             Line("Ideal", Style.IDEAL) { day -> PhysiologicalEngine.dailyFeedFromDay(max(1, day).toDouble(), d.breed) },
-            Line("Company", Style.COMPANY) { day -> CompanyStandard.feedPerDay(day) }
+            Line("Company", Style.COMPANY) { day -> CompanyStandard.feedPerDay(day) },
+            Line("Own", Style.OWN) { day -> d.own.feed.at(day) }
         ), 1, maxDay, 0.0, dayTop, 60.0, 1, false, lifts),
         ChartSpec("cumfeed", "Feed total", "g a bird", listOf(
             Line("Present", Style.ACTUAL) { day -> cumPerBird(day) },

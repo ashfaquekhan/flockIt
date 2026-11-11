@@ -248,7 +248,9 @@ data class Kpi(
     val label: String, val unit: String, val actual: Double?, val actualKind: ValueKind,
     val company: Double?, val ideal: Double?, val better: Better, val decimals: Int,
     val settling: Boolean = false, val idealLabel: String = "Ideal", val points: Boolean = false,
-    val totalFactor: Double? = null, val totalUnit: String = "", val totalDec: Int = 1, val scope: String = "per bird"
+    val totalFactor: Double? = null, val totalUnit: String = "", val totalDec: Int = 1, val scope: String = "per bird",
+    /** the flock's own curve for this number (v60): an orange mark on the bar */
+    val own: Double? = null
 )
 
 private val OkGreen = Color(0xFF46B98C)
@@ -317,7 +319,7 @@ fun CompactLine(label: String, unit: String, sub: String?, value: V, trend: Tren
             if (unit.isNotEmpty()) Text(" $unit", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), maxLines = 1, softWrap = false)
         }
         if (sub != null || refs.isNotEmpty() || projected != null) Row(verticalAlignment = Alignment.CenterVertically) {
-            if (projected != null) Text("projected " + projected.text, Modifier.padding(end = 8.dp),
+            if (projected != null) Text("projected " + projected.text, Modifier.padding(end = 8.dp).testTag("line_projected"),
                 style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Normal),
                 color = kindColor(ValueKind.PREDICTED), maxLines = 1, softWrap = false)
             else if (sub != null) Text(sub, Modifier.padding(end = 8.dp), style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont),
@@ -326,6 +328,9 @@ fun CompactLine(label: String, unit: String, sub: String?, value: V, trend: Tren
                 refs.forEach { (t, c) -> Text(t, style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont), color = c, maxLines = 1, softWrap = false) }
             }
         }
+        // with a projection under the value, the note takes a line of its own
+        if (projected != null && sub != null) Text(sub, style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont),
+            color = subColor ?: Color.White.copy(alpha = 0.6f), maxLines = 1, softWrap = false)
     }
 }
 
@@ -336,13 +341,18 @@ fun SlimCompareBar(k: Kpi) {
     val dotC = kindColor(k.actualKind)
     Canvas(Modifier.fillMaxWidth().height(16.dp)) {
         val pad = 7.dp.toPx()
-        val pts = listOfNotNull(c * 0.95, c * 1.05, k.ideal?.times(0.97), k.ideal?.times(1.03), k.actual)
+        val pts = listOfNotNull(c * 0.95, c * 1.05, k.ideal?.times(0.97), k.ideal?.times(1.03), k.actual, k.own)
         val span = max(pts.max() - pts.min(), abs(c) * 0.1)
         val lo = pts.min() - span * 0.08; val hi = pts.max() + span * 0.08
         val w = size.width - pad * 2
         fun x(v: Double) = pad + ((v.coerceIn(lo, hi) - lo) / (hi - lo) * w).toFloat()
         val mid = size.height / 2
         drawLine(Color.White.copy(alpha = 0.3f), Offset(pad, mid), Offset(pad + w, mid), strokeWidth = 2f)
+        // the flock's own curve: an orange diamond on the line
+        k.own?.let { o ->
+            val cx = x(o); val r = 4.dp.toPx()
+            drawPath(androidx.compose.ui.graphics.Path().apply { moveTo(cx, mid - r); lineTo(cx + r, mid); lineTo(cx, mid + r); lineTo(cx - r, mid); close() }, com.example.ui.theme.ValueOwn)
+        }
         k.company?.let { co ->
             drawRect(kindColor(ValueKind.COMMERCIAL).copy(alpha = 0.32f), Offset(x(co * 0.95), mid + 1.dp.toPx()), Size(x(co * 1.05) - x(co * 0.95), 5.5.dp.toPx()))
             drawLine(kindColor(ValueKind.COMMERCIAL), Offset(x(co), mid), Offset(x(co), mid + 7.dp.toPx()), strokeWidth = 2.dp.toPx())

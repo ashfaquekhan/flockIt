@@ -8,6 +8,28 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v60 — 2026-11-12 · The flock's own curve, the present first with the projection under it, barricades along the house, culls counted as mortality · **DB 23 → 24 (adds two columns, nothing cleared)** · **sheet schema 12** (DailyData gains PenSideStartFt, PenSideEndFt)
+- **The flock's own curve** (`domain/DynamicCurve`, orange everywhere): the company's curve bent to this flock by every
+  value entered so far. It learns the flock's ratio to the standard, so one entry already moves the whole curve and each
+  further day makes it better; ahead of the last entry the recent drift is carried on a few days, damped. Entries from a
+  flock's first days count for less (day 0 an eighth, in full from day 7) and one entry never moves the curve by more than
+  a fifth — a bad weighing bends it, it does not take it away. For weight, feed a bird a day, mortality %, FCR and (from
+  those) cFCR and live birds. Shown as "own" beside com and ideal, as an orange diamond on every comparison bar, and as an
+  orange line on the weight, birds, FCR, cFCR, mortality and feed graphs. On Output the reference is learned from the
+  days BEFORE the one shown, so today's entry is held against what the flock's own curve expected of it.
+- **Backtest on the real flock** (each entry forecast from the entries before it): weight 4.7 % out against the company
+  curve's 5.4 %; feed a bird a day 20.7 % against 26.5 %; mortality 13.7 % against 29.0 %. On a flock 10 % under the standard: 11.1 % out with no entry,
+  3.2 % after one day, 1.8 % after two, 1.3 % after three, 0.7 % after seven.
+- **Kept for training later**: each day's log line now holds what the own curve forecast for the next day (weight, feed,
+  mortality, FCR) and how many entries it had learned from, beside the day's entries.
+- **The present leads, the projection sits under it** (Birds): live birds, weight, FCR, cFCR, mortality, deaths today and
+  stocking density show the last value entered in green (with "day N" when it is not today's) and "projected …" in amber
+  under it for the time on the slider. No more projected number standing where an entered one should be.
+- **Barricades along the house**: a second slider under the first — near wall to far wall — sets the floor's width; the
+  drawing shows the fences along the house; the floor, density and ft² per bird follow the narrowed floor.
+- **Culls are mortality**: birds taken out by hand count in the mortality % (and in today's losses), shown as
+  "N dead · M culled". The Entry field is named "Culls (birds taken out by hand)".
+
 ## v59 — 2026-11-11 · Liftings truck by truck, the map in 3D one step at a time, everything following the time slider, sums checked from first principles · **DB 22 → 23 (adds two columns, nothing cleared)** · **sheet schema 11** (DailyData gains LiftLaps, _Farm gains malesIn10)
 - **Liftings truck by truck**: Entry → Lifting lists every lifting of the day (time, birds, kg, kg a bird) and their sum;
   type the next one and hold "Hold to add lifting N" — each has its own time; × takes one out. The day's birds and kilos

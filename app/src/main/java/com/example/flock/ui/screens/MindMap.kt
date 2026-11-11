@@ -484,7 +484,7 @@ internal fun nodeValue(key: String, d: OutputData, view: OutputData.NowView? = n
     val f = d.farm
     return try { when (key) {
         "placed" -> i(d.placed, P)
-        "deaths" -> i(d.mortTD, P)
+        "deaths" -> i(d.mortTD - d.lameTD, P)
         "culls" -> i(d.lameTD, P)
         "live" -> i(view?.live?.let { Math.round(it).toInt() } ?: d.live, if (d.mortEntered) P else PR)
         "mortality" -> n(d.mortTDPct, 2, d.mk, "%")

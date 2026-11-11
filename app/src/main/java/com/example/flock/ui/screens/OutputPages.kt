@@ -83,7 +83,11 @@ class PLine(
     val min: Double? = null, val max: Double? = null, val band: Pair<Double, Double>? = null,
     val sensor: Boolean = false,
     val tag: String? = null,
-    val extra: (@Composable () -> Unit)? = null
+    val extra: (@Composable () -> Unit)? = null,
+    /** the flock's own curve for this number (v60): "own 372.1" in orange and a mark on the bar */
+    val own: Double? = null,
+    /** the projection, shown under the value when the value is the last one entered (v60: the present leads) */
+    val projected: V? = null
 )
 
 @Composable
@@ -92,17 +96,18 @@ fun ParamLine(t: PLine) {
     val ranged = t.min != null || t.max != null || t.band != null
     val refs = t.refs ?: buildList {
         if (!ranged) add("com " + (t.com?.let { f(it) } ?: "NA") to kindColor(C))
+        t.own?.let { add("own " + f(it) to com.example.ui.theme.ValueOwn) }
         // a number with only a limit (air speed, CO₂) shows the limit alone
         if (!ranged || t.ideal != null || t.idealText != null) add("ideal " + (t.idealText ?: t.ideal?.let { f(it) } ?: "NA") to kindColor(I))
         t.min?.let { add("min " + f(it) to kindColor(MN)) }
         t.max?.let { add("max " + f(it) to kindColor(MX)) }
     }
     Column(Modifier.fillMaxWidth().let { if (t.tag != null) it.testTag(t.tag) else it }) {
-        CompactLine(t.name, t.unit, t.sub ?: if (t.sensor) "sensor —" else null, t.value, t.trend, refs,
+        CompactLine(t.name, t.unit, t.sub ?: if (t.sensor) "sensor —" else null, t.value, t.trend, refs, projected = t.projected,
             subColor = t.subKind?.let { if (t.sub != null) kindColor(it) else null })
         when {
             ranged -> RangeBar(t.min, t.ideal, t.max, t.actual, if (t.value.text == "—") NE else t.value.kind, t.band, slim = true)
-            t.com != null || t.ideal != null -> SlimCompareBar(Kpi(t.name, t.unit, t.actual, t.value.kind, t.com, t.ideal, t.better, t.dec))
+            t.com != null || t.ideal != null -> SlimCompareBar(Kpi(t.name, t.unit, t.actual, t.value.kind, t.com, t.ideal, t.better, t.dec, own = t.own))
         }
         t.extra?.invoke()
     }
@@ -167,34 +172,59 @@ fun BirdsSection(d: OutputData, view: OutputData.NowView, entryHHmm: String?, li
     val m = d.mass
     val beforeToday = (d.mortTD - d.mortToday).coerceAtLeast(0).toDouble()
     val mort = if (d.mk == P) d.mortTDPct else (beforeToday + view.deaths) * 100.0 / d.entryBirds
-    // everything here follows the time on the rail (v59): the birds in the house then (deaths, culls and each truck
-    // off), their weight grown on from the weighing (and the birds left once the lifting is over), the floor they have
+    // v60: the present leads — the last value entered (and the day it is from, when not today) — with the projection for
+    // the time on the rail under it; the references are the company, the flock's own curve (orange) and the ideal
     val viewH = (view.hhmm.substringBefore(":").toIntOrNull() ?: hour) + (view.hhmm.substringAfter(":").toIntOrNull() ?: 0) / 60.0
-    val stillIn = d.e.birdsLifted - d.liftedCountBy(viewH)
-    val weight = view.weightG
-    val fcr = m?.fcr ?: view.fcr
-    val liveNow = view.live
+    fun asOf(day: Int?) = day?.takeIf { it != d.day }?.let { "day $it" }
+    fun differs(a: Double?, b: Double?, tol: Double) = a == null || b == null || kotlin.math.abs(a - b) > tol
     val s = d.space
-    val crowd = if (d.live > 0 && d.bwNow > 0) (liveNow * weight) / (d.live * d.bwNow) else 1.0
-    val kgM2 = s.kgM2 * crowd
-    val ft2PerBird = if (liveNow > 0) s.ft2PerBird * d.live / liveNow else s.ft2PerBird
-    val grownG = if (d.vk == P && d.weighedDay == d.day) weight - d.bw else 0.0
+    val areaM2 = d.areaInUseFt2 * 0.092903
+    // birds: today's count once the deaths are in (then each truck comes off at its time), else the last count entered
+    val lm = d.lastMortRow
+    val livePresent: Double? = if (d.mortEntered) view.live else lm?.liveBirds?.toDouble()
+    val liveProj: Double? = if (d.mortEntered) null else view.live
+    // weight: the last weighing; the projection grows it on to the time shown
+    val lw = d.lastWeighedRow
+    val weightPresent: Double? = lw?.avgWeight
+    val weightProj: Double? = view.weightG.takeIf { differs(weightPresent, it, 0.5) }
+    // FCR and cFCR: the last day that had a weighing and its feed; the projection by the clock
+    val lf = d.lastFcrDay
+    val fcrPresent: Double? = lf?.let { d.massByDay[it]?.fcr }
+    val fcrProj: Double? = view.fcr?.takeIf { lf != d.day }
+    val cfcrPresent: Double? = lf?.let { d.massByDay[it]?.cFcrCompany }
+    val cfcrProj: Double? = fcrProj?.let { it + (2.0 - (m?.cumBwKg ?: (view.weightG / 1000.0))) * 0.25 }
+    // mortality (the dead and the culls): through the last day entered; the projection adds today's expected deaths
+    val mortPresent: Double? = if (d.mortEntered) d.mortTDPct else lm?.cumMortPct
+    val lostBefore = (d.mortTD - d.mortToday).coerceAtLeast(0).toDouble()
+    val mortProj: Double? = if (d.mortEntered) null else (lostBefore + view.deaths) * 100.0 / d.entryBirds
     val deathsNow = if (d.mortEntered) d.mortToday.toDouble() else view.deaths
+    // the floor: the birds and weight last entered over the floor in use; the projection for the time shown
+    val kgM2Now = if (areaM2 > 0) view.live * view.weightG / 1000.0 / areaM2 else s.kgM2
+    val kgM2Present: Double? = if (livePresent != null && weightPresent != null && areaM2 > 0) livePresent * weightPresent / 1000.0 / areaM2 else null
+    val ft2Present = livePresent?.takeIf { it > 0 }?.let { d.areaInUseFt2 / it }
+    val live1 = livePresent ?: liveProj; val weight1 = weightPresent ?: weightProj; val fcr1 = fcrPresent ?: fcrProj
+    val cfcr1 = cfcrPresent ?: cfcrProj; val mort1 = mortPresent ?: mortProj; val kg1 = kgM2Present ?: kgM2Now
     val u = remember(d) { uniformityOf(d) }
     val lines = listOf(
-        PLine("Live birds", vi(Math.round(liveNow).toInt(), if (d.mortEntered) P else PR), "",
-            trendOf(liveNow, d.liveCom, Better.HIGHER, 1.0), d.liveCom, d.liveIdeal, 0, actual = liveNow, tag = "tile_live"),
-        PLine("Weight", v(weight, 1, d.vk), "g", trendOf(weight, d.bwCom, Better.HIGHER), d.bwCom, d.bwIdeal, 1, actual = weight,
-            sub = if (grownG > 0.5 && entryHHmm != null) "weighed $entryHHmm · +" + Fmt.n(grownG, 0) + " g since" else null, subKind = PR),
-        PLine("FCR", v(fcr, 3, d.fcrKind), "", trendOf(fcr, d.fcrCom, Better.LOWER), d.fcrCom, d.fcrIdeal, 3, Better.LOWER, actual = fcr),
-        PLine("cFCR", v(m?.cFcrCompany, 3, d.fcrKind), "", trendOf(m?.cFcrCompany, d.cfcrCom, Better.LOWER), d.cfcrCom, d.cfcrIdeal, 3, Better.LOWER,
-            sub = m?.fcr?.let { Fmt.n(it, 3) + " + (2 − " + Fmt.n(m.cumBwKg, 3) + ") × 0.25" }, subKind = d.fcrKind, actual = m?.cFcrCompany),
-        PLine("Mortality", v(mort, 2, d.mk), "%", trendOf(mort, d.comCumPct, Better.LOWER), d.comCumPct, d.ceilingPct, 2, Better.LOWER, actual = mort,
-            sub = Fmt.i(d.mortTD) + " dead till date", subKind = d.mk),
-        // the day's own deaths (v59): the count, and its share of the birds the day began with
-        PLine("Deaths today", if (d.mortEntered) vi(d.mortToday, P) else v(deathsNow, 1, PR), "", trendOf(deathsNow, d.comMortBirdsToday, Better.LOWER, 15.0),
+        PLine("Live birds", vi(livePresent?.let { Math.round(it).toInt() }, P), "", trendOf(live1, d.liveCom, Better.HIGHER, 1.0), d.liveCom, d.liveIdeal, 0, actual = live1, tag = "tile_live",
+            own = d.liveOwn, projected = liveProj?.let { vi(Math.round(it).toInt(), PR) }, sub = asOf(lm?.dayNumber?.takeIf { !d.mortEntered })),
+        PLine("Weight", v(weightPresent, 1, P), "g", trendOf(weight1, d.bwCom, Better.HIGHER), d.bwCom, d.bwIdeal, 1, actual = weight1,
+            own = d.bwOwn, projected = weightProj?.let { v(it, 1, PR) },
+            sub = asOf(lw?.dayNumber) ?: entryHHmm?.takeIf { lw?.dayNumber == d.day }?.let { "weighed $it" }),
+        PLine("FCR", v(fcrPresent, 3, P), "", trendOf(fcr1, d.fcrCom, Better.LOWER), d.fcrCom, d.fcrIdeal, 3, Better.LOWER, actual = fcr1,
+            own = d.fcrOwn, projected = fcrProj?.let { v(it, 3, PR) }, sub = asOf(lf)),
+        PLine("cFCR", v(cfcrPresent, 3, P), "", trendOf(cfcr1, d.cfcrCom, Better.LOWER), d.cfcrCom, d.cfcrIdeal, 3, Better.LOWER,
+            own = d.cfcrOwn, projected = cfcrProj?.let { v(it, 3, PR) },
+            sub = lf?.let { day -> d.massByDay[day] }?.let { mm -> mm.fcr?.let { Fmt.n(it, 3) + " + (2 − " + Fmt.n(mm.cumBwKg, 3) + ") × 0.25" } }, subKind = P, actual = cfcr1),
+        PLine("Mortality", v(mortPresent, 2, P), "%", trendOf(mort1, d.comCumPct, Better.LOWER), d.comCumPct, d.ceilingPct, 2, Better.LOWER, actual = mort1,
+            own = d.mortOwn, projected = mortProj?.let { v(it, 2, PR) },
+            sub = (asOf(lm?.dayNumber?.takeIf { !d.mortEntered })?.let { "$it · " } ?: "") + Fmt.i(d.mortTD - d.lameTD) + " dead · " + Fmt.i(d.lameTD) + " culled", subKind = P),
+        // the day's own losses (v59; v60: the dead and the culls): the count, and its share of the birds the day began with
+        PLine("Deaths today", if (d.mortEntered) vi(d.mortToday, P) else vt("—", NE), "", trendOf(deathsNow, d.comMortBirdsToday, Better.LOWER, 15.0),
             refs = listOf("com " + Fmt.n(d.comMortBirdsToday, 1) to kindColor(C), Fmt.n(d.comDailyPct, 3) + " %" to kindColor(C)),
-            sub = Fmt.n(if (d.startLive > 0) deathsNow * 100.0 / d.startLive else 0.0, 3) + " % of ${Fmt.i(d.startLive)}", subKind = d.mk, tag = "tile_deaths_today"),
+            projected = if (d.mortEntered) null else v(deathsNow, 1, PR),
+            sub = if (d.mortEntered) Fmt.n(if (d.startLive > 0) deathsNow * 100.0 / d.startLive else 0.0, 3) + " % of ${Fmt.i(d.startLive)}" +
+                (if (d.e.lameSeparated > 0) " · ${d.e.lameSeparated} culled" else "") else null, subKind = P, tag = "tile_deaths_today"),
         PLine("CV, how even", v(d.cvEst, 1, if (d.cvMeasured) P else PR), "%", d.cvEst?.let { rangeTrend(it, null, 10.0) },
             refs = listOf("ideal ≤ 8.0" to kindColor(I), "max 10.0" to kindColor(MX)), actual = d.cvEst, max = 10.0, band = 0.0 to 8.0, tag = "tile_cv",
             extra = {
@@ -212,9 +242,10 @@ fun BirdsSection(d: OutputData, view: OutputData.NowView, entryHHmm: String?, li
                 Text(if (u.measured) "${u.n} birds weighed one by one" else "expected at this CV · weigh 10 one by one",
                     style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f))
             }),
-        PLine("Stocking density", v(kgM2, 1, d.vk), "kg/m²", trendOf(kgM2, s.targetKgM2, Better.LOWER, 5.0),
+        PLine("Stocking density", v(kgM2Present, 1, P), "kg/m²", trendOf(kg1, s.targetKgM2, Better.LOWER, 5.0),
             refs = listOf("ideal ≤ " + Fmt.n(s.targetKgM2, 1) to kindColor(I), "max " + Fmt.n(d.farm.densityCapDefault, 1) to kindColor(MX)),
-            sub = Fmt.n(ft2PerBird, 2) + " ft² per bird", subKind = d.vk, actual = kgM2, max = d.farm.densityCapDefault, band = 0.0 to s.targetKgM2)
+            projected = kgM2Now.takeIf { differs(kgM2Present, it, 0.05) }?.let { v(it, 1, PR) },
+            sub = ft2Present?.let { Fmt.n(it, 2) + " ft² per bird" }, subKind = P, actual = kg1, max = d.farm.densityCapDefault, band = 0.0 to s.targetKgM2)
     )
     SectionCard(GIcon.BIRDS, "Birds", "glance", Modifier.testTag("glance"), trailing = {
         val sky = d.hourly.firstOrNull { it.date == d.e.date && it.hour == hour }
@@ -230,7 +261,7 @@ fun BirdsSection(d: OutputData, view: OutputData.NowView, entryHHmm: String?, li
         }
     }) {
         ColourKey(listOf(kindColor(P) to "entered " + (entryHHmm ?: "—"), kindColor(PR) to "projected " + view.hhmm,
-            kindColor(C) to "company", kindColor(I) to "ideal (Ross)"))
+            kindColor(C) to "company", com.example.ui.theme.ValueOwn to "own curve", kindColor(I) to "ideal (Ross)"))
         LineList(lines)
         BirdRadar(d, view)
     }
@@ -261,9 +292,11 @@ fun uniformityOf(d: OutputData): FlockSpread {
 // =================================== 2. feed and floor ===================================
 
 /** The day as it would be with the barricades at [fromFt]–[toFt] (ft from the front wall): the plan for a floor not yet set. */
-fun withBarricades(d: OutputData, fromFt: Double, toFt: Double): OutputData {
+fun withBarricades(d: OutputData, fromFt: Double, toFt: Double, sideFromFt: Double = d.sideStartFt, sideToFt: Double = d.sideEndFt): OutputData {
     val L = d.farm.usableLengthFt; val W = d.farm.usableWidthFt
-    val e2 = d.e.copy(penStartFt = fromFt, broodingLength = if (toFt >= L - 0.5) 0.0 else toFt, occupiedFt2 = (toFt - fromFt).coerceAtLeast(10.0) * W)
+    val e2 = d.e.copy(penStartFt = fromFt, broodingLength = if (toFt >= L - 0.5) 0.0 else toFt,
+        penSideStartFt = sideFromFt, penSideEndFt = if (sideToFt >= W - 0.5) 0.0 else sideToFt,
+        occupiedFt2 = (toFt - fromFt).coerceAtLeast(10.0) * (sideToFt - sideFromFt).coerceAtLeast(4.0))
     return OutputData(d.flock, d.farm, e2, d.rows.map { if (it.dayNumber == d.day) e2 else it }, d.feedTypes, d.weather, d.hourly, d.isToday, d.envOn)
 }
 
@@ -274,12 +307,15 @@ fun withBarricades(d: OutputData, fromFt: Double, toFt: Double): OutputData {
  */
 @Composable
 fun FeedSection(d0: OutputData, pick: Int, onPick: (Int) -> Unit, needs: com.example.flock.domain.FlockNeeds.State,
-                onBarricades: ((Double, Double) -> Unit)? = null, view: OutputData.NowView? = null, hour: Int = d0.hour) {
+                onBarricades: ((Double, Double, Double, Double) -> Unit)? = null, view: OutputData.NowView? = null, hour: Int = d0.hour) {
     val L = d0.farm.usableLengthFt
     val curFrom = d0.penStartFt; val curTo = d0.barricadeFtNow
     // barricades moved but not set yet: the plan, the drawing and the numbers show them at once
-    var pending by remember(d0.day, curFrom, curTo) { mutableStateOf<Pair<Double, Double>?>(null) }
-    val d = remember(d0, pending) { pending?.let { withBarricades(d0, it.first, it.second) } ?: d0 }
+    val W = d0.farm.usableWidthFt
+    val curSideFrom = d0.sideStartFt; val curSideTo = d0.sideEndFt
+    // [first, last, near side, far side], ft
+    var pending by remember(d0.day, curFrom, curTo, curSideFrom, curSideTo) { mutableStateOf<List<Double>?>(null) }
+    val d = remember(d0, pending) { pending?.let { withBarricades(d0, it[0], it[1], it[2], it[3]) } ?: d0 }
     val o = d.feedOptions[pick.coerceIn(0, d.feedOptions.size - 1)]
     val pat = d.patternFor(pick)
     val from = d.penStartFt
@@ -304,7 +340,7 @@ fun FeedSection(d0: OutputData, pick: Int, onPick: (Int) -> Unit, needs: com.exa
     val lines = buildList {
         add(PLine("Bags to use", v(d.dayBags, 1, PR), "bags", trendOf(d.dayBags, d.giveBags, Better.CLOSER, 10.0), d.giveBags, d.idealBags, 1, Better.CLOSER,
             sub = "${o.feedings} × ${Fmt.n(o.bagsPerFeeding, 1)} · ${Fmt.n(o.bagsPerLine, 2)} per line", subKind = PR, actual = d.dayBags, tag = "feed_conclusion"))
-        add(PLine("Feed per bird", v(perBird, 1, PR), "g", trendOf(perBird, d.comPerBird, Better.CLOSER), d.comPerBird, d.idealPerBird, 1, Better.CLOSER, actual = perBird))
+        add(PLine("Feed per bird", v(perBird, 1, PR), "g", trendOf(perBird, d.comPerBird, Better.CLOSER), d.comPerBird, d.idealPerBird, 1, Better.CLOSER, actual = perBird, own = d.feedOwn))
         add(PLine("Yesterday's gain", v(d.gainYesterday, 1, d.gainYesterdayKind), "g", trendOf(d.gainYesterday, d.gainYesterdayCom, Better.HIGHER),
             d.gainYesterdayCom, d.gainYesterdayIdeal, 1, actual = d.gainYesterday))
         add(PLine("Gain today, curve", v(d.gainToday, 1, PR), "g", null, d.gainTodayCom, d.gainTodayIdeal, 1, actual = d.gainToday))
@@ -323,7 +359,7 @@ fun FeedSection(d0: OutputData, pick: Int, onPick: (Int) -> Unit, needs: com.exa
             sub = "by " + view.hhmm, tag = "tile_eaten_now"))
         add(PLine("Hungry now", vt(pct(needs.hungry), PR), "%", null, refs = emptyList(), sub = "likelihood" + (view?.let { " at " + it.hhmm } ?: "")))
         add(PLine("Eaten yesterday", v(d.usedPerBirdY, 1, P), "g", trendOf(d.usedPerBirdY, d.comPerBirdY, Better.CLOSER), d.comPerBirdY, d.idealPerBirdY, 1,
-            Better.CLOSER, actual = d.usedPerBirdY))
+            Better.CLOSER, actual = d.usedPerBirdY, own = d.feedOwnY))
         add(PLine("Feedings", vt(d.modelFeedTimes(o.feedings).joinToString(" "), PR), "", null, refs = emptyList(), sub = "each fills ${o.fillPct.roundToInt()} %"))
         val c = d.correction
         if (c.pct != 0.0) add(PLine("Correction", vt((if (c.pct > 0) "+" else "") + Fmt.n(c.pct, 1), PR), "%", null, refs = emptyList(),
@@ -341,11 +377,12 @@ fun FeedSection(d0: OutputData, pick: Int, onPick: (Int) -> Unit, needs: com.exa
         FarmIso(iso, IsoView.FEED)
         // the first and last barricade: drag them along the house (5 ft steps), then set them from this day on
         if (onBarricades != null) {
-            val shown = pending ?: (curFrom to curTo)
+            val all = pending ?: listOf(curFrom, curTo, curSideFrom, curSideTo)
+            val shown = all[0] to all[1]
             fun snap(x: Float) = ((x / 5f).roundToInt() * 5f).toDouble().let { if (it > L - 2.5) L else it }
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 BarricadeSlider(shown.first.toFloat(), shown.second.toFloat(), L.toFloat(), pending != null || !isSet, ideal = idealFrom.toFloat() to idealTo.toFloat(), onChange = { a0, b0 ->
-                    val a = snap(a0); val b = snap(b0); if (b - a >= 10) pending = a to b }, modifier = Modifier.testTag("barricade_slider"))
+                    val a = snap(a0); val b = snap(b0); if (b - a >= 10) pending = listOf(a, b, all[2], all[3]) }, modifier = Modifier.testTag("barricade_slider"))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Drag the barricades", style = MaterialTheme.typography.labelLarge, color = Color.White, maxLines = 1, modifier = Modifier.weight(1f))
                     Text("ideal $idealText  ", style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont), color = kindColor(I),
@@ -353,10 +390,20 @@ fun FeedSection(d0: OutputData, pick: Int, onPick: (Int) -> Unit, needs: com.exa
                     Text(if (shown.first < 0.5 && shown.second > L - 0.5) "none" else ft(shown.first) + "–" + ft(shown.second) + " ft",
                         style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont), color = kindColor(if (pending != null || !isSet) PR else P))
                 }
+                // barricades along the house (v60): the floor across the width, near wall to far wall (1 ft steps)
+                BarricadeSlider(all[2].toFloat(), all[3].toFloat(), W.toFloat(), pending != null, ends = "near wall" to "far wall", onChange = { a0, b0 ->
+                    val a = Math.round(a0).toDouble(); val b = Math.round(b0).toDouble().let { if (it > W - 0.5) W else it }
+                    if (b - a >= 4) pending = listOf(all[0], all[1], a, b) }, modifier = Modifier.testTag("barricade_side_slider"))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Across the house", style = MaterialTheme.typography.labelLarge, color = Color.White, maxLines = 1, modifier = Modifier.weight(1f))
+                    Text(if (all[2] < 0.5 && all[3] > W - 0.5) "none" else ft(all[2]) + "–" + ft(all[3]) + " ft",
+                        style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont), color = kindColor(if (pending != null) PR else P),
+                        modifier = Modifier.testTag("barricade_side_text"))
+                }
                 if (pending != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Set from day ${d0.day}", style = MaterialTheme.typography.labelLarge, color = Color.Black,
                         modifier = Modifier.background(Color.White, RoundedCornerShape(10.dp)).clickable {
-                            pending?.let { (a, b) -> onBarricades(a, b) }; pending = null
+                            pending?.let { p -> onBarricades(p[0], p[1], p[2], p[3]) }; pending = null
                         }.padding(horizontal = 14.dp, vertical = 8.dp).testTag("barricade_set"))
                     Text("Cancel", style = MaterialTheme.typography.labelLarge, color = Color.White,
                         modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(10.dp)).clickable { pending = null }
@@ -632,7 +679,7 @@ fun TrendsSection(d: OutputData) {
     val lines = listOf(
         PLine("Placed", vi(d.placed, P), "", null, refs = listOf("started " + Fmt.i(d.entryBirds) to kindColor(P)),
             sub = "reception ${d.reception} · " + Fmt.n(d.receptionPct, 2) + " %", subKind = P),
-        PLine("Removed", vi(d.mortTD + d.lameTD, d.mk), "", null, refs = listOf("dead ${d.mortTD}" to kindColor(d.mk), "culls ${d.lameTD}" to kindColor(P))),
+        PLine("Removed", vi(d.mortTD, d.mk), "", null, refs = listOf("dead ${d.mortTD - d.lameTD}" to kindColor(d.mk), "culls ${d.lameTD}" to kindColor(P))),
         PLine("Daily gain, average", v(k.adg, 1, d.vk), "g", trendOf(k.adg, d.adgCom, Better.HIGHER), d.adgCom, d.adgIdeal, 1, actual = k.adg),
         PLine("First week deaths", v(k.firstWeekMortPct, 2, if (k.firstWeekComplete) P else PR), "%", trendOf(k.firstWeekMortPct, d.firstWeekMortCom, Better.LOWER),
             d.firstWeekMortCom, d.firstWeekMortIdeal, 2, Better.LOWER, actual = k.firstWeekMortPct),
@@ -651,7 +698,8 @@ fun TrendsSection(d: OutputData) {
  * or tap where it should go. [moving]: not set yet (amber), else as set (green).
  */
 @Composable
-fun BarricadeSlider(from: Float, to: Float, max: Float, moving: Boolean, ideal: Pair<Float, Float>? = null, onChange: (Float, Float) -> Unit, modifier: Modifier = Modifier) {
+fun BarricadeSlider(from: Float, to: Float, max: Float, moving: Boolean, ideal: Pair<Float, Float>? = null, ends: Pair<String, String> = "front" to "back",
+                    onChange: (Float, Float) -> Unit, modifier: Modifier = Modifier) {
     val cur by androidx.compose.runtime.rememberUpdatedState(from to to)
     val change by androidx.compose.runtime.rememberUpdatedState(onChange)
     // the house drawing above sits 12 dp in from the left and 8 dp from the right: the slider's ends sit under the house's ends
@@ -683,8 +731,8 @@ fun BarricadeSlider(from: Float, to: Float, max: Float, moving: Boolean, ideal: 
         drawLine(Color.White.copy(alpha = 0.3f), Offset(padPx, y), Offset(padPx + w, y), 1.5.dp.toPx())
         listOf(padPx, padPx + w).forEach { x -> drawLine(Color.White.copy(alpha = 0.3f), Offset(x, y - 5.dp.toPx()), Offset(x, y + 5.dp.toPx()), 1.dp.toPx()) }
         paint.color = Color.White.copy(alpha = 0.5f).toArgb(); paint.textSize = 10.dp.toPx()
-        paint.textAlign = android.graphics.Paint.Align.LEFT; drawContext.canvas.nativeCanvas.drawText("front", padPx, size.height - 1.dp.toPx(), paint)
-        paint.textAlign = android.graphics.Paint.Align.RIGHT; drawContext.canvas.nativeCanvas.drawText("back", padPx + w, size.height - 1.dp.toPx(), paint)
+        paint.textAlign = android.graphics.Paint.Align.LEFT; drawContext.canvas.nativeCanvas.drawText(ends.first, padPx, size.height - 1.dp.toPx(), paint)
+        paint.textAlign = android.graphics.Paint.Align.RIGHT; drawContext.canvas.nativeCanvas.drawText(ends.second, padPx + w, size.height - 1.dp.toPx(), paint)
         // the birds' floor
         drawLine(accent, Offset(xa, y), Offset(xb, y), 3.dp.toPx())
         // the ideal barricades (v59): blue marks under the line, where the floor would hold the birds at the ideal density

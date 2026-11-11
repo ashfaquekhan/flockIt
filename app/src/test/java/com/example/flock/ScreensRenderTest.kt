@@ -266,7 +266,7 @@ class ScreensRenderTest {
         val view14 = d.nowView(java.time.LocalDate.parse(d.e.date).atTime(14, 0).atZone(java.time.ZoneId.of(farm.timeZone)))
         rule.setContent { MyApplicationTheme { androidx.compose.foundation.layout.Column(Modifier.fillMaxSize().background(Color.Black).padding(14.dp),
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
-            com.example.flock.ui.screens.FeedSection(d, d.recommendedOption, {}, needs, onBarricades = { _, _ -> }, view = view14)
+            com.example.flock.ui.screens.FeedSection(d, d.recommendedOption, {}, needs, onBarricades = { _, _, _, _ -> }, view = view14)
             com.example.flock.ui.screens.AirSection(d, 14, needs, false, {}, com.example.flock.ui.screens.houseMapOf(d, 14))
             com.example.flock.ui.screens.LiftSection(d, view14)
             com.example.flock.ui.screens.WaterSection(d, needs, onFarmChange = { }, view = view14)

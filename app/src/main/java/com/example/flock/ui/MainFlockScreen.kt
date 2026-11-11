@@ -259,7 +259,7 @@ fun MainFlockScreen(
                     onFarmChange = if (closedBatch) null else { f -> viewModel.updateFarm(f) },
                     onLogFeeding = { bags, at -> if (!closedBatch) viewModel.logFeeding(bags, at) },
                     onUndoFeeding = { if (!closedBatch) viewModel.undoLastFeeding() },
-                    onBarricades = if (closedBatch) null else { s, e -> viewModel.setBarricades(s, e) },
+                    onBarricades = if (closedBatch) null else { s, e, ss, se -> viewModel.setBarricades(s, e, ss, se) },
                     flockEvents = flockEvents,
                     weatherOn = weatherOn,
                     onWeatherOn = { weatherOn = it; com.example.flock.network.ViewPrefs.setWeatherOn(ctx, it) },

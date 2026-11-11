@@ -426,7 +426,7 @@ class FlockRepository(
                 mortality = 0, feedBagsUsed = 0.0, feedUsedType = "B1", feedUsedBreakdown = "",
                 birdsLifted = 0, weightLifted = 0.0, lameSeparated = 0,
                 feedRecB1 = 0.0, feedRecB2 = 0.0, feedRecB3 = 0.0,
-                broodingLength = null, actualFans = null, actualFanTime = null, outTemp = null, outRH = null,
+                broodingLength = null, penStartFt = null, penSideStartFt = null, penSideEndFt = null, actualFans = null, actualFanTime = null, outTemp = null, outRH = null,
                 notes = "", waterTempC = null, waterPh = null, feedMoisturePct = null,
                 measuredCo2 = null, measuredNh3 = null, measuredO2 = null, measuredPressure = null,
                 measuredAirspeed = null, padWetMin = null, padDryMin = null, luxPerFt2 = null,
@@ -684,19 +684,25 @@ class FlockRepository(
      * The barricades from a day on (they hold until a later day changes them): the first [startFt] and the last [endFt],
      * ft from the front wall (0 / the house's length: none at that end). Sent to the sheet like an entry.
      */
-    suspend fun setBarricades(spreadsheetId: String, flockId: String, dayNumber: Int, startFt: Double, endFt: Double, houseLenFt: Double, userEmail: String): Result<Unit> =
+    suspend fun setBarricades(spreadsheetId: String, flockId: String, dayNumber: Int, startFt: Double, endFt: Double, houseLenFt: Double, userEmail: String,
+                              /** barricades along the house (v60): the floor across the width, ft from the near wall; null: left as they are */
+                              sideStartFt: Double? = null, sideEndFt: Double? = null, houseWidthFt: Double = 0.0): Result<Unit> =
         withContext(Dispatchers.IO) {
             ioLock.withLock {
                 val existing = dailyDataDao.getDayEntry(spreadsheetId, flockId, dayNumber)
                     ?: return@withLock Result.failure(Exception("Day entry not found"))
                 val start = startFt.coerceIn(0.0, max(0.0, houseLenFt - 10))
                 val end = if (endFt >= houseLenFt - 0.5) 0.0 else endFt.coerceIn(start + 10, houseLenFt)
-                if (existing.penStartFt == start && existing.broodingLength == end) return@withLock Result.success(Unit)
+                val sStart = sideStartFt?.coerceIn(0.0, max(0.0, houseWidthFt - 4))
+                val sEnd = sideEndFt?.let { if (it >= houseWidthFt - 0.5) 0.0 else it.coerceIn((sStart ?: 0.0) + 4, houseWidthFt) }
                 val now = System.currentTimeMillis()
-                val row = existing.copy(penStartFt = start, broodingLength = end, updatedAt = now, updatedBy = userEmail)
-                eventDao.insertAll(com.example.flock.graph.FlockEvents.fromSave(existing, row, SheetSchema.changedColumns(existing, row), userEmail, now))
-                saveAndPushDay("Barricades", spreadsheetId, row.copy(dirtyFields = mergeDirtyFields(existing.dirty, existing.dirtyFields, setOf("penstartft", "broodinglength")),
-                    dirtyBase = SheetSchema.addBase(existing, setOf("penstartft", "broodinglength"))))
+                val row = existing.copy(penStartFt = start, broodingLength = end, penSideStartFt = sStart ?: existing.penSideStartFt,
+                    penSideEndFt = sEnd ?: existing.penSideEndFt, updatedAt = now, updatedBy = userEmail)
+                val cols = SheetSchema.changedColumns(existing, row)
+                if (cols.isEmpty()) return@withLock Result.success(Unit)
+                eventDao.insertAll(com.example.flock.graph.FlockEvents.fromSave(existing, row, cols, userEmail, now))
+                saveAndPushDay("Barricades", spreadsheetId, row.copy(dirtyFields = mergeDirtyFields(existing.dirty, existing.dirtyFields, cols),
+                    dirtyBase = SheetSchema.addBase(existing, cols)))
                 sendEvents(spreadsheetId)
                 Result.success(Unit)
             }

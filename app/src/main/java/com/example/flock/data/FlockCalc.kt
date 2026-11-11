@@ -128,6 +128,9 @@ object FlockCalc {
         var penStart = 0.0
         // a barricade (or "none") set on any day so far: the brooding plan no longer applies
         var penSet = false
+        // barricades along the house (v60): the floor's near and far edge across the width, carried on like the others
+        var sideStart = 0.0
+        var sideEnd: Double? = null
 
         // Stock tracking per feed type (Bug 3 Fix)
         var totalReceivedBags = 0.0
@@ -288,7 +291,7 @@ object FlockCalc {
 
             // Reception / transit deaths only reduce the entry flock; they are not flock mortality.
             val entryBirds = (flock.birdsPlaced - flock.receptionMort).coerceAtLeast(0)
-            val cumMortPct = if (entryBirds > 0) (cumMort.toDouble() / entryBirds) * 100.0 else null
+            val cumMortPct = if (entryBirds > 0) ((cumMort + cumLame).toDouble() / entryBirds) * 100.0 else null   // culls are mortality too (v60)
             // birds lifted (sold) are not lost: livability is the share still alive in the house or on the trucks
             val livability = if (entryBirds > 0) ((live + cumLift).toDouble() / entryBirds) * 100.0 else null
 
@@ -300,15 +303,20 @@ object FlockCalc {
             // "none" means the whole house)
             val penLen = if (penStart > 0 || penFt != null) ((penFt ?: farm.usableLengthFt) - penStart).coerceAtLeast(10.0)
                 else if (penSet) farm.usableLengthFt else null
+            r.penSideStartFt?.let { penSet = true; sideStart = it.coerceIn(0.0, max(0.0, farm.usableWidthFt - 4)) }
+            r.penSideEndFt?.let { penSet = true; sideEnd = if (it <= 0 || it >= farm.usableWidthFt) null else it }
+            val widthUse = ((sideEnd ?: farm.usableWidthFt) - sideStart).coerceIn(4.0, max(4.0, farm.usableWidthFt))
+            val narrowed = widthUse < farm.usableWidthFt - 0.01
             val areaRes = PhysiologicalEngine.computeAreaAndDensity(
                 liveBirds = live,
                 avgKg = avgAfterKg,
                 usableLengthFt = farm.usableLengthFt,
-                usableWidthFt = farm.usableWidthFt,
+                usableWidthFt = widthUse,
                 broodDensity = farm.broodDensity,
                 densityCapDefault = farm.densityCapDefault,
                 day = day,
-                penLengthFt = penLen
+                // a floor narrowed along the house is as long as its end barricades say (the whole house when there are none)
+                penLengthFt = penLen ?: if (narrowed) farm.usableLengthFt else null
             )
 
             // Climate display targets

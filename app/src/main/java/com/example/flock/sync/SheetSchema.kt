@@ -39,7 +39,8 @@ object SheetSchema {
      *    barricades themselves, there are no modes.)
      */
     // 11 (v59): DailyData gains LiftLaps (each lifting of the day), _Farm gains malesIn10
-    const val VERSION = 11
+    // 12 (v60): DailyData gains PenSideStartFt and PenSideEndFt (barricades along the house)
+    const val VERSION = 12
 
     val FLOCK_HEADERS = listOf(
         "flockId", "name", "breed", "startDate", "startTime", "birdsPlaced", "receptionMort",
@@ -55,7 +56,7 @@ object SheetSchema {
         "MeasuredPressure", "MeasuredAirspeed", "PadWetMin", "PadDryMin", "LuxPerFt2", "DieselCansUsed",
         "UpdatedAt", "UpdatedBy", "Committed", "FeedUsedBreakdown", "SavedFields", "IndividualWeights", "Locations", "WeighedAt",
         "LiftedAt", "Feedings", "PenStartFt",
-        "OutTempMin", "OutTempAvg", "OutTempMax", "OutRhMin", "OutRhAvg", "OutRhMax", "LiftLaps"
+        "OutTempMin", "OutTempAvg", "OutTempMax", "OutRhMin", "OutRhAvg", "OutRhMax", "LiftLaps", "PenSideStartFt", "PenSideEndFt"
     )
     /**
      * The Events tab (v58): one row per event, appended, never rewritten — the event log beside the day rows. It is not
@@ -97,7 +98,7 @@ object SheetSchema {
     private val LAYOUT_B = listOf("IndividualWeights", "Mortality", "BirdsLifted", "WeightLifted", "LiftedAt", "LiftLaps", "LameSeparated", "FeedBagsUsed")
     private val LAYOUT_C = listOf("FeedUsedType", "FeedUsedBreakdown", "Feedings",
         "FeedRecB1", "FeedTypeB1", "FeedRecB2", "FeedTypeB2", "FeedRecB3", "FeedTypeB3", "DieselCansUsed", "Notes",
-        "PenStartFt", "BroodingLength", "ActualFans", "ActualFanTime", "OutTemp", "OutRH",
+        "PenStartFt", "BroodingLength", "PenSideStartFt", "PenSideEndFt", "ActualFans", "ActualFanTime", "OutTemp", "OutRH",
         "OutTempMin", "OutTempAvg", "OutTempMax", "OutRhMin", "OutRhAvg", "OutRhMax",
         "WaterTempC", "WaterPh", "FeedMoisturePct", "MeasuredCo2", "MeasuredNh3", "MeasuredO2",
         "MeasuredPressure", "MeasuredAirspeed", "PadWetMin", "PadDryMin", "LuxPerFt2",
@@ -268,7 +269,8 @@ object SheetSchema {
             weighedAt = r.l("WeighedAt") ?: 0L,
             liftedAt = r.l("LiftedAt") ?: 0L, feedings = r.s("Feedings"), penStartFt = r.d("PenStartFt"),
             outTempMin = r.d("OutTempMin"), outTempAvg = r.d("OutTempAvg"), outTempMax = r.d("OutTempMax"),
-            outRhMin = r.d("OutRhMin"), outRhAvg = r.d("OutRhAvg"), outRhMax = r.d("OutRhMax"), liftLaps = r.s("LiftLaps")
+            outRhMin = r.d("OutRhMin"), outRhAvg = r.d("OutRhAvg"), outRhMax = r.d("OutRhMax"), liftLaps = r.s("LiftLaps"),
+            penSideStartFt = r.d("PenSideStartFt"), penSideEndFt = r.d("PenSideEndFt")
         )
         // The per-variety columns are the bags record when the sheet has them: they set the split and the total.
         val perType = r.usedByCode().filterValues { it > 0 }
@@ -304,7 +306,7 @@ object SheetSchema {
         if (d.locCount > 0) d.locCount else "",
         if (d.weighedAt > 0) d.weighedAt else "",
         if (d.liftedAt > 0) d.liftedAt else "", d.feedings, n(d.penStartFt),
-        n(d.outTempMin), n(d.outTempAvg), n(d.outTempMax), n(d.outRhMin), n(d.outRhAvg), n(d.outRhMax), d.liftLaps
+        n(d.outTempMin), n(d.outTempAvg), n(d.outTempMax), n(d.outRhMin), n(d.outRhAvg), n(d.outRhMax), d.liftLaps, n(d.penSideStartFt), n(d.penSideEndFt)
     )
     /** Sample locations 6 and up as column name → value. */
     fun sampleColumns(d: DailyDataEntity): Map<String, Any> = buildMap {

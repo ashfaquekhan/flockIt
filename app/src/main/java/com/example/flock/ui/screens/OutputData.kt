@@ -2,6 +2,7 @@ package com.example.flock.ui.screens
 
 import com.example.flock.data.DailyDataEntity
 import com.example.flock.data.lapsShown
+import com.example.flock.data.savedGroups
 import com.example.flock.data.FarmEntity
 import com.example.flock.data.FeedTypeEntity
 import com.example.flock.data.FlockEntity
@@ -99,12 +100,13 @@ class OutputData(
     val reception = flock?.receptionMort ?: 0
     val live = e.liveBirds
     val liveSafe = live.coerceAtLeast(1)
-    val mortToday = e.mortality
+    /** Birds lost today: the dead and the culls (birds taken out by hand are mortality too, v60). */
+    val mortToday = e.mortality + e.lameSeparated
     /** Birds that started the flock: placed minus reception / transit deaths (those are not flock mortality). */
     val entryBirds = max(1, placed - reception)
-    val mortTD = upto.sumOf { it.mortality }
+    val mortTD = upto.sumOf { it.mortality + it.lameSeparated }
     /** The birds in the house when this day began: yesterday's count (the day's deaths, culls and liftings come off it). */
-    val startLive: Int = byDay[day - 1]?.liveBirds ?: (live + mortToday + e.lameSeparated + e.birdsLifted)
+    val startLive: Int = byDay[day - 1]?.liveBirds ?: (live + mortToday + e.birdsLifted)
     /** Today's deaths as a share of the birds the day began with (v59: not of the birds left after a lifting): unknown (—) until entered. */
     val mortTodayPct: Double? = if ((mortEntered || !open) && startLive > 0) mortToday * 100.0 / startLive else null
     val mortTDPct: Double? = if (placed > 0) mortTD * 100.0 / entryBirds else e.cumMortPct
@@ -368,14 +370,20 @@ class OutputData(
     /** The front barricade, ft from the front wall (0: none) — as the last day that set it. */
     val penStartFt: Double = (rows.filter { it.dayNumber <= day }.lastOrNull { it.penStartFt != null }?.penStartFt ?: 0.0)
         .coerceIn(0.0, max(0.0, farm.usableLengthFt - 10))
+    /** Barricades along the house (v60): the birds' floor across the width, ft from the near side wall (0 … the width: none). */
+    val sideStartFt: Double = (rows.filter { it.dayNumber <= day }.lastOrNull { it.penSideStartFt != null }?.penSideStartFt ?: 0.0)
+        .coerceIn(0.0, max(0.0, farm.usableWidthFt - 4))
+    val sideEndFt: Double = (rows.filter { it.dayNumber <= day }.lastOrNull { it.penSideEndFt != null }?.penSideEndFt?.takeIf { it > 0 } ?: farm.usableWidthFt)
+        .coerceIn(sideStartFt + 4, max(sideStartFt + 4, farm.usableWidthFt))
+    val widthInUseFt: Double = (sideEndFt - sideStartFt).coerceAtLeast(4.0)
     /** The back barricade (the brooding one): how far from the front the birds can go today. */
-    val barricadeFtNow: Double = if (e.occupiedFt2 > 0) min(farm.usableLengthFt, penStartFt + e.occupiedFt2 / max(1.0, farm.usableWidthFt)) else farm.usableLengthFt
+    val barricadeFtNow: Double = if (e.occupiedFt2 > 0) min(farm.usableLengthFt, penStartFt + e.occupiedFt2 / max(1.0, widthInUseFt)) else farm.usableLengthFt
     val openFrac = ((barricadeFtNow - penStartFt) / max(1.0, farm.usableLengthFt)).coerceIn(0.05, 1.0)
     /** The first pan inside the birds' floor (pans counted from the hopper), and the pans inside it on each line. */
     val panFirst: Int = if (penStartFt <= lineStartFt) 0 else ceil((penStartFt - lineStartFt) / panSpacingFt).toInt().coerceIn(0, pansPerLine - 1)
     val pansInArea = (floor((barricadeFtNow - lineStartFt) / panSpacingFt).toInt().coerceIn(0, pansPerLine) - panFirst).coerceAtLeast(0)
     /** Floor the birds have today (between the barricades). */
-    val areaInUseFt2 = max(1.0, (barricadeFtNow - penStartFt) * farm.usableWidthFt)
+    val areaInUseFt2 = max(1.0, (barricadeFtNow - penStartFt) * widthInUseFt)
     /** Lines spread evenly across the width, drinkers between feeders: D F D F … D. */
     val lineOrder: List<Char> = buildList {
         val f = feederLines; val dl = drinkerLinesN
@@ -500,7 +508,7 @@ class OutputData(
      */
     val idealFloorFt: Double = (if (day <= 10) PhysiologicalEngine.computeAreaAndDensity(live, bwNow / 1000.0, farm.usableLengthFt, farm.usableWidthFt,
             farm.broodDensity, farm.densityCapDefault, day, null).occupiedFt2 else space.needFt2 * live)   // needFt2 is the floor one bird needs
-        .let { it / max(1.0, farm.usableWidthFt) }.coerceIn(10.0, max(10.0, farm.usableLengthFt))
+        .let { it / max(1.0, widthInUseFt) }.coerceIn(10.0, max(10.0, farm.usableLengthFt))
     /** The way the floor is set once the birds are grown or lifted (null: a young flock, the feed plan below decides). */
     val floorPlan: com.example.flock.domain.SpacePlan.Option? = if (space.young) null else space.options[space.best]
     /** The floor plan's pans as a series over the floor it uses. */
@@ -814,6 +822,44 @@ class OutputData(
     /** Mortality till date as projected the day before against the entry. */
     val mortAccuracy: com.example.flock.domain.FlockKpis.Accuracy by lazy { checks({ r -> r.cumMortPct.takeIf { r.mortality > 0 || "M" in r.savedGroups() } }, { it.cumMortPct }, 2) }
 
+    // ------------------------------- what was entered last (v60: the present leads, the projection sits under it) -------------------------------
+    /** The last day (up to this one) whose deaths were entered, its weighing, and the last day with an FCR on a weighing. */
+    val lastMortRow: DailyDataEntity? get() = sortedRows.lastOrNull { it.dayNumber <= day && ("M" in it.savedGroups() || it.mortality > 0 || it.dayNumber == 0) }
+    val lastWeighedRow: DailyDataEntity? get() = sortedRows.lastOrNull { it.avgWeight != null && it.dayNumber <= day }
+    val lastFcrDay: Int? get() = sortedRows.lastOrNull { it.dayNumber <= day && it.avgWeight != null && massByDay[it.dayNumber]?.fcr != null }?.dayNumber
+
+    // ------------------------------- the flock's own curve (v60) -------------------------------
+    /** The flock's own curves: the company's, bent to this flock by everything entered up to a day (see [com.example.flock.domain.DynamicCurve]). */
+    class Own(val weight: com.example.flock.domain.DynamicCurve.Fit, val feed: com.example.flock.domain.DynamicCurve.Fit,
+              val mort: com.example.flock.domain.DynamicCurve.Fit, val fcr: com.example.flock.domain.DynamicCurve.Fit) {
+        /** cFCR on the flock's own curve: its FCR brought to a 2 kg bird with its own weight */
+        fun cfcr(day: Int): Double? { val f = fcr.at(day); val w = weight.at(day); return if (f != null && w != null) f + (2.0 - w / 1000.0) * 0.25 else null }
+    }
+    fun ownFits(upTo: Int): Own {
+        fun obs(f: (DailyDataEntity) -> Double?) = sortedRows.filter { it.dayNumber <= upTo }.mapNotNull { r -> f(r)?.let { com.example.flock.domain.DynamicCurve.Obs(r.dayNumber, it) } }
+        val D = com.example.flock.domain.DynamicCurve
+        return Own(
+            // a weighing is a measurement: trusted from the first one
+            D.fit(obs { it.avgWeight }, { CompanyStandard.bw(it) ?: PhysiologicalEngine.bwFromDay(it.toDouble(), breed) }, prior = 0.3),
+            // feed entered on day x is what a bird ate the day before (the chart's row x)
+            D.fit(obs { r -> byDay[r.dayNumber - 1]?.liveBirds?.takeIf { it > 0 }?.let { live -> usedKg(r).takeIf { it > 0 }?.let { it * 1000 / live } } }, { CompanyStandard.feedPerDay(it) }, prior = 0.7),
+            // deaths are few and jumpy: the standard holds longer
+            D.fit(obs { r -> r.cumMortPct?.takeIf { r.dayNumber >= 2 && ("M" in r.savedGroups() || r.mortality > 0) } }, { CompanyStandard.cumMortPct(it).takeIf { v -> v > 0 } }, prior = 1.5, halfLife = 6.0),
+            D.fit(obs { r -> massByDay[r.dayNumber]?.fcr?.takeIf { r.avgWeight != null && r.dayNumber >= 5 } }, { CompanyStandard.fcr(it) }, prior = 0.5))
+    }
+    /** Learned from everything up to this day: for the graphs and the days to come. */
+    val own: Own by lazy { ownFits(day) }
+    /** Learned from the days before this one: what the flock's own curve expected of today, to hold today's entries against. */
+    val ownBefore: Own by lazy { ownFits(day - 1) }
+    val bwOwn: Double? get() = ownBefore.weight.at(day)
+    val fcrOwn: Double? get() = ownBefore.fcr.at(day)?.takeIf { day >= 5 }
+    val cfcrOwn: Double? get() = ownBefore.cfcr(day)?.takeIf { day >= 5 }
+    val mortOwn: Double? get() = ownBefore.mort.at(day)
+    val liveOwn: Double? get() = mortOwn?.let { entryBirds * (1 - it / 100.0) - liftTD }
+    /** what a bird eats during this day, and what it ate yesterday, on the flock's own curve */
+    val feedOwn: Double? get() = own.feed.at(chartDay)
+    val feedOwnY: Double? get() = ownBefore.feed.at(day)
+
     // ------------------------------- evenness -------------------------------
     /** CV from birds weighed one by one when there is one, else the estimate from the group weighings (rough). */
     val cvMeasured: Boolean = e.cv != null
@@ -883,7 +929,7 @@ class OutputData(
         // the birds in the house at this time (v59): the day's start less the deaths (entered, else those expected so far),
         // the culls and the birds already on the trucks
         val gone = liftedCountBy(hour)
-        val liveNow = max(1.0, if (mortEntered) (live + (e.birdsLifted - gone)).toDouble() else startLive - deaths - e.lameSeparated - gone)
+        val liveNow = max(1.0, if (mortEntered) (live + (e.birdsLifted - gone)).toDouble() else startLive - deaths - gone)
         // feed till now: the entries, yesterday's eating when it is not entered yet, and today's so far
         val yesterday = if (feedEntered || day == 0) 0.0 else proj[day]?.feedKg ?: 0.0
         val cum = usedKgTD + yesterday + eaten

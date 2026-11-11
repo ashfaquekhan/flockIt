@@ -637,7 +637,7 @@ fun EntriesScreen(
             OutlinedTextField(
                 colors = entryFieldColors(),
                 value = lameSeparated, onValueChange = { lameSeparated = it },
-                label = { Text("Lame / culls separated") },
+                label = { Text("Culls (birds taken out by hand)") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 enabled = othersEnabled, modifier = Modifier.fillMaxWidth().testTag("lame_separated_input")
             )

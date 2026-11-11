@@ -16,6 +16,7 @@ import com.example.flock.data.MIGRATION_19_20
 import com.example.flock.data.MIGRATION_20_21
 import com.example.flock.data.MIGRATION_21_22
 import com.example.flock.data.MIGRATION_22_23
+import com.example.flock.data.MIGRATION_23_24
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -58,7 +59,7 @@ class MigrationTest {
         val raw = SQLiteDatabase.openOrCreateDatabase(file, null)
         creates.filter { !it.contains("flock_events") }.forEach { sql ->   // v22's table: not in the old file
             var s = sql
-            (newFarmCols + listOf("dirty", "indivWeights", "locSpreadPct", "uniformityPct", "moreSamples", "locCount", "weighedAt", "liftedAt", "feedings", "dirtyFields", "penStartFt", "outTempMin", "outTempAvg", "outTempMax", "outRhMin", "outRhAvg", "outRhMax", "dirtyBase", "conflicts", "liftLaps", "malesIn10")).forEach { col -> s = s.replace(Regex(",\\s*`$col`\\s+\\w+(\\s+NOT NULL)?"), "") }
+            (newFarmCols + listOf("dirty", "indivWeights", "locSpreadPct", "uniformityPct", "moreSamples", "locCount", "weighedAt", "liftedAt", "feedings", "dirtyFields", "penStartFt", "outTempMin", "outTempAvg", "outTempMax", "outRhMin", "outRhAvg", "outRhMax", "dirtyBase", "conflicts", "liftLaps", "malesIn10", "penSideStartFt", "penSideEndFt")).forEach { col -> s = s.replace(Regex(",\\s*`$col`\\s+\\w+(\\s+NOT NULL)?"), "") }
             raw.execSQL(s)
         }
         raw.execSQL("CREATE TABLE room_master_table (id INTEGER PRIMARY KEY, identity_hash TEXT)")
@@ -81,7 +82,7 @@ class MigrationTest {
 
         // 3. Upgrade with the real migration (no destructive fallback: a bad migration fails here).
         val db = Room.databaseBuilder(ctx, FlockDatabase::class.java, oldName)
-            .addMigrations(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23).allowMainThreadQueries().build()
+            .addMigrations(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24).allowMainThreadQueries().build()
         val farm = db.farmDao().getFarm("S1")
         assertNotNull("farm kept", farm)
         assertEquals("My Farm", farm!!.farmName)
@@ -107,7 +108,7 @@ class MigrationTest {
         assertEquals(null, day.outTempMin); assertEquals(null, day.outRhMax)                                 // v20: the day's weather, not kept yet
         assertEquals("", day.dirtyBase); assertEquals("", day.conflicts)                                      // v21: no clash records yet
         kotlinx.coroutines.runBlocking { assertTrue(db.flockEventDao().events("S1", "F1").isEmpty()) }        // v22: the event log, empty
-        assertEquals("", day.liftLaps); assertEquals(3, farm.malesIn10)                                       // v23: lift laps, males in 10
+        assertEquals("", day.liftLaps); assertEquals(3, farm.malesIn10); assertEquals(null, day.penSideStartFt); assertEquals(null, day.penSideEndFt)   // v24                                       // v23: lift laps, males in 10
         db.close()
     }
 }

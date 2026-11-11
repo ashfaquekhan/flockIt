@@ -222,7 +222,7 @@ class LiftingSpaceTest {
             val tag = "day ${d.dayNumber}"
             // birds
             assertEquals(tag, entry - dead - culled - lifted, d.liveBirds)
-            assertEquals(tag, dead * 100.0 / entry, d.cumMortPct!!, 1e-9)
+            assertEquals(tag, (dead + culled) * 100.0 / entry, d.cumMortPct!!, 1e-9)   // culls are mortality too (v60)
             assertEquals(tag, (d.liveBirds + lifted) * 100.0 / entry, d.livability!!, 1e-9)
             // meat
             val m = mass[d.dayNumber]!!

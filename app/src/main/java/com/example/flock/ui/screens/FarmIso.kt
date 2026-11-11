@@ -75,7 +75,9 @@ data class IsoFarm(
     val padLayout: String, val padLenFt: Double, val padWet: Double,
     /** the air runs end to end (tunnel) rather than in from the sides (minimum ventilation) */
     val tunnel: Boolean,
-    val map: com.example.flock.models.HouseMap.Field? = null
+    val map: com.example.flock.models.HouseMap.Field? = null,
+    /** barricades along the house (v60): the floor across the width, ft from the near wall (0 … the width: none) */
+    val sideFromFt: Double = 0.0, val sideToFt: Double = Double.MAX_VALUE
 ) {
     fun panOpen(i: Int) = i >= firstPan && i - firstPan < pansInFloor && ((i - firstPan) % max(1, on + off)) < on
     fun lineZ(i: Int) = (i + 0.5) * lineGapFt
@@ -101,7 +103,7 @@ fun isoFarmOf(d: OutputData, pattern: OutputData.PanPattern, fromFt: Double, toF
         pattern.on, pattern.off, pattern.first, pattern.count.coerceAtMost(d.pansPerLine), fromFt, toFt, planned,
         f.fanCount.coerceIn(0, 24), running, if (d.minLevel.isTimer) d.minLevel.on else 0, if (d.minLevel.isTimer) d.minLevel.off else 0,
         com.example.flock.engine.PhysiologicalEngine.fanSequence(f.fanCount.coerceIn(1, 24)),
-        f.padLayout, padLen, padWet, running > d.minLevel.avgFans * 1.5 + 0.5, map)
+        f.padLayout, padLen, padWet, running > d.minLevel.avgFans * 1.5 + 0.5, map, d.sideStartFt, d.sideEndFt)
 }
 
 private const val YAW = 0.0             // v54: straight — the house runs left to right, not turned
@@ -334,6 +336,17 @@ private fun DrawScope.drawIso(f: IsoFarm, view: IsoView, g: IsoGeo, zoom: Float,
     }
     if (from > 0.5) fence(from)
     if (to < L - 0.5) fence(to)
+    // … and along it (v60): a fence from the first barricade to the last, at the floor's near and far edge
+    fun fenceAlong(z: Double) {
+        val bh = 2.4
+        val eff = if (f.planned) PathEffect.dashPathEffect(floatArrayOf(6f, 4f)) else null
+        drawPath(quad(P(from, 0.0, z), P(to, 0.0, z), P(to, bh, z), P(from, bh, z)), Color.White.copy(alpha = 0.10f))
+        drawLine(Color.White, P(from, bh, z), P(to, bh, z), 2.2f, pathEffect = eff)
+        var x = from
+        while (x <= to + 1e-6) { drawLine(Color.White.copy(alpha = 0.7f), P(x, 0.0, z), P(x, bh, z), 1.1f); x += 13.0 }
+    }
+    if (f.sideFromFt > 0.5) fenceAlong(f.sideFromFt.coerceIn(0.0, W))
+    if (f.sideToFt < W - 0.5) fenceAlong(f.sideToFt.coerceIn(0.0, W))
 
     // ---- the air: in from the pads, out through the fans (tunnel), or a gentle draw (minimum ventilation) ----
     if (view == IsoView.AIR || view == IsoView.PADS || view == IsoView.FANS) {
