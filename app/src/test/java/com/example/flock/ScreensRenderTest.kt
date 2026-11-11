@@ -263,12 +263,13 @@ class ScreensRenderTest {
         val d = com.example.flock.ui.screens.OutputData(KgfFlock.flock, KgfFlock.farm, r.last(), r, KgfFlock.feedTypes, null, emptyList(), false, false)
         val needs = d.needsAt(12.0, d.plannedFeedings)
         rule.mainClock.autoAdvance = false
+        val view14 = d.nowView(java.time.LocalDate.parse(d.e.date).atTime(14, 0).atZone(java.time.ZoneId.of(farm.timeZone)))
         rule.setContent { MyApplicationTheme { androidx.compose.foundation.layout.Column(Modifier.fillMaxSize().background(Color.Black).padding(14.dp),
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
-            com.example.flock.ui.screens.FeedSection(d, d.recommendedOption, {}, needs) { _, _ -> }
+            com.example.flock.ui.screens.FeedSection(d, d.recommendedOption, {}, needs, onBarricades = { _, _ -> }, view = view14)
             com.example.flock.ui.screens.AirSection(d, 14, needs, false, {}, com.example.flock.ui.screens.houseMapOf(d, 14))
-            com.example.flock.ui.screens.LiftSection(d)
-            com.example.flock.ui.screens.WaterSection(d, needs) { }
+            com.example.flock.ui.screens.LiftSection(d, view14)
+            com.example.flock.ui.screens.WaterSection(d, needs, onFarmChange = { }, view = view14)
         } } }
         rule.mainClock.advanceTimeBy(1600)
         rule.onNodeWithTag("tile_barricades").assertExists()
@@ -601,6 +602,48 @@ class ScreensRenderTest {
         rule.onNodeWithTag("lift_reminder_ok").performClick()
         rule.mainClock.advanceTimeBy(400)
         assertTrue(rule.onAllNodesWithTag("lift_reminder").fetchSemanticsNodes().isEmpty())
+        rule.onNodeWithTag("spot_map").assertExists()
+    }
+    /** v59: a day's liftings one by one — the ones saved listed, another added, one removed; a closed batch takes nothing. */
+    @Config(qualifiers = "w360dp-h3200dp-xhdpi") @Test fun liftingTruckByTruck() {
+        val r = rows(11)
+        val saved = r.last().copy(birdsLifted = 1200, weightLifted = 3050.0, liftLaps = "19:40=700:1750;21:05=500:1300")
+        var got: List<com.example.flock.data.LiftLap>? = null
+        rule.mainClock.autoAdvance = false
+        rule.setContent { MyApplicationTheme { Dash(0) { EntriesScreen(saved, 11, "30 Sep", "29 Sep", feedTypes, lock, "k59", listOf(50), emptyList(), {}, {},
+            farm = farm, isToday = false, onSaveLaps = { laps, done -> got = laps; done() }) } } }
+        rule.mainClock.advanceTimeBy(1000)
+        rule.onNodeWithTag("lift_lap_0").assertExists(); rule.onNodeWithTag("lift_lap_1").assertExists()
+        rule.onAllNodesWithText("19:40")[0].assertExists(); rule.onAllNodesWithText("1,200")[0].assertExists()
+        // a third truck
+        rule.onNodeWithTag("birds_lifted_input").performTextInput("300")
+        rule.onNodeWithTag("weight_lifted_input").performTextInput("790")
+        rule.mainClock.advanceTimeBy(500)
+        rule.onAllNodesWithText("Hold to add lifting 3")[0].assertExists()
+        rule.onNodeWithTag("lift_hold").performScrollTo()
+        rule.onNodeWithTag("lift_hold").performTouchInput { down(center) }
+        rule.mainClock.advanceTimeBy(1200)
+        rule.onNodeWithTag("lift_hold").performTouchInput { up() }
+        rule.mainClock.advanceTimeBy(400)
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_lift_laps.png")
+        rule.onNodeWithTag("lift_save_confirm").performClick()
+        rule.mainClock.advanceTimeBy(400)
+        assertEquals(3, got!!.size); assertEquals(300, got!!.first { it.hhmm == "20:00" }.birds); assertEquals(1500, got!!.sumOf { it.birds })
+        rule.onNodeWithTag("lift_reminder_ok").performClick(); rule.mainClock.advanceTimeBy(400)
+        // the first truck taken out again
+        rule.onNodeWithTag("lift_lap_remove_0").performClick(); rule.mainClock.advanceTimeBy(400)
+        rule.onNodeWithTag("lift_lap_remove_confirm").performClick(); rule.mainClock.advanceTimeBy(400)
+        assertEquals(listOf(com.example.flock.data.LiftLap("21:05", 500, 1300.0)), got)
+    }
+    @Config(qualifiers = "w360dp-h3200dp-xhdpi") @Test fun aClosedBatchTakesNoEntry() {
+        val r = rows(11)
+        val saved = r.last().copy(birdsLifted = 500, weightLifted = 1300.0, liftLaps = "21:05=500:1300")
+        rule.mainClock.autoAdvance = false
+        rule.setContent { MyApplicationTheme { Dash(0) { EntriesScreen(saved, 11, "30 Sep", "29 Sep", feedTypes, lock, "k59c", listOf(50), emptyList(), {}, {},
+            farm = farm, isToday = false, readOnly = true) } } }
+        rule.mainClock.advanceTimeBy(1000)
+        rule.onNodeWithTag("mortality_input").assertIsNotEnabled(); rule.onNodeWithTag("birds_lifted_input").assertIsNotEnabled()
+        rule.onNodeWithTag("notes_input").assertDoesNotExist(); rule.onNodeWithTag("lift_lap_remove_0").assertIsNotEnabled()
     }
     /** v58: the map of every property, part and event, a point picked, and the event log under it. */
     @Config(qualifiers = "w360dp-h2400dp-xhdpi") @Test fun mindMap() {
@@ -616,16 +659,29 @@ class ScreensRenderTest {
         rule.setContent { MyApplicationTheme { androidx.compose.foundation.layout.Column(Modifier.background(Color.Black).padding(12.dp)) { MindMapSection(d, evs, initial = "weightNow") } } }
         rule.mainClock.advanceTimeBy(800)
         rule.onNodeWithTag("mind_map").assertExists()
+        // the wiring of "Weight now": its causes and effects are buttons round it
+        rule.onNodeWithTag("map_node_weightNow").assertExists()
+        rule.onNodeWithTag("map_node_weight").assertExists(); rule.onNodeWithTag("map_node_density").assertExists()
         rule.onAllNodesWithText("Comes from")[0].assertExists()
         rule.onAllNodesWithText("Moves")[0].assertExists()
         rule.onNodeWithTag("event_log").assertExists()
         rule.onAllNodesWithText("Lifting · day 11")[0].assertExists()
         rule.onAllNodesWithText("entered", substring = true)[0].assertExists()
         rule.onRoot().captureRoboImage("src/test/screenshots/screen_mind_map.png")
-        // a link in the panel picks that point
-        rule.onNodeWithTag("map_link_weight").performClick()
+        // a tap on a point steps to it: it becomes the middle, with its own wiring
+        rule.onNodeWithTag("map_node_weight").performClick()
         rule.mainClock.advanceTimeBy(400)
-        rule.onAllNodesWithText("Weight", substring = false)[0].assertExists()
+        rule.onNodeWithTag("map_node_samples").assertExists()
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_mind_map_step.png")
+        // the trail goes back: to the group (its points on rings), then to the flock (its groups)
+        rule.onNodeWithTag("map_crumb_1").performClick(); rule.mainClock.advanceTimeBy(400)
+        rule.onNodeWithTag("map_node_mortality").assertExists(); rule.onNodeWithTag("map_node_fcr").assertExists()
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_mind_map_group.png")
+        rule.onNodeWithTag("map_crumb_0").performClick(); rule.mainClock.advanceTimeBy(400)
+        rule.onNodeWithTag("map_node_group:FEED").assertExists()
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_mind_map_home.png")
+        rule.onNodeWithTag("map_node_group:FEED").performClick(); rule.mainClock.advanceTimeBy(400)
+        rule.onNodeWithTag("map_node_bags").assertExists()
     }
     @Config(qualifiers = "w360dp-h1500dp-xhdpi") @Test fun stockSmall() = shoot("stock_small") { stock() }
     /** The quarter-width window and its stats grid. */

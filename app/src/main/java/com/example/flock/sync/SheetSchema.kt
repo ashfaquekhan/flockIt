@@ -38,7 +38,8 @@ object SheetSchema {
      *    _Farm gains padLayout (side · c). (v53 also wrote barricades and spaceBy; v54 dropped both — the farm sets the
      *    barricades themselves, there are no modes.)
      */
-    const val VERSION = 10
+    // 11 (v59): DailyData gains LiftLaps (each lifting of the day), _Farm gains malesIn10
+    const val VERSION = 11
 
     val FLOCK_HEADERS = listOf(
         "flockId", "name", "breed", "startDate", "startTime", "birdsPlaced", "receptionMort",
@@ -54,7 +55,7 @@ object SheetSchema {
         "MeasuredPressure", "MeasuredAirspeed", "PadWetMin", "PadDryMin", "LuxPerFt2", "DieselCansUsed",
         "UpdatedAt", "UpdatedBy", "Committed", "FeedUsedBreakdown", "SavedFields", "IndividualWeights", "Locations", "WeighedAt",
         "LiftedAt", "Feedings", "PenStartFt",
-        "OutTempMin", "OutTempAvg", "OutTempMax", "OutRhMin", "OutRhAvg", "OutRhMax"
+        "OutTempMin", "OutTempAvg", "OutTempMax", "OutRhMin", "OutRhAvg", "OutRhMax", "LiftLaps"
     )
     /**
      * The Events tab (v58): one row per event, appended, never rewritten — the event log beside the day rows. It is not
@@ -93,7 +94,7 @@ object SheetSchema {
     // ---- how DailyData is written (schema 6): related columns side by side, per-variety and extra-location columns in place
     private val LAYOUT_A = listOf("FlockId", "Day", "Date", "Locked", "SampleEntered", "Locations",
         "W1", "N1", "W2", "N2", "W3", "N3", "W4", "N4", "W5", "N5")
-    private val LAYOUT_B = listOf("IndividualWeights", "Mortality", "BirdsLifted", "WeightLifted", "LiftedAt", "LameSeparated", "FeedBagsUsed")
+    private val LAYOUT_B = listOf("IndividualWeights", "Mortality", "BirdsLifted", "WeightLifted", "LiftedAt", "LiftLaps", "LameSeparated", "FeedBagsUsed")
     private val LAYOUT_C = listOf("FeedUsedType", "FeedUsedBreakdown", "Feedings",
         "FeedRecB1", "FeedTypeB1", "FeedRecB2", "FeedTypeB2", "FeedRecB3", "FeedTypeB3", "DieselCansUsed", "Notes",
         "PenStartFt", "BroodingLength", "ActualFans", "ActualFanTime", "OutTemp", "OutRH",
@@ -267,7 +268,7 @@ object SheetSchema {
             weighedAt = r.l("WeighedAt") ?: 0L,
             liftedAt = r.l("LiftedAt") ?: 0L, feedings = r.s("Feedings"), penStartFt = r.d("PenStartFt"),
             outTempMin = r.d("OutTempMin"), outTempAvg = r.d("OutTempAvg"), outTempMax = r.d("OutTempMax"),
-            outRhMin = r.d("OutRhMin"), outRhAvg = r.d("OutRhAvg"), outRhMax = r.d("OutRhMax")
+            outRhMin = r.d("OutRhMin"), outRhAvg = r.d("OutRhAvg"), outRhMax = r.d("OutRhMax"), liftLaps = r.s("LiftLaps")
         )
         // The per-variety columns are the bags record when the sheet has them: they set the split and the total.
         val perType = r.usedByCode().filterValues { it > 0 }
@@ -303,7 +304,7 @@ object SheetSchema {
         if (d.locCount > 0) d.locCount else "",
         if (d.weighedAt > 0) d.weighedAt else "",
         if (d.liftedAt > 0) d.liftedAt else "", d.feedings, n(d.penStartFt),
-        n(d.outTempMin), n(d.outTempAvg), n(d.outTempMax), n(d.outRhMin), n(d.outRhAvg), n(d.outRhMax)
+        n(d.outTempMin), n(d.outTempAvg), n(d.outTempMax), n(d.outRhMin), n(d.outRhAvg), n(d.outRhMax), d.liftLaps
     )
     /** Sample locations 6 and up as column name → value. */
     fun sampleColumns(d: DailyDataEntity): Map<String, Any> = buildMap {
@@ -503,7 +504,7 @@ object SheetSchema {
         listOf("lineFillBags", sv(farm.lineFillBags)), listOf("sensorPansPerLine", sv(farm.sensorPansPerLine)),
         listOf("panSpacingFt", sv(farm.panSpacingFt)), listOf("feederLineGapFt", sv(farm.feederLineGapFt)),
         listOf("lineFillBagsShut", sv(farm.lineFillBagsShut)),
-        listOf("padLayout", farm.padLayout)
+        listOf("padLayout", farm.padLayout), listOf("malesIn10", sv(farm.malesIn10))
     )
 
     /** Farm settings from the _Farm key/value tab, laid over [base]; a key the sheet lacks keeps the base value. Keys match case-insensitively. */
@@ -544,7 +545,8 @@ object SheetSchema {
             sensorPansPerLine = it2("sensorPansPerLine", base.sensorPansPerLine),
             panSpacingFt = db("panSpacingFt", base.panSpacingFt), feederLineGapFt = db("feederLineGapFt", base.feederLineGapFt),
             lineFillBagsShut = db("lineFillBagsShut", base.lineFillBagsShut),
-            padLayout = st("padLayout", base.padLayout).lowercase().takeIf { it in listOf("side", "c") } ?: base.padLayout
+            padLayout = st("padLayout", base.padLayout).lowercase().takeIf { it in listOf("side", "c") } ?: base.padLayout,
+            malesIn10 = st("malesIn10", base.malesIn10.toString()).toDoubleOrNull()?.toInt()?.coerceIn(0, 10) ?: base.malesIn10
         )
     }
 

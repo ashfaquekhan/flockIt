@@ -95,7 +95,9 @@ data class FarmEntity(
     val barricades: Int = 2,
     val spaceBy: String = "auto",
     // how the cooling pads sit ("side": both side walls · "c": the end wall and both sides) (v53)
-    val padLayout: String = "side"
+    val padLayout: String = "side",
+    // males in every 10 birds placed (v59): 3 = 3 males to 7 females; the ideal mix of the birds caught for weighing
+    val malesIn10: Int = 3
 )
 
 @Entity(tableName = "config")
@@ -303,6 +305,9 @@ data class DailyDataEntity(
     val liftedAt: Long = 0,
     // Feedings poured that day, "HH:mm=bags;HH:mm=bags" — on the sheet, so every phone sees them (v47)
     val feedings: String = "",
+    // The day's liftings one by one (v59: a truck or a lap each), "HH:mm=birds:kg;HH:mm=birds:kg"; birdsLifted and
+    // weightLifted are their sums, liftedAt the last one's time. Empty on days lifted before v59 (one lifting, as entered).
+    val liftLaps: String = "",
     // The sheet columns (normalised names) this phone changed and has not sent yet: only these are written,
     // so a value another phone entered meanwhile is not overwritten (v47). Never on the sheet.
     val dirtyFields: String = "",
@@ -406,6 +411,31 @@ fun DailyDataEntity.locationsShown(): Int {
  * Days saved by older versions have no record, so infer it from what they actually contain —
  * an empty field stays open.
  */
+/** One lifting of a day: a truck or a lap — when, how many birds, how many kg. */
+data class LiftLap(val hhmm: String, val birds: Int, val kg: Double) {
+    val hour: Double get() = (hhmm.substringBefore(":").toIntOrNull() ?: 20) + (hhmm.substringAfter(":").toIntOrNull() ?: 0) / 60.0
+}
+
+/** A day's liftings, "HH:mm=birds:kg;…" -> laps in time order. */
+fun parseLiftLaps(s: String): List<LiftLap> = s.split(";").mapNotNull { part ->
+    val kv = part.split("="); if (kv.size != 2) return@mapNotNull null
+    val t = kv[0].trim(); val bk = kv[1].split(":")
+    val b = bk.getOrNull(0)?.trim()?.toDoubleOrNull()?.toInt() ?: return@mapNotNull null
+    val k = bk.getOrNull(1)?.trim()?.replace(",", ".")?.toDoubleOrNull() ?: 0.0
+    if (!Regex("^\\d{1,2}:\\d{2}$").matches(t) || b <= 0) null else LiftLap(t.padStart(5, '0'), b, k)
+}.sortedBy { it.hhmm }
+
+fun formatLiftLaps(laps: List<LiftLap>): String = laps.sortedBy { it.hhmm }.joinToString(";") {
+    it.hhmm + "=" + it.birds + ":" + (if (it.kg % 1.0 == 0.0) it.kg.toLong().toString() else it.kg.toString()) }
+
+/** The day's liftings: its laps, or — a day lifted before laps were kept — the one lifting as entered (at its time, else 20:00). */
+fun DailyDataEntity.lapsShown(zone: java.time.ZoneId): List<LiftLap> {
+    val laps = parseLiftLaps(liftLaps)
+    if (laps.isNotEmpty() || birdsLifted <= 0) return laps
+    val t = if (liftedAt > 0) java.time.Instant.ofEpochMilli(liftedAt).atZone(zone).let { String.format("%02d:%02d", it.hour, it.minute) } else "20:00"
+    return listOf(LiftLap(t, birdsLifted, weightLifted))
+}
+
 /** A day's feedings, "HH:mm=bags;HH:mm=bags" -> (time, bags), in time order. */
 fun parseFeedings(s: String): List<Pair<String, Double>> = s.split(";").mapNotNull { part ->
     val kv = part.split("="); if (kv.size != 2) return@mapNotNull null

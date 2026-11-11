@@ -430,7 +430,7 @@ class FlockRepository(
                 notes = "", waterTempC = null, waterPh = null, feedMoisturePct = null,
                 measuredCo2 = null, measuredNh3 = null, measuredO2 = null, measuredPressure = null,
                 measuredAirspeed = null, padWetMin = null, padDryMin = null, luxPerFt2 = null,
-                dieselCansUsed = 0.0, weighedAt = 0L, liftedAt = 0L, feedings = "",
+                dieselCansUsed = 0.0, weighedAt = 0L, liftedAt = 0L, feedings = "", liftLaps = "",
                 sampleEntered = false, committed = false, savedFields = "",
                 updatedAt = System.currentTimeMillis(), updatedBy = userEmail
             )
@@ -620,7 +620,18 @@ class FlockRepository(
      * null = now). The day's weighing, its time and its other entries are left as they are, so the morning's average stays
      * the morning's; the birds left and their average change from the lifting's time. 0 birds clears the lifting.
      */
-    suspend fun saveLifting(spreadsheetId: String, flockId: String, dayNumber: Int, birds: Int, kg: Double, at: Long?, userEmail: String): Result<Unit> =
+    suspend fun saveLifting(spreadsheetId: String, flockId: String, dayNumber: Int, birds: Int, kg: Double, at: Long?, userEmail: String): Result<Unit> {
+        val zone = try { java.time.ZoneId.of(getFarm(spreadsheetId).timeZone) } catch (e: Exception) { java.time.ZoneId.systemDefault() }
+        val t = java.time.Instant.ofEpochMilli(at ?: System.currentTimeMillis()).atZone(zone)
+        return saveLiftLaps(spreadsheetId, flockId, dayNumber, if (birds > 0) listOf(LiftLap(String.format("%02d:%02d", t.hour, t.minute), birds, kg.coerceAtLeast(0.0))) else emptyList(), userEmail)
+    }
+
+    /**
+     * A day's liftings, one by one (v59: a truck or a lap each, with its own time). The day's birds and kilos lifted are
+     * their sums; the lifting's time is the last one's. The weighing and the day's other entries are left as they are.
+     * An empty list clears the day's lifting.
+     */
+    suspend fun saveLiftLaps(spreadsheetId: String, flockId: String, dayNumber: Int, laps: List<LiftLap>, userEmail: String): Result<Unit> =
         withContext(Dispatchers.IO) {
             val flock = flockDao.getFlockById(spreadsheetId, flockId)
                 ?: return@withContext Result.failure(Exception("Flock not found"))
@@ -629,15 +640,19 @@ class FlockRepository(
             ioLock.withLock {
                 val existing = dailyDataDao.getDayEntry(spreadsheetId, flockId, dayNumber)
                     ?: return@withLock Result.failure(Exception("Day entry not found"))
-                if (dayNumber > calculateCurrentDay(flock.startDate, getFarm(spreadsheetId).timeZone)) {
+                val zone = try { java.time.ZoneId.of(getFarm(spreadsheetId).timeZone) } catch (e: Exception) { java.time.ZoneId.systemDefault() }
+                if (dayNumber > calculateCurrentDay(flock.startDate, zone.id)) {
                     return@withLock Result.failure(IllegalStateException("Day $dayNumber has not come yet — nothing to enter."))
                 }
                 val now = System.currentTimeMillis()
-                val n = birds.coerceAtLeast(0)
+                val kept = laps.filter { it.birds > 0 }.sortedBy { it.hhmm }
+                val lastAt = kept.lastOrNull()?.let { l ->
+                    try { java.time.LocalDate.parse(existing.date).atTime(java.time.LocalTime.parse(l.hhmm)).atZone(zone).toInstant().toEpochMilli().coerceAtMost(now) }
+                    catch (e: Exception) { now }
+                } ?: 0L
                 val row = existing.copy(
-                    birdsLifted = n, weightLifted = if (n > 0) kg.coerceAtLeast(0.0) else 0.0,
-                    liftedAt = if (n <= 0) 0L else at?.takeIf { it in 1..(now + 60_000) } ?: now,
-                    updatedAt = now, updatedBy = userEmail)
+                    birdsLifted = kept.sumOf { it.birds }, weightLifted = kept.sumOf { it.kg }, liftedAt = lastAt,
+                    liftLaps = formatLiftLaps(kept), updatedAt = now, updatedBy = userEmail)
                 val cols = SheetSchema.changedColumns(existing, row)
                 if (cols.isEmpty()) return@withLock Result.success(Unit)
                 eventDao.insertAll(com.example.flock.graph.FlockEvents.fromSave(existing, row, cols, userEmail, now))

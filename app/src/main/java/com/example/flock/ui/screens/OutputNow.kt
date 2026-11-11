@@ -255,19 +255,19 @@ private data class BookCol(val title: String, val width: Int, val cell: (OutputD
 
 private fun bookCols(): List<BookCol> = listOf(
     BookCol("Date", 58) { _, r -> vt(try { java.time.LocalDate.parse(r.date).format(java.time.format.DateTimeFormatter.ofPattern("dd MMM", java.util.Locale.US)) } catch (e: Exception) { r.date }, NE) },
-    BookCol("Live", 62) { d, r -> vi(r.liveBirds, if (r.mortality > 0 || "M" in r.savedFields) P else PR) },
+    BookCol("Live", 66) { d, r -> vi(r.liveBirds, if (r.mortality > 0 || "M" in r.savedFields) P else PR) },
     BookCol("Dead", 46) { _, r -> vi(r.mortality, P) },
     BookCol("Mort %", 54) { _, r -> v(r.cumMortPct, 2, P) },
-    BookCol("Lifted", 56) { _, r -> if (r.birdsLifted > 0) vi(r.birdsLifted, P) else vt("", NE) },
-    BookCol("Lift kg", 64) { _, r -> if (r.weightLifted > 0) v(r.weightLifted, 1, P) else vt("", NE) },
+    BookCol("Lifted", 62) { _, r -> if (r.birdsLifted > 0) vi(r.birdsLifted, P) else vt("", NE) },
+    BookCol("Lift kg", 78) { _, r -> if (r.weightLifted > 0) v(r.weightLifted, 1, P) else vt("", NE) },
     BookCol("Bags", 50) { d, r -> v(d.bagsUsedOnDay(r.dayNumber), 2, P) },
     BookCol("g/bird", 56) { d, r -> v(d.eatenGOn(r.dayNumber), 1, P) },
-    BookCol("Weight", 64) { d, r -> if (r.avgWeight != null) v(r.avgWeight, 1, P) else v(d.massByDay[r.dayNumber]?.avgAfterKg?.times(1000), 1, PR) },
-    BookCol("Company", 64) { _, r -> v(CompanyStandard.bw(r.dayNumber), 1, C) },
+    BookCol("Weight", 70) { d, r -> if (r.avgWeight != null) v(r.avgWeight, 1, P) else v(d.massByDay[r.dayNumber]?.avgAfterKg?.times(1000), 1, PR) },
+    BookCol("Company", 70) { _, r -> v(CompanyStandard.bw(r.dayNumber), 1, C) },
     BookCol("CV %", 48) { _, r -> v(r.cv, 1, P) },
     BookCol("FCR", 54) { d, r -> v(d.massByDay[r.dayNumber]?.fcr, 3, if (r.avgWeight != null) P else PR) },
     BookCol("cFCR", 54) { d, r -> v(d.massByDay[r.dayNumber]?.cFcrCompany, 3, if (r.avgWeight != null) P else PR) },
-    BookCol("kg/m²", 52) { _, r -> v(r.densityKgM2, 1, if (r.avgWeight != null) P else PR) }
+    BookCol("kg/m²", 56) { _, r -> v(r.densityKgM2, 1, if (r.avgWeight != null) P else PR) }
 )
 
 /**
@@ -307,6 +307,9 @@ fun FlockBookCard(d: OutputData, onSelectDay: ((Int) -> Unit)?) {
 @Composable
 private fun FlockBookGrid(d: OutputData, modifier: Modifier, onSelectDay: ((Int) -> Unit)?) {
     val cols = remember { bookCols() }
+    // columns grow with the phone's text size, and room is kept after the last one and under the last day, so nothing
+    // is cut by the frame (v59)
+    val fs = androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceIn(1f, 1.6f)
     val days = remember(d) { d.rows.filter { it.dayNumber <= max(d.day, d.lastEnteredDay) }.sortedByDescending { it.dayNumber } }
     val h = rememberScrollState()
     val mono = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Normal, letterSpacing = (-0.3).sp)
@@ -314,10 +317,13 @@ private fun FlockBookGrid(d: OutputData, modifier: Modifier, onSelectDay: ((Int)
     Column(modifier.border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(8.dp)).testTag("flock_book")) {
         // the titles
         Row(Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.06f)).padding(vertical = 6.dp)) {
-            Text("Day", Modifier.width(40.dp).padding(start = 6.dp), style = head, color = Color.White.copy(alpha = 0.8f))
-            Row(Modifier.horizontalScroll(h)) { cols.forEach { c -> Text(c.title, Modifier.width(c.width.dp), style = head, color = Color.White.copy(alpha = 0.8f), textAlign = TextAlign.End, maxLines = 1) } }
+            Text("Day", Modifier.width((44 * fs).dp).padding(start = 6.dp), style = head, color = Color.White.copy(alpha = 0.8f), maxLines = 1, softWrap = false)
+            Row(Modifier.weight(1f).horizontalScroll(h)) {
+                cols.forEach { c -> Text(c.title, Modifier.width((c.width * fs).dp), style = head, color = Color.White.copy(alpha = 0.8f), textAlign = TextAlign.End, maxLines = 1, softWrap = false) }
+                Spacer(Modifier.width(14.dp))
+            }
         }
-        Column(Modifier.verticalScroll(rememberScrollState())) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 8.dp)) {
             days.forEach { r ->
                 val lifting = r.birdsLifted > 0
                 val sel = r.dayNumber == d.day
@@ -326,14 +332,15 @@ private fun FlockBookGrid(d: OutputData, modifier: Modifier, onSelectDay: ((Int)
                     .border(if (sel) 1.5.dp else 0.dp, if (sel) Color.White else Color.Transparent)
                     .clickable(enabled = onSelectDay != null) { onSelectDay?.invoke(r.dayNumber) }
                     .padding(vertical = 5.dp).testTag("book_day_${r.dayNumber}"), verticalAlignment = Alignment.CenterVertically) {
-                    Text(r.dayNumber.toString() + if (lifting) " L" else "", Modifier.width(40.dp).padding(start = 6.dp), style = mono,
-                        color = if (lifting) kindColor(PR) else Color.White)
-                    Row(Modifier.horizontalScroll(h)) {
+                    Text(r.dayNumber.toString() + if (lifting) " L" else "", Modifier.width((44 * fs).dp).padding(start = 6.dp), style = mono,
+                        color = if (lifting) kindColor(PR) else Color.White, maxLines = 1, softWrap = false)
+                    Row(Modifier.weight(1f).horizontalScroll(h)) {
                         cols.forEach { c ->
                             val x = c.cell(d, r)
-                            Text(x.text, Modifier.width(c.width.dp).padding(start = 2.dp), style = mono, color = kindColor(if (x.text == "—" || x.text.isEmpty()) NE else x.kind),
+                            Text(x.text, Modifier.width((c.width * fs).dp).padding(start = 2.dp), style = mono, color = kindColor(if (x.text == "—" || x.text.isEmpty()) NE else x.kind),
                                 textAlign = TextAlign.End, maxLines = 1, softWrap = false)
                         }
+                        Spacer(Modifier.width(14.dp))
                     }
                 }
             }

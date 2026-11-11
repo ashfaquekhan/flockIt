@@ -103,6 +103,7 @@ fun FarmSettingsDialog(
     var panLipCm by remember { mutableStateOf(farm.panLipCm.toString()) }
     // how the cooling pads sit (v53)
     var padLayout by remember { mutableStateOf(farm.padLayout) }
+    var malesIn10 by remember { mutableStateOf(farm.malesIn10.coerceIn(0, 10)) }
     // pans on a line counted all together, the sensor pans among them (v54: "inclusive or exclusive?" — said plainly)
     var totalPans by remember { mutableStateOf((farm.pansPerFeederLine + farm.sensorPansPerLine).toString()) }
 
@@ -174,7 +175,7 @@ fun FarmSettingsDialog(
                     Tab(
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
-                        text = { Text("Feed Types (_FeedTypes)") }
+                        text = { Text("Feed types") }
                     )
                 }
 
@@ -290,6 +291,18 @@ fun FarmSettingsDialog(
                         }
                         Text("Honeycomb pads", style = MaterialTheme.typography.labelLarge, color = Color.White)
                         ChoiceRow(listOf("side" to "Side by side", "c" to "C-type"), padLayout, { padLayout = it }, "pad_layout")
+
+                        Divider(modifier = Modifier.padding(vertical = 4.dp))
+
+                        // the mix of the birds placed (v59): the ideal males and females among the birds caught for weighing
+                        Text("Males : females placed", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Normal))
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            androidx.compose.material3.OutlinedButton(onClick = { if (malesIn10 > 0) malesIn10-- }, shape = RoundedCornerShape(10.dp), modifier = Modifier.testTag("males_less")) { Text("−", color = Color.White) }
+                            Text("$malesIn10 : ${10 - malesIn10}", style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont),
+                                color = Color.White, modifier = Modifier.weight(1f).testTag("males_ratio"), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                            androidx.compose.material3.OutlinedButton(onClick = { if (malesIn10 < 10) malesIn10++ }, shape = RoundedCornerShape(10.dp), modifier = Modifier.testTag("males_more")) { Text("+", color = Color.White) }
+                        }
+                        Text("$malesIn10 males and ${10 - malesIn10} females in every 10 birds", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
                         Divider(modifier = Modifier.padding(vertical = 4.dp))
 
@@ -409,7 +422,7 @@ fun FarmSettingsDialog(
                     } else {
                         // User-Defined Feed Types (_FeedTypes)
                         Text(
-                            text = "Custom Feed Types (_FeedTypes)",
+                            text = "Feed types",
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Normal)
                         )
                         Text(
@@ -574,7 +587,8 @@ fun FarmSettingsDialog(
                                 manualDrinkers = manualDrinkers.toIntOrNull() ?: farm.manualDrinkers,
                                 nipplesPerLine = nipplesPerLine.toIntOrNull() ?: farm.nipplesPerLine,
                                 panLipCm = panLipCm.toDoubleOrNull() ?: farm.panLipCm,
-                                padLayout = padLayout
+                                padLayout = padLayout,
+                                malesIn10 = malesIn10
                             )
                             val updatedConfig = config.copy(
                                 tempBand = tempBand.toDoubleOrNull() ?: config.tempBand,

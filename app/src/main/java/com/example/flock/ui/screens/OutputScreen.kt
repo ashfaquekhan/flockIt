@@ -265,20 +265,20 @@ fun OutputScreen(
             AlertList(d.allAlerts)
         }
         // 2. feed and floor: the bags, the pans and the barricades on the whole house (the feedings are the model's)
-        Anchored("feed") { FeedSection(d, feedPick, { feedPick = it }, needsNow, onBarricades) }
+        Anchored("feed") { FeedSection(d, feedPick, { feedPick = it }, needsNow, onBarricades, view, hour) }
         // 3. lifting (v54: above the air)
-        Anchored("lift") { LiftSection(d) }
+        Anchored("lift") { LiftSection(d, view) }
         // 4. air and ventilation: the house in four views, no sensors yet
         Anchored("air") { AirSection(d, hour, needsNow, weatherOn, onWeatherOn, houseMap) }
         // 5. water, 6. the graphs, the trends and the book
-        Anchored("water") { WaterSection(d, needsNow, onFarmChange) }
+        Anchored("water") { WaterSection(d, needsNow, onFarmChange, view) }
         Anchored("graphs") {
             GraphsCard(d)
             TrendsSection(d)
             FlockBookCard(d, onSelectDay)
         }
         // 7. the map: every property, part and event and how they link; the event log under it (v58)
-        Anchored("map") { MindMapSection(d, flockEvents) }
+        Anchored("map") { MindMapSection(d, flockEvents, view = view, hour = hour) }
         if (onCloseBatch != null && flock?.status != "closed") {
             OutlinedButton(onClick = { confirmClose = true }, modifier = Modifier.fillMaxWidth(),
                 border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine)) {

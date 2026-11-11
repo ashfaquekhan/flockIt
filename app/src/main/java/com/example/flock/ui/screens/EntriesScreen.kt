@@ -64,6 +64,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalContext
+import com.example.flock.data.lapsShown
 import com.example.flock.data.savedGroups
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
@@ -132,7 +133,11 @@ fun EntriesScreen(
      * The lifting, saved on its own (v57): birds, kg and when the trucks were loaded (epoch ms, null = now); [done] runs
      * once it is saved. The day's other entries keep their own time (the morning weighing stays the morning's).
      */
-    onSaveLift: (birds: Int, kg: Double, at: Long?, done: () -> Unit) -> Unit = { _, _, _, done -> done() }
+    onSaveLift: (birds: Int, kg: Double, at: Long?, done: () -> Unit) -> Unit = { _, _, _, done -> done() },
+    /** The day's liftings one by one (v59: a truck or a lap each); [done] runs once they are saved. Null: [onSaveLift] with the day's sum. */
+    onSaveLaps: ((laps: List<com.example.flock.data.LiftLap>, done: () -> Unit) -> Unit)? = null,
+    /** a closed batch (v59): nothing can be entered — the page shows what was saved */
+    readOnly: Boolean = false
 ) {
     val startType = lastFeedType?.takeIf { code -> feedTypes.isEmpty() || feedTypes.any { it.code == code } } ?: (feedTypes.firstOrNull()?.code ?: "B1")
     // sample locations: as many as the last weighing had (5 to start with); + and − change the number
@@ -217,8 +222,8 @@ fun EntriesScreen(
             else -> feedUse.add(FeedUseRow(startType, ""))
         }
 
-        birdsLifted = entry?.birdsLifted?.let { if (it > 0) it.toString() else "" } ?: ""
-        weightLifted = entry?.weightLifted?.let { if (it > 0) it.toString() else "" } ?: ""
+        // the lifting's fields are for the next truck or lap (v59): the ones saved are listed above them
+        birdsLifted = ""; weightLifted = ""
         lameSeparated = entry?.lameSeparated?.let { if (it > 0) it.toString() else "" } ?: ""
         // the back barricade is kept as ft from the front wall (BroodingLength); typed and shown as ft from the back wall
         penFt = entry?.broodingLength?.takeIf { it > 0 && (houseLen == null || it < houseLen - 0.5) }?.let { if (houseLen != null) houseLen - it else it }?.fmt() ?: ""
@@ -264,8 +269,8 @@ fun EntriesScreen(
     }
 
     // a day to come cannot be entered; a saved day is locked until unlocked (notes and feed received stay open on it)
-    val isHardLocked = lockStatus.isFuture
-    val openDay = !lockStatus.isFuture
+    val isHardLocked = lockStatus.isFuture || readOnly
+    val openDay = !lockStatus.isFuture && !readOnly
     // the lifting has its own save (v57) and stays open on a locked day, like the notes
     val dayLocked = openDay && !unlocked && (entry?.updatedAt ?: 0L) > 0 && saved.isNotEmpty()
     val weightsEnabled = openDay && !dayLocked
@@ -299,22 +304,27 @@ fun EntriesScreen(
     }
     fun entryAt(): Long? = momentOf(pickedAt, savedAtMs, shownHHmm)
     // the lifting's own time: as saved, else now (today) or 20:00 (a past day: the trucks are loaded in the evening)
-    val savedLiftMs = entry?.liftedAt?.takeIf { it > 0 && (entry.birdsLifted) > 0 }
-    val savedLiftHHmm = savedLiftMs?.let { ms ->
-        java.time.Instant.ofEpochMilli(ms).atZone(zone).toLocalTime().let { String.format("%02d:%02d", it.hour, it.minute) }
-    }
+    val laps = remember(entry?.liftLaps, entry?.birdsLifted, entry?.weightLifted, entry?.liftedAt) { entry?.lapsShown(zone).orEmpty() }
     var liftPicked by remember(draftKey) { mutableStateOf<String?>(null) }
-    val liftHHmm = liftPicked ?: savedLiftHHmm ?: if (isToday) nowHHmm else "20:00"
+    // a new lifting: now (today) or 20:00 (a past day: the trucks are loaded in the evening), unless picked
+    val liftHHmm = liftPicked ?: if (isToday) nowHHmm else "20:00"
     var askLiftTime by remember(draftKey) { mutableStateOf(false) }
     var pickLiftTime by remember(draftKey) { mutableStateOf(false) }
+    var removeLap by remember(draftKey) { mutableStateOf<com.example.flock.data.LiftLap?>(null) }
     var remind by remember(draftKey) { mutableStateOf<LiftReminder?>(null) }
     val liftSavedN = entry?.birdsLifted ?: 0
+    fun saveLaps(list: List<com.example.flock.data.LiftLap>, done: () -> Unit) {
+        val cb = onSaveLaps
+        if (cb != null) cb(list, done)
+        else onSaveLift(list.sumOf { it.birds }, list.sumOf { it.kg }, momentOf(liftPicked, null, list.lastOrNull()?.hhmm ?: liftHHmm), done)
+    }
     fun doSaveLift() {
         val n = birdsLifted.toCount()?.coerceAtLeast(0) ?: 0
-        val kg = if (n > 0) weightLifted.toNum()?.coerceAtLeast(0.0) ?: 0.0 else 0.0
-        // the reminder's figures, from the day as it stood before this lifting
+        if (n <= 0) return
+        val kg = weightLifted.toNum()?.coerceAtLeast(0.0) ?: 0.0
+        // the reminder's figures, from the house as it stood before this lifting
         val r = entry?.let { e ->
-            val before = (e.liveBirds + e.birdsLifted).coerceAtLeast(0)
+            val before = e.liveBirds.coerceAtLeast(0)
             val left = (before - n).coerceAtLeast(0)
             val perBird = if (e.liveBirds > 0) e.totalFeedKg / e.liveBirds else 0.0
             val bagKg = (farm?.feedBagKg ?: 50.0).takeIf { it > 0 } ?: 50.0
@@ -323,7 +333,7 @@ fun EntriesScreen(
                 kotlin.math.ceil(perBird * before / bagKg).toInt(), kotlin.math.ceil(perBird * left / bagKg).toInt(),
                 area?.let { a -> a / before.coerceAtLeast(1) }, area?.let { a -> a / left.coerceAtLeast(1) })
         }
-        onSaveLift(n, kg, momentOf(liftPicked, savedLiftMs, liftHHmm)) { if (n > 0) remind = r }
+        saveLaps(laps + com.example.flock.data.LiftLap(liftHHmm, n, kg)) { remind = r; birdsLifted = ""; weightLifted = "" }
         liftPicked = null
     }
     var askTime by remember(draftKey) { mutableStateOf(false) }
@@ -414,7 +424,7 @@ fun EntriesScreen(
         }
 
         // (the time of the entries is picked at Save, v52: no separate box)
-        Section(title = "Weight samples", trailing = { SexSplit(locs.map { it.n.toCount() ?: 0 }) }) {
+        Section(title = "Weight samples", trailing = { SexSplit(locs.map { it.n.toCount() ?: 0 }, farm?.malesIn10 ?: 3) }) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -442,7 +452,8 @@ fun EntriesScreen(
                     Icon(Icons.Default.Add, contentDescription = "One more location", modifier = Modifier.size(18.dp))
                 }
             }
-            // (v57: no house drawing here — the ♂♀ mark by the title is all)
+            // where to catch the birds (v59: back, plain — the birds' floor and the numbered spots, no lines)
+            if (farm != null) SpotMap(locs.size, farm, entry?.occupiedFt2 ?: 0.0)
 
             OutlinedTextField(
                 colors = entryFieldColors(),
@@ -569,11 +580,36 @@ fun EntriesScreen(
         // open on a locked day, like the notes
         Section(title = "Lifting") {
             val liftOpen = !isHardLocked
+            // every truck or lap of the day, each with its time; then the day's sum
+            if (laps.isNotEmpty()) Column(Modifier.fillMaxWidth().testTag("lift_laps"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                val num = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont)
+                laps.forEachIndexed { i, l ->
+                    Row(Modifier.fillMaxWidth().testTag("lift_lap_$i"), verticalAlignment = Alignment.CenterVertically) {
+                        Text("${i + 1}", style = num, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.width(22.dp))
+                        Text(l.hhmm, style = num, color = Color.White, modifier = Modifier.width(54.dp))
+                        Text(String.format("%,d", l.birds), style = num, color = com.example.ui.theme.ValuePresent, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                        Text(Fmt.n(l.kg, 1) + " kg", style = num, color = com.example.ui.theme.ValuePresent, modifier = Modifier.weight(1.3f), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                        Text(if (l.birds > 0 && l.kg > 0) Fmt.n(l.kg / l.birds, 3) else "", style = num, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.weight(0.9f),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                        IconButton(onClick = { removeLap = l }, enabled = openDay && liftOpen, modifier = Modifier.size(36.dp).testTag("lift_lap_remove_$i")) {
+                            Icon(Icons.Default.Close, contentDescription = "Remove lifting ${i + 1}", modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+                if (laps.size > 1) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("all", style = num, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.width(76.dp))
+                    Text(String.format("%,d", laps.sumOf { it.birds }), style = num, color = Color.White, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                    Text(Fmt.n(laps.sumOf { it.kg }, 1) + " kg", style = num, color = Color.White, modifier = Modifier.weight(1.3f), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                    Text(laps.sumOf { it.birds }.takeIf { it > 0 }?.let { Fmt.n(laps.sumOf { l -> l.kg } / it, 3) } ?: "", style = num, color = Color.White.copy(alpha = 0.6f),
+                        modifier = Modifier.weight(0.9f), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                    Spacer(Modifier.width(36.dp))
+                }
+            }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     colors = entryFieldColors(),
                     value = birdsLifted, onValueChange = { birdsLifted = it },
-                    label = { Text("Birds lifted") },
+                    label = { Text(if (laps.isEmpty()) "Birds lifted" else "Birds, lifting ${laps.size + 1}") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     enabled = liftOpen, modifier = Modifier.weight(1f).testTag("birds_lifted_input")
                 )
@@ -589,12 +625,10 @@ fun EntriesScreen(
             val liftKg = weightLifted.replace(",", ".").toNum() ?: 0.0
             if (liftN > 0 && liftKg > 0) Text("Lifted average ${String.format("%.3f", liftKg / liftN)} kg a bird",
                 style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont), color = com.example.ui.theme.ValuePresent)
-            if (liftSavedN > 0 && savedLiftHHmm != null) Text("Saved · ${String.format("%,d", liftSavedN)} birds at $savedLiftHHmm",
-                style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f), modifier = Modifier.testTag("lift_saved"))
             HoldButton(
-                label = if (liftSavedN > 0) "Hold to update the lifting" else "Hold to save the lifting",
+                label = if (laps.isEmpty()) "Hold to save the lifting" else "Hold to add lifting ${laps.size + 1}",
                 onComplete = { askLiftTime = true },
-                enabled = openDay && liftOpen && (liftN > 0 || liftSavedN > 0),
+                enabled = openDay && liftOpen && liftN > 0,
                 icon = Icons.Default.Check, height = 48, tag = "lift_hold"
             )
         }
@@ -733,11 +767,11 @@ fun EntriesScreen(
     // the lifting's own time: as saved, else now (a past day 20:00); the morning's entries keep theirs
     if (askLiftTime) androidx.compose.material3.AlertDialog(
         onDismissRequest = { askLiftTime = false; liftPicked = null },
-        title = { Text(if (liftSavedN > 0) "Update the lifting" else "Save the lifting") },
+        title = { Text(if (laps.isEmpty()) "Save the lifting" else "Add lifting ${laps.size + 1}") },
         text = {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(if (liftPicked == null && savedLiftHHmm != null) "Lifted at, as saved" else if (liftPicked == null && isToday) "Lifted at, now" else "Lifted at",
+                    Text(if (liftPicked == null && isToday) "Lifted at, now" else "Lifted at",
                         style = MaterialTheme.typography.labelLarge, color = Color.White)
                     Text(liftHHmm, style = MaterialTheme.typography.headlineSmall.copy(fontFamily = com.example.ui.theme.NumberFont),
                         color = Color.White, modifier = Modifier.testTag("lift_time"))
@@ -750,9 +784,16 @@ fun EntriesScreen(
                 { picked -> liftPicked = if (isToday && picked > nowHHmm) nowHHmm else picked; pickLiftTime = false }, { pickLiftTime = false })
         },
         confirmButton = { androidx.compose.material3.TextButton(onClick = { askLiftTime = false; doSaveLift() }, modifier = Modifier.testTag("lift_save_confirm")) {
-            Text(if (liftSavedN > 0) "Update" else "Save") } },
+            Text("Save") } },
         dismissButton = { androidx.compose.material3.TextButton(onClick = { askLiftTime = false; liftPicked = null }) { Text("Cancel") } }
     )
+    removeLap?.let { l -> androidx.compose.material3.AlertDialog(
+        onDismissRequest = { removeLap = null },
+        title = { Text("Remove this lifting?") },
+        text = { Text("${l.hhmm} · ${String.format("%,d", l.birds)} birds · ${Fmt.n(l.kg, 1)} kg", color = Color.White) },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { removeLap = null; saveLaps(laps - l) {} }, modifier = Modifier.testTag("lift_lap_remove_confirm")) { Text("Remove") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = { removeLap = null }) { Text("Keep") } }
+    ) }
     // once the lifting is saved: what to do in the house now
     remind?.let { r -> LiftReminderDialog(r) { remind = null } }
 }
@@ -793,17 +834,55 @@ private fun ReminderStep(icon: GIcon, title: String, figure: String, color: Colo
 }
 
 /**
+ * Where to catch the birds for weighing (v59, plain): the birds' floor from above, front on the left, one numbered spot
+ * per location — spread evenly along it, left and right in turn — and the feet along the bottom. No lines, no text.
+ */
+@Composable
+fun SpotMap(locations: Int, farm: com.example.flock.data.FarmEntity, occupiedFt2: Double, modifier: Modifier = Modifier) {
+    val widthFt = farm.usableWidthFt.coerceAtLeast(1.0)
+    val lenFt = (if (occupiedFt2 > 0) occupiedFt2 / widthFt else farm.usableLengthFt).coerceIn(10.0, farm.usableLengthFt.coerceAtLeast(10.0))
+    val n = locations.coerceIn(1, com.example.flock.data.MAX_LOCATIONS)
+    val spots = (0 until n).map { i -> ((i + 0.5) / n) to (if (n == 1) 0.5 else if (i % 2 == 0) 0.3 else 0.7) }
+    androidx.compose.foundation.Canvas(modifier.fillMaxWidth().height(84.dp).testTag("spot_map")) {
+        val px = density
+        val padL = 34f * px; val padR = 6f * px; val padT = 4f * px; val padB = 18f * px
+        val w = size.width - padL - padR; val h = size.height - padT - padB
+        fun at(fx: Double, fy: Double) = androidx.compose.ui.geometry.Offset(padL + (fx * w).toFloat(), padT + (fy * h).toFloat())
+        drawRect(Color.White.copy(alpha = 0.45f), androidx.compose.ui.geometry.Offset(padL, padT), androidx.compose.ui.geometry.Size(w, h),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(1f * px))
+        val pts = listOf(at(0.0, 0.5)) + spots.map { at(it.first, it.second) }
+        for (i in 1 until pts.size) drawLine(Color.White.copy(alpha = 0.35f), pts[i - 1], pts[i], 1f * px,
+            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(5f * px, 4f * px)))
+        val paint = android.graphics.Paint().apply { isAntiAlias = true; textAlign = android.graphics.Paint.Align.CENTER; typeface = com.example.ui.theme.AppFonts.mono }
+        val r = (if (n > 12) 7.5f else 9.5f) * px
+        spots.forEachIndexed { i, sp ->
+            val c = at(sp.first, sp.second)
+            drawCircle(Color.Black, r, c); drawCircle(Color.White, r, c, style = androidx.compose.ui.graphics.drawscope.Stroke(1.2f * px))
+            paint.textSize = (if (n > 12) 9f else 11f) * px; paint.color = android.graphics.Color.WHITE
+            drawContext.canvas.nativeCanvas.drawText("${i + 1}", c.x, c.y + paint.textSize * 0.36f, paint)
+        }
+        paint.textSize = 10f * px; paint.color = Color.White.copy(alpha = 0.6f).toArgb()
+        drawContext.canvas.nativeCanvas.drawText("front", padL / 2, padT + h / 2 + paint.textSize * 0.36f, paint)
+        listOf(0.0, 0.5, 1.0).forEach { f ->
+            paint.textAlign = if (f == 0.0) android.graphics.Paint.Align.LEFT else if (f == 1.0) android.graphics.Paint.Align.RIGHT else android.graphics.Paint.Align.CENTER
+            drawContext.canvas.nativeCanvas.drawText(String.format("%.0f ft", lenFt * f), padL + (f * w).toFloat(), size.height - 4f * px, paint)
+        }
+    }
+}
+
+/**
  * The ideal mix of the birds caught (v58): an as-hatched flock is about half males and half females, and males grow
  * heavier, so each spot's catch should be half and half too — worked out from the counts typed (a spot each when they are
  * all the same, else in all). With no count yet, the ♀♂ mark alone.
  */
 @Composable
-private fun SexSplit(counts: List<Int>) {
+private fun SexSplit(counts: List<Int>, malesIn10: Int = 3) {
+    // v59: the flock's own mix — [malesIn10] males in every 10 birds (a farm setting; 3 : 7 unless changed)
     val typed = counts.filter { it > 0 }
     val same = typed.distinct().singleOrNull()
     val n = same ?: typed.sum()
     if (n <= 0) { SexesMark(); return }
-    val males = (n + 1) / 2; val females = n - males
+    val males = Math.round(n * malesIn10.coerceIn(0, 10) / 10.0).toInt(); val females = n - males
     val num = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont)
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("sex_split")) {
         Text("ideal ", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))

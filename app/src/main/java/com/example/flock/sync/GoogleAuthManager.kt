@@ -36,6 +36,20 @@ class GoogleAuthManager(private val context: Context) {
     private val sheetsScope = Scope("https://www.googleapis.com/auth/spreadsheets")
     // Hidden per-user, per-app folder that syncs across devices — holds the FlockIt index (control plane).
     private val appDataScope = Scope("https://www.googleapis.com/auth/drive.appdata")
+    // Seeing which sheets were shared with this account (v59): names and owners only, never their contents. With it a farm
+    // someone shared shows up on its own; without it (an account signed in before v59) it has to be opened by its link once.
+    private val driveMetaScope = Scope("https://www.googleapis.com/auth/drive.metadata.readonly")
+    private val metaScopeString = "oauth2:https://www.googleapis.com/auth/drive.metadata.readonly"
+
+    /** A token that can list the sheets shared with this account; null when that was not granted (sign out and in to grant it). */
+    suspend fun sharedListHeader(): String? = withContext(Dispatchers.IO) {
+        val email = _authState.value.email.ifBlank { GoogleSignIn.getLastSignedInAccount(context)?.email ?: "" }
+        if (email.isBlank() || _authState.value.isDemoMode) return@withContext null
+        val granted = GoogleSignIn.getLastSignedInAccount(context)?.grantedScopes?.contains(driveMetaScope) ?: false
+        if (!granted) return@withContext null
+        try { "Bearer " + GoogleAuthUtil.getToken(context, email, metaScopeString) } catch (e: Exception) { null }
+    }
+
     private val oauthScopeString =
         "oauth2:https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata"
 
@@ -76,7 +90,7 @@ class GoogleAuthManager(private val context: Context) {
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
             .requestProfile()
-            .requestScopes(driveFileScope, sheetsScope, appDataScope)
+            .requestScopes(driveFileScope, sheetsScope, appDataScope, driveMetaScope)
             .build()
         return GoogleSignIn.getClient(context, gso)
     }

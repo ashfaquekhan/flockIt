@@ -1,6 +1,7 @@
 package com.example.flock
 
 import com.example.flock.data.DailyDataEntity
+import com.example.flock.data.lapsShown
 import com.example.flock.graph.EventKind
 import com.example.flock.graph.FlockEvents
 import com.example.flock.graph.FlockGraph
@@ -73,13 +74,51 @@ class FlockGraphTest {
         assertEquals("2026-11-05 20:00", SheetSchema.eventRow(l, zone)[0])
     }
 
-    @Test fun theMapPlacesEveryPoint() {
-        val m = com.example.flock.ui.screens.MindLayout.build()
-        val leaves = m.nodes.filter { it.level == 2 }
-        assertEquals(FlockGraph.props.size, leaves.size)
-        assertEquals(FlockGraph.Group.values().size, m.nodes.count { it.level == 1 })
-        assertEquals(leaves.size, leaves.map { it.key }.toSet().size)
-        val c = com.example.flock.ui.screens.MindLayout.S / 2
-        leaves.forEach { n -> assertTrue(n.key, Math.hypot((n.x - c).toDouble(), (n.y - c).toDouble()) < c * 0.7) }
+    /** v59: the map's scenes — the flock's groups on a ring, a group's points on rings, a number's wiring. */
+    @Test fun theMapsScenes() {
+        val L = com.example.flock.ui.screens.StageLayout
+        // the flock: every group once, the flock in the middle
+        val home = L.of("center")
+        assertEquals(FlockGraph.Group.values().size, home.count { !it.big }); assertEquals("center", home.single { it.big }.key)
+        // a group: every one of its points once, on rings of no more than 7
+        FlockGraph.Group.values().forEach { g ->
+            val sc = L.of("group:" + g.name).filter { !it.big }
+            assertEquals(g.name, FlockGraph.props.filter { it.group == g }.map { it.key }.toSet(), sc.map { it.key }.toSet())
+            sc.groupBy { it.y }.values.forEach { ring -> assertTrue(ring.size <= L.PER_RING) }
+            sc.forEach { p -> assertEquals(1.0, Math.hypot(p.x.toDouble(), p.z.toDouble()), 1e-4) }
+        }
+        // a number: what it comes from on the left, what it moves on the right, its events above; the strongest shown
+        val w = L.of("weightNow")
+        assertEquals("weightNow", w.single { it.big }.key)
+        assertTrue(w.filter { it.x < 0 }.map { it.key }.containsAll(listOf("weight", "liftAvg")))
+        assertTrue(w.filter { it.x > 0 }.map { it.key }.containsAll(listOf("density", "kgInHouse")))
+        assertTrue(w.filter { it.x < 0 }.all { it.inward } && w.filter { it.x > 0 }.all { !it.inward })
+        val lifted = L.of("lifted")
+        assertTrue(lifted.any { it.key == "ev:lifting" && it.y < 0 })
+        // a point with many links shows the strongest and says how many more there are
+        val live = L.of("live").filter { it.x > 0 }
+        assertTrue(live.size <= L.MAX_SIDE)
+        assertEquals(FlockGraph.outputsOf("live").size - live.size, live.last().more)
+        // an event in the middle: what it changes
+        assertTrue(L.of("ev:lifting").map { it.key }.containsAll(listOf("lifted", "liftedKg", "liftTime")))
+    }
+
+    /** v59: a day's liftings one by one. */
+    @Test fun liftLapsReadAndWrite() {
+        val laps = listOf(com.example.flock.data.LiftLap("21:10", 800, 2100.5), com.example.flock.data.LiftLap("19:30", 1200, 3000.0))
+        val text = com.example.flock.data.formatLiftLaps(laps)
+        assertEquals("19:30=1200:3000;21:10=800:2100.5", text)
+        assertEquals(laps.sortedBy { it.hhmm }, com.example.flock.data.parseLiftLaps(text))
+        assertTrue(com.example.flock.data.parseLiftLaps("").isEmpty()); assertTrue(com.example.flock.data.parseLiftLaps("x=1:2;20:00=0:5").isEmpty())
+        assertEquals(19.5, laps[1].hour, 1e-9)
+        // a day lifted before laps were kept is one lifting at its time (20:00 when none was kept)
+        val zone = java.time.ZoneId.of("Asia/Kolkata")
+        val old = DailyDataEntity(spreadsheetId = "S", flockId = "F", dayNumber = 30, date = "2026-11-05", birdsLifted = 500, weightLifted = 1250.0)
+        assertEquals(listOf(com.example.flock.data.LiftLap("20:00", 500, 1250.0)), old.lapsShown(zone))
+        // the sheet keeps them
+        val header = SheetSchema.dailyHeader(listOf("B2"), 5)
+        assertTrue("LiftLaps" in header)
+        assertEquals(text, SheetSchema.dayCells(old.copy(liftLaps = text), header)[header.indexOf("LiftLaps")])
+        assertEquals(com.example.flock.graph.EventKind.LIFTING, com.example.flock.graph.EventKind.ofColumn("liftlaps"))
     }
 }

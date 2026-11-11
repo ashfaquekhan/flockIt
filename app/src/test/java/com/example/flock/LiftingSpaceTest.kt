@@ -1,6 +1,7 @@
 package com.example.flock
 
 import com.example.flock.data.FlockCalc
+import com.example.flock.data.filledSamples
 import com.example.flock.data.formatFeedings
 import com.example.flock.data.parseFeedings
 import com.example.flock.domain.Litter
@@ -202,6 +203,68 @@ class LiftingSpaceTest {
      * v56: yesterday's gain is yesterday's own: its weighing against the one before — entered (green) when yesterday was
      * weighed, whatever has been entered today; and with no harvest age the lights stay at 18 h after the first week.
      */
+    /**
+     * v59: the sums from first principles, on the real flock, every day: birds are conserved (placed − reception − deaths −
+     * culls − lifted), so is meat (in the house + lifted = produced), and FCR, cFCR, mortality, livability and density
+     * are what their definitions say.
+     */
+    @Test fun theSumsHoldFromFirstPrinciples() {
+        val r = KgfFlock.computed(44)
+        val f = KgfFlock.flock; val farm = KgfFlock.farm
+        val kgOf = KgfFlock.feedTypes.associate { it.code to it.bagKg }
+        val bag = if (farm.feedBagKg > 0) farm.feedBagKg else 50.0
+        val mass = FlockCalc.mass(f, farm, com.example.flock.data.ConfigEntity(spreadsheetId = farm.spreadsheetId), r, kgOf).associateBy { it.day }
+        val entry = f.birdsPlaced - f.receptionMort
+        var dead = 0; var culled = 0; var lifted = 0; var liftedKg = 0.0; var feedKg = 0.0
+        r.forEach { d ->
+            dead += d.mortality; culled += d.lameSeparated; lifted += d.birdsLifted; liftedKg += d.weightLifted
+            feedKg += FlockCalc.usedKg(d, kgOf, bag)
+            val tag = "day ${d.dayNumber}"
+            // birds
+            assertEquals(tag, entry - dead - culled - lifted, d.liveBirds)
+            assertEquals(tag, dead * 100.0 / entry, d.cumMortPct!!, 1e-9)
+            assertEquals(tag, (d.liveBirds + lifted) * 100.0 / entry, d.livability!!, 1e-9)
+            // meat
+            val m = mass[d.dayNumber]!!
+            assertEquals(tag, lifted, m.liftedBirds); assertEquals(tag, liftedKg, m.liftedKg, 1e-6)
+            assertEquals(tag, d.liveBirds * m.avgAfterKg, m.liveKg, 1e-6)
+            assertEquals(tag, m.liveKg + m.liftedKg, m.producedKg, 1e-6)
+            if (d.liveBirds + lifted > 0) assertEquals(tag, m.producedKg / (d.liveBirds + lifted), m.cumBwKg, 1e-9)
+            // feed against meat
+            if (feedKg > 0 && m.producedKg > 0) {
+                assertEquals(tag, feedKg / m.producedKg, m.fcr!!, 1e-9)
+                assertEquals(tag, m.fcr!! + (2.0 - m.cumBwKg) * 0.25, m.cFcrCompany!!, 1e-9)
+            }
+            // the floor: kg per m² is the birds' kilos over the floor they have; ft² per bird the floor over the birds
+            if (d.liveBirds > 0 && d.occupiedFt2 > 0) {
+                assertEquals(tag, d.liveBirds * m.avgAfterKg / (d.occupiedFt2 * 0.092903), d.densityKgM2!!, 0.02)
+                assertEquals(tag, d.occupiedFt2 / d.liveBirds, d.ftPerBird, 1e-6)
+            }
+            // water follows feed (1.6–2.6 L a kg through cool and hot days)
+            if (d.totalFeedKg > 0) assertTrue(tag + " water " + d.totalWaterL / d.totalFeedKg, d.totalWaterL / d.totalFeedKg in 1.5..2.7)
+            // a weighing is the birds weighed over their number
+            d.avgWeight?.let { w ->
+                val g = d.filledSamples(); val singles = com.example.flock.engine.PhysiologicalEngine.parseWeights(d.indivWeights)
+                val n = g.sumOf { it.second } + singles.size
+                if (n > 0) assertEquals(tag, (g.sumOf { it.first } + singles.sum()) / n, w, 1e-6)
+            }
+        }
+        // the day's deaths are a share of the birds the day began with, lifting day or not
+        val liftDay = r.first { it.birdsLifted > 0 }
+        val o = com.example.flock.ui.screens.OutputData(f, farm, liftDay, r, KgfFlock.feedTypes, null, emptyList(), false, false)
+        assertEquals(r.first { it.dayNumber == liftDay.dayNumber - 1 }.liveBirds, o.startLive)
+        assertEquals(liftDay.mortality * 100.0 / o.startLive, o.mortTodayPct!!, 1e-9)
+        // the ideal floor holds the birds at the comfortable density: its length × the width × that density = their kilos
+        val kgOnIdeal = o.idealFloorFt * farm.usableWidthFt * 0.092903 * o.space.targetKgM2
+        if (o.idealFloorFt < farm.usableLengthFt - 0.5 && o.idealFloorFt > 10.5) assertEquals(o.live * o.bwNow / 1000.0, kgOnIdeal, o.live * o.bwNow / 1000.0 * 0.01)
+        assertTrue("ideal floor ${o.idealFloorFt} ft", o.idealFloorFt > 30)
+        // at the end of a lifting day the FCR by the clock is feed over everything made: the birds left and the kilos lifted
+        val z = java.time.ZoneId.of(farm.timeZone)
+        val v = o.nowView(java.time.LocalDate.parse(liftDay.date).atTime(23, 59).atZone(z))
+        assertEquals(liftDay.liveBirds.toDouble(), v.live, 1e-9)
+        assertTrue("fcr by the clock ${v.fcr} against the day's ${mass[liftDay.dayNumber]!!.fcr}", Math.abs(v.fcr!! - mass[liftDay.dayNumber]!!.fcr!!) / mass[liftDay.dayNumber]!!.fcr!! < 0.12)
+    }
+
     @Test fun yesterdaysGainIsYesterdays() {
         val r = KgfFlock.computed(44)
         val weighed = r.filter { it.avgWeight != null && it.dayNumber in 5..43 }.map { it.dayNumber }

@@ -67,7 +67,7 @@ fun NewFarmDialog(
                 }
 
                 Text(
-                    text = "A new farm will be provisioned with its own Google Spreadsheet (_Meta, _Farm, _Config, _FeedTypes, Flocks, DailyData, Tasks).",
+                    text = "A new farm gets its own Google Sheet in your Drive.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

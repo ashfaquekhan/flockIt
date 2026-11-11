@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Android 12+: the start-up screen shows the app's mark on black -->
-    <style name="Theme.FlockIt" parent="android:Theme.DeviceDefault.NoActionBar">
+    <style name="Theme.FlockIt" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@drawable/launch_screen</item>
+        <item name="android:colorBackground">@android:color/black</item>
+        <!-- phones that recolour apps on their own (a "force dark" of the maker's) leave this one as it is -->
+        <item name="android:forceDarkAllowed" tools:targetApi="q">false</item>
+        <item name="android:statusBarColor">@android:color/black</item>
+        <item name="android:navigationBarColor">@android:color/black</item>
         <item name="android:windowSplashScreenBackground">@android:color/black</item>
     </style>
 </resources>

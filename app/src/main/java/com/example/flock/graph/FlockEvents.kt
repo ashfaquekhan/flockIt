@@ -38,7 +38,7 @@ enum class EventKind(val key: String, val label: String, val changes: List<Strin
             c == "lameseparated" -> CULLS
             c == "feedbagsused" || c == "feedusedtype" || c == "feedusedbreakdown" || (c.startsWith("used") && c != "updatedat" && c != "updatedby") -> FEED_USED
             c.startsWith("feedrecb") || c.startsWith("feedtypeb") -> FEED_RECEIVED
-            c == "birdslifted" || c == "weightlifted" || c == "liftedat" -> LIFTING
+            c == "birdslifted" || c == "weightlifted" || c == "liftedat" || c == "liftlaps" -> LIFTING
             c == "penstartft" || c == "broodinglength" -> BARRICADES
             c == "feedings" -> FEEDING
             c == "notes" -> NOTES

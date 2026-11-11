@@ -187,9 +187,28 @@ class SyncSafetyTest {
         dao.insertOrUpdateDay(dao.getDayEntry(sid, "F1", 12)!!.copy(liftedAt = 0L))
         repo.saveDayEntry(sid, "F1", 12, "a@b", setOf("M"), morning) { it.copy(mortality = 5) }.getOrThrow()
         assertEquals(0L, dao.getDayEntry(sid, "F1", 12)!!.liftedAt)
+        // v59: two trucks that evening, each with its time — the day's sums, the last one's time; the weighing as it was
+        val two = listOf(com.example.flock.data.LiftLap("19:40", 700, 1750.0), com.example.flock.data.LiftLap("21:05", 500, 1300.0))
+        repo.saveLiftLaps(sid, "F1", 12, two, "a@b").getOrThrow()
+        dao.getDayEntry(sid, "F1", 12)!!.let {
+            assertEquals(1200, it.birdsLifted); assertEquals(3050.0, it.weightLifted, 1e-9); assertEquals(at(21, 5), it.liftedAt)
+            assertEquals("19:40=700:1750;21:05=500:1300", it.liftLaps); assertEquals(morning, it.weighedAt)
+            val o = com.example.flock.ui.screens.OutputData(flock, com.example.flock.data.FarmEntity(spreadsheetId = sid), it, dao.getDailyDataList(sid, "F1").sortedBy { r -> r.dayNumber },
+                emptyList(), null, emptyList(), false, false)
+            // the house through the evening: nobody gone at 19:00, the first truck's birds at 20:00, all of them at 21:30
+            assertEquals(0, o.liftedCountBy(19.0)); assertEquals(700, o.liftedCountBy(20.0)); assertEquals(1200, o.liftedCountBy(21.5))
+            fun viewAt(h: Int, m: Int) = o.nowView(start.plusDays(12).atTime(h, m).atZone(zone))
+            assertEquals((it.liveBirds + 1200).toDouble(), viewAt(19, 0).live, 1e-9)
+            assertEquals((it.liveBirds + 500).toDouble(), viewAt(20, 0).live, 1e-9)
+            assertEquals(it.liveBirds.toDouble(), viewAt(21, 30).live, 1e-9)
+            // the birds' weight grows on from the weighing through the day
+            assertTrue(viewAt(18, 0).weightG > viewAt(9, 0).weightG)
+            // deaths today are a share of the birds the day began with
+            assertEquals(it.liveBirds + 1200 + it.mortality, o.startLive)
+        }
         // nothing lifted: the lifting and its time cleared
         repo.saveLifting(sid, "F1", 12, 0, 0.0, null, "a@b").getOrThrow()
-        dao.getDayEntry(sid, "F1", 12)!!.let { assertEquals(0, it.birdsLifted); assertEquals(0L, it.liftedAt); assertEquals(morning, it.weighedAt) }
+        dao.getDayEntry(sid, "F1", 12)!!.let { assertEquals(0, it.birdsLifted); assertEquals(0L, it.liftedAt); assertEquals("", it.liftLaps); assertEquals(morning, it.weighedAt) }
         db.close()
     }
 }

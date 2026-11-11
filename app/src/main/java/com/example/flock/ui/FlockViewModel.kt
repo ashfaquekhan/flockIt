@@ -627,13 +627,13 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** The selected day's lifting, on its own: [birds], [kg] and when ([at], epoch ms; null = now); [onSuccess] once saved. */
-    fun saveLifting(birds: Int, kg: Double, at: Long?, onSuccess: () -> Unit = {}) {
+    /** The selected day's liftings one by one (v59: each truck or lap with its time); [onSuccess] once saved. */
+    fun saveLiftLaps(laps: List<com.example.flock.data.LiftLap>, onSuccess: () -> Unit = {}) {
         val flock = _activeFlock.value ?: return
         val day = _selectedDay.value
         busy("Saving the lifting") {
-            val res = repository.saveLifting(_selectedSpreadsheetId.value, flock.flockId, day, birds, kg, at, authState.value.email)
-            res.onSuccess { _userMessage.value = if (birds > 0) "Saved the lifting of day $day" else "Lifting of day $day cleared"; onSuccess() }
+            val res = repository.saveLiftLaps(_selectedSpreadsheetId.value, flock.flockId, day, laps, authState.value.email)
+            res.onSuccess { _userMessage.value = if (laps.isNotEmpty()) "Saved the lifting of day $day" else "Lifting of day $day cleared"; onSuccess() }
                 .onFailure { _userMessage.value = it.message ?: "Could not save the lifting" }
         }
     }
@@ -983,10 +983,11 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             // Register a placeholder, then pull the real name + flocks + daily data.
+            val sharedAs = syncManager.sharedRole(spreadsheetId)
             repository.registerFarm(
                 spreadsheetId = spreadsheetId,
                 farmName = "Farm " + spreadsheetId.take(6),
-                role = "Editor",
+                role = sharedAs,
                 isOwner = false
             )
             repository.refreshFromCloud(spreadsheetId)
@@ -994,7 +995,7 @@ class FlockViewModel(application: Application) : AndroidViewModel(application) {
 
             // Record the accepted shared farm in this user's index so it loads
             // automatically on all their devices from now on.
-            syncManager.addFarmToIndex(spreadsheetId, finalName, role = "editor")
+            syncManager.addFarmToIndex(spreadsheetId, finalName, role = sharedAs.lowercase())
             _syncStatus.value = "synced"
             _userMessage.value = "Opened shared farm: $finalName"
             openFarm(spreadsheetId)

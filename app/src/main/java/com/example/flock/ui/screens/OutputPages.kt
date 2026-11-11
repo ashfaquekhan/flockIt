@@ -167,29 +167,34 @@ fun BirdsSection(d: OutputData, view: OutputData.NowView, entryHHmm: String?, li
     val m = d.mass
     val beforeToday = (d.mortTD - d.mortToday).coerceAtLeast(0).toDouble()
     val mort = if (d.mk == P) d.mortTDPct else (beforeToday + view.deaths) * 100.0 / d.entryBirds
-    // a lifting today counts from its own time (v57): before it the morning's birds and weighing, from it the birds left
+    // everything here follows the time on the rail (v59): the birds in the house then (deaths, culls and each truck
+    // off), their weight grown on from the weighing (and the birds left once the lifting is over), the floor they have
     val viewH = (view.hhmm.substringBefore(":").toIntOrNull() ?: hour) + (view.hhmm.substringAfter(":").toIntOrNull() ?: 0) / 60.0
-    val after = d.liftedBy(viewH)
-    val liftToday = d.liftHour != null
-    val stillIn = if (after) 0 else d.e.birdsLifted
-    val leftShare = m?.takeIf { liftToday && after && it.avgAtLiftKg > 0 }?.let { it.avgAfterKg / it.avgAtLiftKg } ?: 1.0
-    val weight = if (d.vk == P) (if (after) d.bwNow else d.bw) else view.weightG * leftShare
+    val stillIn = d.e.birdsLifted - d.liftedCountBy(viewH)
+    val weight = view.weightG
     val fcr = m?.fcr ?: view.fcr
-    val liveNow = if (d.mortEntered) (d.live + stillIn).toDouble() else (view.live - if (liftToday && after) d.e.birdsLifted else 0).coerceAtLeast(1.0)
+    val liveNow = view.live
     val s = d.space
-    // the floor before the trucks holds the lifted birds too
-    val crowd = if (stillIn > 0 && d.live > 0 && d.bwNow > 0) (d.live + stillIn) * d.bw / (d.live * d.bwNow) else 1.0
+    val crowd = if (d.live > 0 && d.bwNow > 0) (liveNow * weight) / (d.live * d.bwNow) else 1.0
     val kgM2 = s.kgM2 * crowd
-    val ft2PerBird = s.ft2PerBird * (if (stillIn > 0 && d.live > 0) d.live.toDouble() / (d.live + stillIn) else 1.0)
+    val ft2PerBird = if (liveNow > 0) s.ft2PerBird * d.live / liveNow else s.ft2PerBird
+    val grownG = if (d.vk == P && d.weighedDay == d.day) weight - d.bw else 0.0
+    val deathsNow = if (d.mortEntered) d.mortToday.toDouble() else view.deaths
     val u = remember(d) { uniformityOf(d) }
     val lines = listOf(
-        PLine("Live birds", if (d.mortEntered) vi(d.live + stillIn, P) else vi(Math.round(liveNow).toInt(), PR), "",
+        PLine("Live birds", vi(Math.round(liveNow).toInt(), if (d.mortEntered) P else PR), "",
             trendOf(liveNow, d.liveCom, Better.HIGHER, 1.0), d.liveCom, d.liveIdeal, 0, actual = liveNow, tag = "tile_live"),
-        PLine("Weight", v(weight, 1, d.vk), "g", trendOf(weight, d.bwCom, Better.HIGHER), d.bwCom, d.bwIdeal, 1, actual = weight),
+        PLine("Weight", v(weight, 1, d.vk), "g", trendOf(weight, d.bwCom, Better.HIGHER), d.bwCom, d.bwIdeal, 1, actual = weight,
+            sub = if (grownG > 0.5 && entryHHmm != null) "weighed $entryHHmm · +" + Fmt.n(grownG, 0) + " g since" else null, subKind = PR),
         PLine("FCR", v(fcr, 3, d.fcrKind), "", trendOf(fcr, d.fcrCom, Better.LOWER), d.fcrCom, d.fcrIdeal, 3, Better.LOWER, actual = fcr),
         PLine("cFCR", v(m?.cFcrCompany, 3, d.fcrKind), "", trendOf(m?.cFcrCompany, d.cfcrCom, Better.LOWER), d.cfcrCom, d.cfcrIdeal, 3, Better.LOWER,
             sub = m?.fcr?.let { Fmt.n(it, 3) + " + (2 − " + Fmt.n(m.cumBwKg, 3) + ") × 0.25" }, subKind = d.fcrKind, actual = m?.cFcrCompany),
-        PLine("Mortality", v(mort, 2, d.mk), "%", trendOf(mort, d.comCumPct, Better.LOWER), d.comCumPct, d.ceilingPct, 2, Better.LOWER, actual = mort),
+        PLine("Mortality", v(mort, 2, d.mk), "%", trendOf(mort, d.comCumPct, Better.LOWER), d.comCumPct, d.ceilingPct, 2, Better.LOWER, actual = mort,
+            sub = Fmt.i(d.mortTD) + " dead till date", subKind = d.mk),
+        // the day's own deaths (v59): the count, and its share of the birds the day began with
+        PLine("Deaths today", if (d.mortEntered) vi(d.mortToday, P) else v(deathsNow, 1, PR), "", trendOf(deathsNow, d.comMortBirdsToday, Better.LOWER, 15.0),
+            refs = listOf("com " + Fmt.n(d.comMortBirdsToday, 1) to kindColor(C), Fmt.n(d.comDailyPct, 3) + " %" to kindColor(C)),
+            sub = Fmt.n(if (d.startLive > 0) deathsNow * 100.0 / d.startLive else 0.0, 3) + " % of ${Fmt.i(d.startLive)}", subKind = d.mk, tag = "tile_deaths_today"),
         PLine("CV, how even", v(d.cvEst, 1, if (d.cvMeasured) P else PR), "%", d.cvEst?.let { rangeTrend(it, null, 10.0) },
             refs = listOf("ideal ≤ 8.0" to kindColor(I), "max 10.0" to kindColor(MX)), actual = d.cvEst, max = 10.0, band = 0.0 to 8.0, tag = "tile_cv",
             extra = {
@@ -269,7 +274,7 @@ fun withBarricades(d: OutputData, fromFt: Double, toFt: Double): OutputData {
  */
 @Composable
 fun FeedSection(d0: OutputData, pick: Int, onPick: (Int) -> Unit, needs: com.example.flock.domain.FlockNeeds.State,
-                onBarricades: ((Double, Double) -> Unit)? = null) {
+                onBarricades: ((Double, Double) -> Unit)? = null, view: OutputData.NowView? = null, hour: Int = d0.hour) {
     val L = d0.farm.usableLengthFt
     val curFrom = d0.penStartFt; val curTo = d0.barricadeFtNow
     // barricades moved but not set yet: the plan, the drawing and the numbers show them at once
@@ -281,12 +286,15 @@ fun FeedSection(d0: OutputData, pick: Int, onPick: (Int) -> Unit, needs: com.exa
     val to = d.barricadeFtNow
     // set on this day or before (else the brooding plan's floor, drawn dashed)
     val isSet = pending == null && d0.rows.any { it.dayNumber <= d0.day && (it.penStartFt != null || it.broodingLength != null) }
-    val iso = remember(d, pat, from, to, isSet) { isoFarmOf(d, pat, from, to, !isSet, d.hour) }
+    val iso = remember(d, pat, from, to, isSet, hour) { isoFarmOf(d, pat, from, to, !isSet, hour) }
     val fillBags = d.bagsToFill(pat.openPerLine)
     val perBird = d.dayBags * d.bagKg * 1000 / d.liveSafe
     val walk = d.feedWalkM(pat)
     val lim = d.walkLimits
     fun ft(x: Double) = x.roundToInt().toString()
+    // ideal barricades: the first as it stands, the last where the ideal floor ends (moved forward when the house ends first)
+    val idealTo = (from + d.idealFloorFt).coerceAtMost(L); val idealFrom = (idealTo - d.idealFloorFt).coerceAtLeast(0.0)
+    val idealText = if (idealFrom < 0.5 && idealTo > L - 0.5) "none" else "${ft(idealFrom)}–${ft(idealTo)}"
     val barText = when {
         from > 0.5 && to < L - 0.5 -> "${ft(from)}–${ft(to)}"
         to < L - 0.5 -> "0–${ft(to)}"
@@ -306,11 +314,14 @@ fun FeedSection(d0: OutputData, pick: Int, onPick: (Int) -> Unit, needs: com.exa
             sub = "${pat.openPerLine} open per line · fill ${Fmt.n(fillBags, 1)} bags", subKind = PR, actual = pat.birdsPerPan.takeIf { it < 1e6 },
             min = SpacePlan.FEW_BIRDS_PER_PAN, max = d.birdsPerPanMax, band = SpacePlan.FEW_BIRDS_PER_PAN to SpacePlan.AIM_BIRDS_PER_PAN * 1.4, tag = "tile_pans"))
         add(PLine("Barricades", vt(barText, if (isSet) P else PR), if (barText == "none") "" else "ft", null,
-            refs = emptyList(), sub = if (pending != null) "not set yet" else if (isSet) "as set" else "brooding plan", tag = "tile_barricades"))
+            refs = listOf("ideal $idealText" to kindColor(I)), sub = if (pending != null) "not set yet" else if (isSet) "as set" else "brooding plan", tag = "tile_barricades"))
         add(PLine("Walk to feed", v(walk, 2, PR), "m", rangeTrend(walk, null, lim.maxM),
             refs = listOf("ideal ≤ " + Fmt.n(lim.safeM, 1) to kindColor(I), "max " + Fmt.n(lim.maxM, 1) to kindColor(MX)), actual = walk, max = lim.maxM, band = 0.0 to lim.safeM,
             tag = "line_walk_feed", extra = { WalkFeedDrawing(d, pat) }))
-        add(PLine("Hungry now", vt(pct(needs.hungry), PR), "%", null, refs = emptyList(), sub = "likelihood"))
+        // follows the time on the rail (v59): what the birds have likely eaten of the day's feed by then
+        if (view != null) add(PLine("Eaten so far", v(view.eatenBags, 1, PR), "bags", null, refs = listOf(pct(view.eatShare) + " % of the day" to kindColor(PR)),
+            sub = "by " + view.hhmm, tag = "tile_eaten_now"))
+        add(PLine("Hungry now", vt(pct(needs.hungry), PR), "%", null, refs = emptyList(), sub = "likelihood" + (view?.let { " at " + it.hhmm } ?: "")))
         add(PLine("Eaten yesterday", v(d.usedPerBirdY, 1, P), "g", trendOf(d.usedPerBirdY, d.comPerBirdY, Better.CLOSER), d.comPerBirdY, d.idealPerBirdY, 1,
             Better.CLOSER, actual = d.usedPerBirdY))
         add(PLine("Feedings", vt(d.modelFeedTimes(o.feedings).joinToString(" "), PR), "", null, refs = emptyList(), sub = "each fills ${o.fillPct.roundToInt()} %"))
@@ -333,10 +344,12 @@ fun FeedSection(d0: OutputData, pick: Int, onPick: (Int) -> Unit, needs: com.exa
             val shown = pending ?: (curFrom to curTo)
             fun snap(x: Float) = ((x / 5f).roundToInt() * 5f).toDouble().let { if (it > L - 2.5) L else it }
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                BarricadeSlider(shown.first.toFloat(), shown.second.toFloat(), L.toFloat(), pending != null || !isSet, { a0, b0 ->
-                    val a = snap(a0); val b = snap(b0); if (b - a >= 10) pending = a to b }, Modifier.testTag("barricade_slider"))
+                BarricadeSlider(shown.first.toFloat(), shown.second.toFloat(), L.toFloat(), pending != null || !isSet, ideal = idealFrom.toFloat() to idealTo.toFloat(), onChange = { a0, b0 ->
+                    val a = snap(a0); val b = snap(b0); if (b - a >= 10) pending = a to b }, modifier = Modifier.testTag("barricade_slider"))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Drag the barricades", style = MaterialTheme.typography.labelLarge, color = Color.White, maxLines = 1, modifier = Modifier.weight(1f))
+                    Text("ideal $idealText  ", style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont), color = kindColor(I),
+                        maxLines = 1, softWrap = false, modifier = Modifier.testTag("barricade_ideal"))
                     Text(if (shown.first < 0.5 && shown.second > L - 0.5) "none" else ft(shown.first) + "–" + ft(shown.second) + " ft",
                         style = MaterialTheme.typography.labelLarge.copy(fontFamily = com.example.ui.theme.NumberFont), color = kindColor(if (pending != null || !isSet) PR else P))
                 }
@@ -351,7 +364,7 @@ fun FeedSection(d0: OutputData, pick: Int, onPick: (Int) -> Unit, needs: com.exa
                 }
             }
         }
-        KeyLine(kindColor(PR) to "pan on", Color.White.copy(alpha = 0.55f) to "off", Color.White to "barricade")
+        KeyLine(kindColor(PR) to "pan on", Color.White.copy(alpha = 0.55f) to "off", Color.White to "barricade", kindColor(I) to "ideal")
         LineList(lines)
     }
 }
@@ -364,9 +377,17 @@ fun FeedSection(d0: OutputData, pick: Int, onPick: (Int) -> Unit, needs: com.exa
  * its curves; FCR and cFCR are in Birds, one of each.)
  */
 @Composable
-fun LiftSection(d: OutputData) {
+fun LiftSection(d: OutputData, view: OutputData.NowView? = null) {
     val m = d.mass
     val lines = buildList {
+        // the day's own liftings, truck by truck (v59), as far as the time on the rail
+        if (d.lapsToday.isNotEmpty()) {
+            val h = view?.let { (it.hhmm.substringBefore(":").toIntOrNull() ?: 0) + (it.hhmm.substringAfter(":").toIntOrNull() ?: 0) / 60.0 } ?: 24.0
+            val gone = d.liftedCountBy(h)
+            add(PLine("Lifted today", vi(gone, P), "", null,
+                refs = listOf(Fmt.n(d.liftedKgBy(h), 1) + " kg" to kindColor(P), "of " + Fmt.i(d.e.birdsLifted) to kindColor(P)),
+                sub = d.lapsToday.joinToString("  ") { it.hhmm + " " + Fmt.i(it.birds) }, subKind = P, tag = "tile_lift_laps"))
+        }
         val lifted = m?.liftedBirds ?: d.liftTD
         val days = d.rows.filter { it.birdsLifted > 0 && it.dayNumber <= d.day }.map { it.dayNumber }
         add(PLine("Birds lifted", vi(lifted, P), "", null, refs = listOf(Fmt.n(m?.liftedKg ?: d.liftKgTD, 1) + " kg" to kindColor(P)),
@@ -556,11 +577,14 @@ private fun FanBank(f: IsoFarm) {
 
 /** Water: the refills, and the water numbers with their ideals (no house drawing: the numbers say it). */
 @Composable
-fun WaterSection(d: OutputData, needs: com.example.flock.domain.FlockNeeds.State, onFarmChange: ((com.example.flock.data.FarmEntity) -> Unit)?) {
+fun WaterSection(d: OutputData, needs: com.example.flock.domain.FlockNeeds.State, onFarmChange: ((com.example.flock.data.FarmEntity) -> Unit)?,
+                 view: OutputData.NowView? = null) {
     val e = d.e
     val factor = if (d.refillF > 0) d.refillF else 1.0
     val lim = d.walkLimits
     val lines = buildList {
+        if (view != null) add(PLine("Drunk so far", v(view.drunkL, 0, PR), "L", null,
+            refs = listOf(Fmt.n(if (d.waterL > 0) view.drunkL * 100 / d.waterL else 0.0, 0) + " % of the day" to kindColor(PR)), sub = "by " + view.hhmm, tag = "tile_drunk_now"))
         add(PLine("Water today", v(d.waterL, 0, PR), "L", trendOf(d.waterL, d.waterIdealL, Better.CLOSER), null, d.waterIdealL, 0, Better.CLOSER,
             sub = "${d.waterRefills} " + (if (d.waterRefills == 1) "refill" else "refills") + " of " + d.tankL.roundToInt() + " L", subKind = PR, actual = d.waterL, tag = "tile_water"))
         add(PLine("Water per bird", v(d.waterPerBird, 1, PR), "mL", trendOf(d.waterPerBird, d.waterIdealPerBird, Better.CLOSER), null,
@@ -627,7 +651,7 @@ fun TrendsSection(d: OutputData) {
  * or tap where it should go. [moving]: not set yet (amber), else as set (green).
  */
 @Composable
-fun BarricadeSlider(from: Float, to: Float, max: Float, moving: Boolean, onChange: (Float, Float) -> Unit, modifier: Modifier = Modifier) {
+fun BarricadeSlider(from: Float, to: Float, max: Float, moving: Boolean, ideal: Pair<Float, Float>? = null, onChange: (Float, Float) -> Unit, modifier: Modifier = Modifier) {
     val cur by androidx.compose.runtime.rememberUpdatedState(from to to)
     val change by androidx.compose.runtime.rememberUpdatedState(onChange)
     // the house drawing above sits 12 dp in from the left and 8 dp from the right: the slider's ends sit under the house's ends
@@ -663,6 +687,17 @@ fun BarricadeSlider(from: Float, to: Float, max: Float, moving: Boolean, onChang
         paint.textAlign = android.graphics.Paint.Align.RIGHT; drawContext.canvas.nativeCanvas.drawText("back", padPx + w, size.height - 1.dp.toPx(), paint)
         // the birds' floor
         drawLine(accent, Offset(xa, y), Offset(xb, y), 3.dp.toPx())
+        // the ideal barricades (v59): blue marks under the line, where the floor would hold the birds at the ideal density
+        ideal?.let { (ia, ib) ->
+            val blue = kindColor(I)
+            val xi = padPx + ia / max * w; val xj = padPx + ib / max * w
+            drawLine(blue.copy(alpha = 0.7f), Offset(xi, y + 7.dp.toPx()), Offset(xj, y + 7.dp.toPx()), 1.5.dp.toPx(),
+                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx())))
+            listOf(xi, xj).forEach { x ->
+                val tri = androidx.compose.ui.graphics.Path().apply { moveTo(x, y + 2.dp.toPx()); lineTo(x - 4.dp.toPx(), y + 9.dp.toPx()); lineTo(x + 4.dp.toPx(), y + 9.dp.toPx()); close() }
+                drawPath(tri, blue)
+            }
+        }
         // each barricade: an upright, a grip, its feet
         paint.textSize = 11.dp.toPx(); paint.color = Color.White.toArgb(); paint.textAlign = android.graphics.Paint.Align.CENTER
         listOf(xa to from, xb to to).forEach { (x, ft) ->

@@ -79,6 +79,14 @@ val MIGRATION_21_22 = object : androidx.room.migration.Migration(21, 22) {
     }
 }
 
+/** v23 (v59): each day's liftings one by one, and the males in every 10 birds placed. */
+val MIGRATION_22_23 = object : androidx.room.migration.Migration(22, 23) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE daily_data ADD COLUMN liftLaps TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE farm ADD COLUMN malesIn10 INTEGER NOT NULL DEFAULT 3")
+    }
+}
+
 val MIGRATION_17_18 = object : androidx.room.migration.Migration(17, 18) {
     override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE daily_data ADD COLUMN liftedAt INTEGER NOT NULL DEFAULT 0")
@@ -112,7 +120,7 @@ val MIGRATION_15_16 = object : androidx.room.migration.Migration(15, 16) {
         TaskEntity::class,
         FlockEventEntity::class
     ],
-    version = 22,
+    version = 23,
     exportSchema = false
 )
 abstract class FlockDatabase : RoomDatabase() {
@@ -138,7 +146,7 @@ abstract class FlockDatabase : RoomDatabase() {
                     FlockDatabase::class.java,
                     "flockit_database"
                 )
-                    .addMigrations(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22)
+                    .addMigrations(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23)
                     .fallbackToDestructiveMigration()
                     .addCallback(FlockDatabaseCallback(scope))
                     .build()

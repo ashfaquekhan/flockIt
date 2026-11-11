@@ -8,6 +8,47 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v59 — 2026-11-11 · Liftings truck by truck, the map in 3D one step at a time, everything following the time slider, sums checked from first principles · **DB 22 → 23 (adds two columns, nothing cleared)** · **sheet schema 11** (DailyData gains LiftLaps, _Farm gains malesIn10)
+- **Liftings truck by truck**: Entry → Lifting lists every lifting of the day (time, birds, kg, kg a bird) and their sum;
+  type the next one and hold "Hold to add lifting N" — each has its own time; × takes one out. The day's birds and kilos
+  lifted are the sums, the lifting's time the last one's. On Output the house empties truck by truck along the time slider.
+- **The Map, rebuilt**: three dimensions and one thing at a time. The flock with its groups on a ring; a group with its
+  points on rings; a number with its wiring — what it comes from on the left, what it moves on the right (stronger links
+  nearer and thicker, green raises, red lowers, dashed acts later, an arrow the way the effect runs), the events that set it
+  above, the parts it hangs with below. Every point is a real button (a tap always lands) and becomes the middle; a finger
+  sideways turns the scene; the trail above (Flock › Birds › Weight now) steps back. It stays this simple however many
+  points and links are added.
+- **The time slider moves what can move**: live birds (deaths expected so far, culls, each truck off), weight (grown on
+  from the weighing, "weighed 08:15 · +12 g since"), stocking density and ft² per bird, "Eaten so far", "Drunk so far",
+  hungry / thirsty, the feed drawing's hour, "Lifted today", and the map's values. FCR, cFCR and mortality stay the day's
+  figures (they are reckoned on the day's entries).
+- **Deaths today** in Birds: the count, its share of the birds the day began with, against the company's.
+- **Ideal barricades**: blue marks under the barricade slider and "ideal 0–180" beside it and on the Barricades line — the
+  brooding plan's floor while the chicks are small, then the floor that holds the birds at the comfortable density.
+- **Where to catch the birds is back** in the weight box, plain: the birds' floor, the numbered spots and the feet (no
+  feeder or drinker lines, no text under it).
+- **Males : females placed** in the farm settings (3 : 7 unless changed); the weight box's ideal ♀/♂ split follows it.
+- **A closed batch takes no entry**: only Output and Stock show; nothing on Output can be set.
+- **Same colours on every phone**: the app's window is dark whatever the phone's mode, the system bars black, and phones
+  that recolour apps on their own ("force dark") are told to leave it.
+- **No "Screen edges" setting and no side margin** of the app's own.
+- **Flock book**: room after the last column and under the last day, columns wide enough for the long numbers and growing
+  with the phone's text size.
+- **A shared farm shows up on its own**: the app could only see the sheets it had made itself, so a farm someone shared
+  never appeared on a refresh — it had to be opened by its code. Sign-in now also asks to "see information about your
+  Google Drive files" (names and owners only, never contents); with it, farms shared with the account are found on a
+  refresh. Accounts signed in before v59 must sign out and in once to grant it (until then the code still works).
+- **Viewers work**: a farm shared to look only opens as Viewer — Output and Stock, no entry — instead of failing on the
+  first save; the role follows what the owner sets in Drive.
+- **Sharing says why it failed** (sign-in run out, not the owner, no Google account at that address …) and shares without
+  the invitation mail when Google refuses the mail.
+- **Feed types** in the farm settings are named plainly (no "_FeedTypes").
+- **Checked from first principles** (a test on the real flock, every day): birds conserved (placed − reception − deaths −
+  culls − lifted), meat conserved (in the house + lifted = produced), FCR, cFCR, mortality, livability, density, ft² per
+  bird, water against feed, the weighing's average. Three things corrected: today's deaths were a share of the birds left
+  after a lifting (now of the birds the day began with); the FCR and live birds "by the clock" left out the kilos and birds
+  lifted; the company's deaths for the day were reckoned on the birds left.
+
 ## v58 — 2026-11-08 · Events and properties: an event log with two times, the flock as a property graph, the Map · **DB 21 → 22 (adds a table, nothing cleared)** · a new Events tab in the sheet
 - **The event log**: every save is kept as events — weighing, deaths, culls, feed used, feed received, a lifting, a feeding,
   the barricades moved, the weather kept (one event per run, not one a day), house readings, notes, diesel, chicks placed,

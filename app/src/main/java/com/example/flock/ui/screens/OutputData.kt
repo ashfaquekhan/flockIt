@@ -1,6 +1,7 @@
 package com.example.flock.ui.screens
 
 import com.example.flock.data.DailyDataEntity
+import com.example.flock.data.lapsShown
 import com.example.flock.data.FarmEntity
 import com.example.flock.data.FeedTypeEntity
 import com.example.flock.data.FlockEntity
@@ -102,12 +103,14 @@ class OutputData(
     /** Birds that started the flock: placed minus reception / transit deaths (those are not flock mortality). */
     val entryBirds = max(1, placed - reception)
     val mortTD = upto.sumOf { it.mortality }
-    /** Today's deaths as a share of the birds: unknown (—) until they are entered. */
-    val mortTodayPct: Double? = if ((mortEntered || !open) && live + mortToday > 0) mortToday * 100.0 / (live + mortToday) else null
+    /** The birds in the house when this day began: yesterday's count (the day's deaths, culls and liftings come off it). */
+    val startLive: Int = byDay[day - 1]?.liveBirds ?: (live + mortToday + e.lameSeparated + e.birdsLifted)
+    /** Today's deaths as a share of the birds the day began with (v59: not of the birds left after a lifting): unknown (—) until entered. */
+    val mortTodayPct: Double? = if ((mortEntered || !open) && startLive > 0) mortToday * 100.0 / startLive else null
     val mortTDPct: Double? = if (placed > 0) mortTD * 100.0 / entryBirds else e.cumMortPct
     val comDailyPct = CompanyStandard.dailyMortPct(chartDay)
     val comCumPct = CompanyStandard.cumMortPct(chartDay)
-    val comMortBirdsToday = comDailyPct * (live + mortToday) / 100.0
+    val comMortBirdsToday = comDailyPct * startLive / 100.0
     /** Industry benchmark mortality (shown as the Ideal). */
     val ceilingPct = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MAXMORT_BY_AGE, day.toDouble())
     val lameTD = upto.sumOf { it.lameSeparated }
@@ -464,15 +467,18 @@ class OutputData(
     val mass: com.example.flock.data.FlockCalc.Mass? get() = massByDay[day]
     /** The flock's average for the birds in the house now: after any lifting today. */
     val bwNow: Double get() = mass?.avgAfterKg?.let { it * 1000 } ?: bw
-    /** The hour (farm time) of this day's lifting: as saved, 20:00 for one saved without a time; null: no lifting this day. */
-    val liftHour: Double? = if (e.birdsLifted <= 0) null else if (e.liftedAt <= 0) 20.0 else try {
-        java.time.Instant.ofEpochMilli(e.liftedAt).atZone(java.time.ZoneId.of(farm.timeZone)).let { it.hour + it.minute / 60.0 }
-    } catch (ex: Exception) { 20.0 }
+    /** This day's liftings one by one (v59: a truck or a lap each; a day lifted before laps were kept is one). */
+    val lapsToday: List<com.example.flock.data.LiftLap> = e.lapsShown(try { java.time.ZoneId.of(farm.timeZone) } catch (ex: Exception) { java.time.ZoneId.systemDefault() })
+    /** The hour (farm time) the day's last lifting was loaded; null: no lifting this day. */
+    val liftHour: Double? = lapsToday.lastOrNull()?.hour
     /**
-     * Whether this day's lifting has happened by [hourOfDay] (v57): before it the house holds the birds as weighed that
+     * Whether this day's lifting is over by [hourOfDay] (v57): before it the house holds the birds as weighed that
      * morning; from it, the birds left and their average. Always true on a day without a lifting.
      */
     fun liftedBy(hourOfDay: Double): Boolean = liftHour?.let { hourOfDay >= it } ?: true
+    /** Birds and kilos gone on the trucks today by [hourOfDay]. */
+    fun liftedCountBy(hourOfDay: Double): Int = lapsToday.filter { it.hour <= hourOfDay }.sumOf { it.birds }
+    fun liftedKgBy(hourOfDay: Double): Double = lapsToday.filter { it.hour <= hourOfDay }.sumOf { it.kg }
     /** Reception (transit) deaths as a share of the birds placed; and all deaths with them. */
     val receptionPct: Double? = if (placed > 0) reception * 100.0 / placed else null
     val mortWithReceptionPct: Double? = if (placed > 0) (mortTD + reception) * 100.0 / placed else null
@@ -488,6 +494,13 @@ class OutputData(
         capKgM2 = farm.densityCapDefault, hotC = hotC, coolC = coolC, lifted = liftTD > 0,
         dayBags = dayBags, bagsFullLine = bagsFullLine, birdsPerPanMax = birdsPerPanMax, feedingsWanted = feedingsWanted,
         penStartFt = penStartFt, bagsShutLine = bagsTubeLine))
+    /**
+     * The ideal floor today, ft of house (v59): the brooding plan's while the chicks are small (a part of the house growing
+     * to all of it by day 11), then the floor that holds the birds at the comfortable density.
+     */
+    val idealFloorFt: Double = (if (day <= 10) PhysiologicalEngine.computeAreaAndDensity(live, bwNow / 1000.0, farm.usableLengthFt, farm.usableWidthFt,
+            farm.broodDensity, farm.densityCapDefault, day, null).occupiedFt2 else space.needFt2 * live)   // needFt2 is the floor one bird needs
+        .let { it / max(1.0, farm.usableWidthFt) }.coerceIn(10.0, max(10.0, farm.usableLengthFt))
     /** The way the floor is set once the birds are grown or lifted (null: a young flock, the feed plan below decides). */
     val floorPlan: com.example.flock.domain.SpacePlan.Option? = if (space.young) null else space.options[space.best]
     /** The floor plan's pans as a series over the floor it uses. */
@@ -859,16 +872,25 @@ class OutputData(
         val ms = now.toInstant().toEpochMilli()
         val since = weighedAtMs?.let { max(0L, ms - it) / 86_400_000.0 }
         val w = lastWeighing?.avgWeight
-        val weight = if (w != null && since != null) com.example.flock.domain.Projection.grown(w, since, { g, dd -> com.example.flock.data.FlockCalc.grow(g, dd, breed) }, envGainF)
+        val grown = if (w != null && since != null) com.example.flock.domain.Projection.grown(w, since, { g, dd -> com.example.flock.data.FlockCalc.grow(g, dd, breed) }, envGainF)
             else PhysiologicalEngine.bwFromDay(day + dayShare, breed)
+        // once the day's lifting is over the birds left are what the trucks did not take (v59: here, so every number follows it)
+        val m = mass
+        val weight = if (liftHour != null && liftedBy(hour) && m != null && m.avgAtLiftKg > 0) grown * m.avgAfterKg / m.avgAtLiftKg else grown
         val eaten = likelyEatKg * eatShare
         // projected deaths follow the clock whether or not today's count is in (the entry sits in its own column)
         val deaths = expectedDeaths * dayShare
-        val liveNow = max(1.0, (byDay[day - 1]?.liveBirds ?: (live + mortToday)).toDouble() - deaths)
+        // the birds in the house at this time (v59): the day's start less the deaths (entered, else those expected so far),
+        // the culls and the birds already on the trucks
+        val gone = liftedCountBy(hour)
+        val liveNow = max(1.0, if (mortEntered) (live + (e.birdsLifted - gone)).toDouble() else startLive - deaths - e.lameSeparated - gone)
         // feed till now: the entries, yesterday's eating when it is not entered yet, and today's so far
         val yesterday = if (feedEntered || day == 0) 0.0 else proj[day]?.feedKg ?: 0.0
         val cum = usedKgTD + yesterday + eaten
-        val fcr = if (cum > 0 && weight > 0 && day >= 1) cum / (liveNow * weight / 1000.0) else null
+        // FCR on everything the feed has made (v59): the birds in the house and the kilos already lifted
+        val liftedKg = (liftKgTD - e.weightLifted) + liftedKgBy(hour)
+        val madeKg = liveNow * weight / 1000.0 + liftedKg
+        val fcr = if (cum > 0 && madeKg > 0 && day >= 1) cum / madeKg else null
         return NowView(String.format("%02d:%02d", now.hour, now.minute), weight, since?.times(24), eaten, eaten / bagKg, eatShare,
             waterL * (0.9 * eatShare + 0.1 * dayShare), deaths, liveNow, fcr, envAt(now.hour))
     }

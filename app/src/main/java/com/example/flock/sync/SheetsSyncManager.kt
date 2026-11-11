@@ -649,6 +649,12 @@ class SheetsSyncManager(
         return SheetSchema.verify(content, back)
     }
 
+    /** "Viewer" when this account may only look at the farm's sheet, else "Editor" (also when Drive will not say). */
+    suspend fun sharedRole(fileId: String): String = withContext(Dispatchers.IO) {
+        val h = authManager.sharedListHeader() ?: authManager.getAuthHeader() ?: return@withContext "Editor"
+        if (canEdit(h, fileId)) "Editor" else "Viewer"
+    }
+
     private suspend fun canEdit(authHeader: String, fileId: String): Boolean = try {
         GoogleApiClientProvider.driveApi.getFile(authHeader, fileId).body()?.capabilities?.canEdit ?: true
     } catch (e: Exception) { true }
@@ -1105,17 +1111,30 @@ class SheetsSyncManager(
         }
         try {
             val role = if (isEditor) "writer" else "reader"
-            val res = GoogleApiClientProvider.driveApi.createPermission(
-                authHeader = authHeader,
-                fileId = spreadsheetId,
-                sendNotificationEmail = true,
-                request = CreatePermissionRequest(role = role, emailAddress = email)
-            )
+            val to = email.trim().lowercase()
+            if (!Regex("^[^@ ]+@[^@ ]+[.][^@ ]+$").matches(to)) return@withContext Result.failure(Exception("That does not look like an email address."))
+            suspend fun share(notify: Boolean) = GoogleApiClientProvider.driveApi.createPermission(
+                authHeader = authHeader, fileId = spreadsheetId, sendNotificationEmail = notify,
+                request = CreatePermissionRequest(role = role, emailAddress = to))
+            var res = share(true)
+            // Google refuses the invitation mail for some addresses (and when too many were sent): shared without the mail then
+            if (!res.isSuccessful && res.code() in listOf(400, 403, 429)) { val quiet = share(false); if (quiet.isSuccessful) res = quiet }
             if (res.isSuccessful) {
-                logActivity(spreadsheetId, "SHARE_FARM", "Shared with $email ($role)")
+                logActivity(spreadsheetId, "SHARE_FARM", "Shared with $to ($role)")
                 Result.success(true)
             } else {
-                Result.failure(Exception("Drive sharing error: ${res.code()} ${res.message()}"))
+                val body = try { res.errorBody()?.string().orEmpty() } catch (e: Exception) { "" }
+                // why, in plain words (v59): the code alone told the farm nothing
+                val why = when {
+                    res.code() == 401 -> "Google sign-in has run out. Sign out and in again, then share."
+                    res.code() == 404 -> "This phone's account cannot see the farm's sheet in Drive."
+                    res.code() == 403 && body.contains("sharingRateLimitExceeded") -> "Google's limit on sharing was reached. Try again in a while."
+                    res.code() == 403 -> "Only the farm's owner (or an editor Google lets share) can share it. Ask the owner to share, or to send the farm's link."
+                    res.code() == 400 && body.contains("invalidSharingRequest") -> "$to has no Google account. Share with a Gmail address."
+                    res.code() == 400 -> "Google did not take that address ($to)."
+                    else -> "Google could not share it (${res.code()}). Try again."
+                }
+                Result.failure(Exception(why))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -1214,10 +1233,13 @@ class SheetsSyncManager(
     suspend fun syncUserFarmsFromDrive(): Result<Int> = withContext(Dispatchers.IO) {
         val authHeader = authManager.getAuthHeader() ?: return@withContext Result.failure(Exception("Not authenticated"))
         try {
+            // with leave to see what was shared with this account (v59) the list holds the farms others shared too — they
+            // show up on a refresh, no link or code needed; without it only the sheets this app made itself
+            val shared = authManager.sharedListHeader()
             val res = GoogleApiClientProvider.driveApi.listFiles(
-                authHeader = authHeader,
-                query = "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
-                fields = "files(id, name, mimeType, modifiedTime, owners, appProperties)"
+                authHeader = shared ?: authHeader,
+                query = "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false" + (if (shared != null) " and name contains 'FlockIt'" else ""),
+                fields = "files(id, name, mimeType, modifiedTime, owners, appProperties, capabilities)"
             )
             if (!res.isSuccessful || res.body()?.files == null) {
                 return@withContext Result.failure(Exception("Failed to query Drive: ${res.code()}"))
@@ -1232,7 +1254,8 @@ class SheetsSyncManager(
                 if (valResult.isSuccess && valResult.getOrNull() == true) {
                     val existing = db.farmRegistryDao().getFarm(file.id)
                     val isOwner = file.owners?.any { it.emailAddress.equals(userEmail, ignoreCase = true) } ?: true
-                    val role = if (isOwner) "Owner" else "Editor"
+                    // shared to look only: a viewer (nothing can be entered on that phone)
+                    val role = if (isOwner) "Owner" else if (file.capabilities?.canEdit == false) "Viewer" else "Editor"
 
                     // Clean the spreadsheet title if it contains the "FlockIt - " prefix
                     val resolvedName = file.name.removePrefix("FlockIt - ").trim().ifBlank { file.name }
@@ -1253,6 +1276,8 @@ class SheetsSyncManager(
                         pullFarmData(file.id)
                         imported++
                     } else {
+                        // the owner may have changed what this account may do
+                        if (!isOwner && existing.role != role && shared != null) db.farmRegistryDao().insertOrUpdate(existing.copy(role = role))
                         // Ensure farm data and flocks are pulled and refreshed
                         pullFarmData(file.id)
                     }

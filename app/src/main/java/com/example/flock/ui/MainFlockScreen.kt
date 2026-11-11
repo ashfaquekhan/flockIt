@@ -68,6 +68,12 @@ fun MainFlockScreen(
     modifier: Modifier = Modifier
 ) {
     var currentTab by remember { mutableStateOf(FlockNavTab.ENTRY) }
+    // a closed batch (v59): its pictures and reports only — nothing can be entered, so no Entry and no Tasks page
+    // … and so does a farm shared to look only (a viewer): the sheet would refuse the entries anyway
+    val viewer = viewModel.farms.collectAsState().value.firstOrNull { it.spreadsheetId == viewModel.selectedSpreadsheetId.collectAsState().value }?.role.equals("Viewer", ignoreCase = true)
+    val closedBatch = viewModel.activeFlock.collectAsState().value?.status == "closed" || viewer
+    val tabsShown = if (closedBatch) listOf(FlockNavTab.OUTPUT, FlockNavTab.STOCK) else FlockNavTab.values().toList()
+    if (currentTab !in tabsShown) currentTab = FlockNavTab.OUTPUT
     // whether the weather acts on the house and birds (one view for everything since v47)
     val ctx = androidx.compose.ui.platform.LocalContext.current
     var weatherOn by remember { mutableStateOf(com.example.flock.network.ViewPrefs.weatherOn(ctx)) }
@@ -172,7 +178,7 @@ fun MainFlockScreen(
                 tonalElevation = 0.dp,
                 modifier = Modifier.testTag("bottom_nav_bar").drawBehind { drawLine(com.example.ui.theme.GlassLine, androidx.compose.ui.geometry.Offset(0f, 0f), androidx.compose.ui.geometry.Offset(size.width, 0f), 1.dp.toPx()) }
             ) {
-                FlockNavTab.values().forEach { tab ->
+                tabsShown.forEach { tab ->
                     val selected = currentTab == tab
                     NavigationBarItem(
                         selected = selected,
@@ -232,7 +238,8 @@ fun MainFlockScreen(
                     recentNotes = recentNotes,
                     onSave = { inputs -> viewModel.saveDayEntry(inputs) },
                     onClearDay = { viewModel.clearDay() },
-                    onSaveLift = { n, kg, at, done -> viewModel.saveLifting(n, kg, at, done) },
+                    onSaveLaps = { laps, done -> viewModel.saveLiftLaps(laps, done) },
+                    readOnly = closedBatch,
                     farm = farm,
                     isToday = selectedDay == currentFlockDay,
                     lastFeedType = dailyRows.filter { it.dayNumber < selectedDay && it.feedBagsUsed > 0 }.maxByOrNull { it.dayNumber }
@@ -248,11 +255,11 @@ fun MainFlockScreen(
                     weather = weather,
                     hourly = hourly,
                     isToday = selectedDay == currentFlockDay,
-                    onCloseBatch = activeFlock?.let { f -> { viewModel.closeFlock(f.flockId) } },
-                    onFarmChange = { viewModel.updateFarm(it) },
-                    onLogFeeding = { bags, at -> viewModel.logFeeding(bags, at) },
-                    onUndoFeeding = { viewModel.undoLastFeeding() },
-                    onBarricades = { s, e -> viewModel.setBarricades(s, e) },
+                    onCloseBatch = activeFlock?.takeIf { !closedBatch }?.let { f -> { viewModel.closeFlock(f.flockId) } },
+                    onFarmChange = if (closedBatch) null else { f -> viewModel.updateFarm(f) },
+                    onLogFeeding = { bags, at -> if (!closedBatch) viewModel.logFeeding(bags, at) },
+                    onUndoFeeding = { if (!closedBatch) viewModel.undoLastFeeding() },
+                    onBarricades = if (closedBatch) null else { s, e -> viewModel.setBarricades(s, e) },
                     flockEvents = flockEvents,
                     weatherOn = weatherOn,
                     onWeatherOn = { weatherOn = it; com.example.flock.network.ViewPrefs.setWeatherOn(ctx, it) },

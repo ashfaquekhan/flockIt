@@ -40,9 +40,4 @@ object ViewPrefs {
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("flockit_view", Context.MODE_PRIVATE)
     fun weatherOn(ctx: Context): Boolean = prefs(ctx).getBoolean("weather_on", true)
     fun setWeatherOn(ctx: Context, on: Boolean) = prefs(ctx).edit().putBoolean("weather_on", on).apply()
-    /** Extra room kept clear at the screen's left and right edges (dp), for phones whose screen curves or rounds there. */
-    fun edgeDp(ctx: Context): Int = prefs(ctx).getInt("edge_dp", EDGE_DEFAULT_DP)
-    fun setEdgeDp(ctx: Context, dp: Int) = prefs(ctx).edit().putInt("edge_dp", dp).apply()
-    const val EDGE_DEFAULT_DP = 8
-    val EDGE_CHOICES = listOf(0, 4, 8, 12, 16, 24)
 }
