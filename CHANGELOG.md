@@ -8,6 +8,26 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v62 — 2026-11-13 · One definition for every bird count and feed-per-bird figure; no number bent out of sight · no DB or sheet layout change (existing entries untouched; worked-out columns are recalculated on the next load)
+The rule this version applies: **entries are facts and are never changed; a worked-out number has one definition, used by
+the page, the graphs, the phone and the sheet; a limit is applied only where a sum needs it, and is said when it acts.**
+- **Live birds is kept with its sign everywhere** (phone and the sheet's LiveBirds column, not only the page): received −
+  died on the way − dead − culled − lifted. v61 showed −19 on the page while the sheet still said 0. The sums that need
+  real birds (feed, floor, air, water, projections) take `inHouse` — the count, never fewer than none.
+- **Feed per bird till date** is each day's feed over the birds that ate it, added up (`FlockCalc.cumFeedPerBirdG`). It
+  was all the feed so far over the birds in the house today, which gave the birds left after a lifting the feed of every
+  bird sold (and the living the feed of the dead). Page, feed graph and the sheet's report tabs use the one function.
+  Before a lifting it reads about 1–2 % lower than before; after a lifting it no longer jumps.
+- **The birds that ate on a day** (`FlockCalc.eaters`) is the one definition for the page, graphs and sheet reports.
+- **The projected cFCR** uses the same company formula function as the entered one (it had its own copy of the numbers).
+- **Said, not hidden**: when the truck's kilos would leave the remaining birds more than 20 % under or 10 % over the
+  flock's average, the weight is still held at that limit, and Lifting now shows "Birds left, weight … held at the
+  limit: truck kilos and weighing disagree".
+- **No stand-in values**: "Eaten yesterday" is — when no bird was on the count that day (it was divided by 1 bird); an
+  empty house needs 0 water tanks (it said 1).
+- Reviewed and left as they are (limits of real things, or model choices already listed in ISSUES): barricade and pan
+  bounds, the ±25 % cap on the advised bags (O25), the own curve's limits (O82), default lifting time 20:00 (O48).
+
 ## v61 — 2026-11-13 · The bird count shown as it is (signed, red) when it does not add up, lifted and received birds, the flock book lights the cell touched, past days at their last time, the time rail in colours · no DB or sheet change
 - **The count is never bent to fit.** Live birds are received − died on the way − dead − culled − lifted, with the sign.
   621 birds in the count and 640 lifted shows **−19** in red ("19 more lifted than the count held") on that day and the

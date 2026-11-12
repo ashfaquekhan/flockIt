@@ -1,5 +1,6 @@
 package com.example.flock
 
+import com.example.flock.data.inHouse
 import com.example.flock.data.FlockCalc
 import com.example.flock.data.filledSamples
 import com.example.flock.data.formatFeedings
@@ -403,7 +404,10 @@ class LiftingSpaceTest {
         assertEquals("19 more lifted than the count held", o.countNote)
         assertEquals(left.toDouble(), at(o, 10).live, 1e-9)                 // before the trucks: the birds as counted
         assertEquals(-19.0, at(o, 23, 55).live, 1e-9)                       // after them: the difference, signed
-        assertEquals(0, o.e.liveBirds)                                      // the house's own sums work on no birds, not on fewer than none
+        assertEquals(-19, o.e.liveBirds)                                    // v62: the count kept (phone and sheet) is the same signed count
+        assertEquals(0, o.live); assertEquals(0, o.e.inHouse)               // the house's own sums work on no birds, not on fewer than none
+        assertTrue(o.e.totalFeedKg == 0.0 && (o.e.densityKgM2 ?: 0.0) == 0.0)
+        FlockCalc.compute(KgfFlock.flock, KgfFlock.farm, KgfFlock.config, over, KgfFlock.kgOf).forEach { assertEquals("day ${it.dayNumber}", it.liveBirds, o.bookLiveOn(it.dayNumber)) }
         assertEquals(left + 19, o.e.birdsLifted)                            // the entry itself is untouched
         assertTrue(at(o, 23, 55).fcr!!.let { it.isFinite() && it > 1.0 && it < 3.0 })
         // the next day still shows it
@@ -421,6 +425,12 @@ class LiftingSpaceTest {
         assertEquals((left + 19) * 20.0 / 24.0, after.eatersOn(45)!!, 1e-6)
         assertEquals(after.usedKgToday * 1000.0 / after.eatersOn(45)!!, after.usedPerBirdY!!, 1e-6)
         assertEquals(plainEaters(out(base, 44)), true)
+
+        // feed per bird till date is each day's feed over the birds that ate it, added up — not all the feed over the birds left
+        val pb = out(base, 44)
+        val sum = (1..44).sumOf { x -> pb.byDay[x]!!.let { pb.usedKg(it) } * 1000.0 / pb.eatersOn(x - 1)!! }
+        assertEquals(sum, pb.cumPerBird!!, 1e-6)
+        assertTrue("till date ${pb.cumPerBird} g", pb.cumPerBird!! in 3000.0..7000.0)
 
         // 5 fewer lifted: an open batch simply has 5 birds left; once closed they are birds never lifted
         val under = flockWith(left - 5)

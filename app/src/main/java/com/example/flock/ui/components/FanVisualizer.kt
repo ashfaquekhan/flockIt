@@ -60,7 +60,7 @@ fun FanVisualizer(
     val totalFans = farm.fanCount
     val day = entry?.dayNumber ?: 0
     val bw = entry?.avgWeight ?: PhysiologicalEngine.bwFromDay(entry?.weightAge ?: day.toDouble(), "Ross308")
-    val plan = IbController.dayPlan(day, bw, entry?.liveBirds ?: 0, farm)
+    val plan = IbController.dayPlan(day, bw, entry?.liveBirds?.coerceAtLeast(0) ?: 0, farm)
     val minLv = plan.minLv
     // Level at which each physical fan first runs.
     val joinLevel = HashMap<Int, Int>()

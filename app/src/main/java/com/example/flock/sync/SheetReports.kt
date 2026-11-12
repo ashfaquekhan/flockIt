@@ -178,6 +178,7 @@ object SheetReports {
             val rows = worked(c, f)
             val mass = massOf(c, f)
             val last = com.example.flock.data.FlockCalc.lastEnteredDay(rows)
+            val cumPerBird = com.example.flock.data.FlockCalc.cumFeedPerBirdG(rows, kg, bag, com.example.flock.data.FlockCalc.zoneOf(c.farm))
             var cumKg = 0.0; var prevW: Pair<Int, Double>? = null
             for (d in rows) {
                 if (d.dayNumber > last) break
@@ -198,7 +199,7 @@ object SheetReports {
                     r(w, 1), if (d.avgWeight != null) "measured" else "projected", r(d.weightAge, 2), r(d.idealWeight, 1), o(std.bw(d.dayNumber), 1),
                     r(std.ageForWeight(w) - d.dayNumber, 2),
                     o(gain, 1), o(d.cv, 2), o(com.example.flock.data.FlockCalc.cvEstimate(rows, d.dayNumber)?.takeIf { samples.size >= 3 }, 1), o(d.locSpreadPct, 2),
-                    r(cumKg, 1), if (d.liveBirds > 0 && cumKg > 0) r(cumKg * 1000 / d.liveBirds, 1) else "", o(d.fcr, 3), o(d.cFcr, 3), o(epef, 1),
+                    r(cumKg, 1), cumPerBird[d.dayNumber]?.takeIf { it > 0 }?.let { r(it, 1) } ?: "", o(d.fcr, 3), o(d.cFcr, 3), o(epef, 1),
                     *(mass[d.dayNumber]?.let { m ->
                         arrayOf<Any>(m.liftedToday, r(d.weightLifted, 1), o(m.liftAvgKg, 3), m.liftedBirds, r(m.liftedKg, 1),
                             r(m.avgAfterKg * 1000, 1), r(m.liveKg, 1), r(m.deadKg, 1), r(m.producedKg, 1), r(m.cumBwKg, 3),
@@ -232,6 +233,8 @@ object SheetReports {
             val last = com.example.flock.data.FlockCalc.lastEnteredDay(rows)
             val by = rows.associateBy { it.dayNumber }
             val proj = com.example.flock.data.FlockCalc.projections(f, c.farm, rows, kg)
+            val zone = com.example.flock.data.FlockCalc.zoneOf(c.farm)
+            val cumPerBird = com.example.flock.data.FlockCalc.cumFeedPerBirdG(rows, kg, bag, zone)
             var cumKg = 0.0
             for (p in proj) {
                 val d = by[p.day] ?: continue
@@ -239,7 +242,7 @@ object SheetReports {
                 cumKg += usedKg
                 if (p.day < 1) continue
                 val known = p.day <= last
-                val liveY = by[p.day - 1]?.liveBirds ?: 0
+                val liveY = by[p.day - 1]?.let { com.example.flock.data.FlockCalc.eaters(it, zone) } ?: 0.0
                 fun trio(pv: Double?, ev: Double?, places: Int): List<Any> = listOf(
                     o(pv, places), o(ev, places), if (pv != null && ev != null && ev != 0.0) r((pv - ev) / ev * 100, 1) else "")
                 val fed = usedKg > 0 && known
@@ -247,7 +250,7 @@ object SheetReports {
                 row.addAll(trio(p.weightG, d.avgWeight, 1))
                 row.addAll(trio(p.feedKg?.let { it / bag }, if (fed) usedKg / bag else null, 2))
                 row.addAll(trio(p.feedPerBirdG, if (fed && liveY > 0) usedKg * 1000 / liveY else null, 1))
-                row.addAll(trio(p.cumFeedPerBirdG, if (fed && d.liveBirds > 0) cumKg * 1000 / d.liveBirds else null, 1))
+                row.addAll(trio(p.cumFeedPerBirdG, if (fed) cumPerBird[p.day]?.takeIf { it > 0 } else null, 1))
                 row.addAll(trio(p.fcr, if (fed && d.avgWeight != null) d.fcr else null, 3))
                 val mortIn = known && ("M" in d.savedFields.split(",").map { it.trim() } || d.mortality > 0 || p.day < last)
                 row.addAll(trio(p.deaths, if (mortIn) d.mortality.toDouble() else null, 1))

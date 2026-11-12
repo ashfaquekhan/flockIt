@@ -192,7 +192,7 @@ fun BirdsSection(d: OutputData, view: OutputData.NowView, entryHHmm: String?, li
     val fcrPresent: Double? = lf?.let { d.massByDay[it]?.fcr }
     val fcrProj: Double? = view.fcr?.takeIf { lf != d.day }
     val cfcrPresent: Double? = lf?.let { d.massByDay[it]?.cFcrCompany }
-    val cfcrProj: Double? = fcrProj?.let { it + (2.0 - (m?.cumBwKg ?: (view.weightG / 1000.0))) * 0.25 }
+    val cfcrProj: Double? = fcrProj?.let { PhysiologicalEngine.computeCorrectedFcr(m?.cumBwKg ?: (view.weightG / 1000.0), it) }   // the one company formula
     // mortality (the dead and the culls): through the last day entered; the projection adds today's expected deaths
     val mortPresent: Double? = if (d.mortEntered) d.mortTDPct else lm?.cumMortPct
     val lostBefore = (d.mortTD - d.mortToday).coerceAtLeast(0).toDouble()
@@ -463,6 +463,9 @@ fun LiftSection(d: OutputData, view: OutputData.NowView? = null) {
         if (m != null && m.liftedBirds > 0) add(PLine("Lifted, per bird", v(m.liftedKg / m.liftedBirds, 3, P), "kg", null,
             refs = listOfNotNull(if (m.liftedToday > 0) "left " + Fmt.n(m.avgAfterKg * 1000, 0) + " g" to kindColor(PR) else null),
             sub = if (m.liftedToday > 0) "today ${m.liftedToday} · " + Fmt.n(m.liftAvgKg, 3) + " kg" else null, subKind = P))
+        // v62: said, not hidden — the birds left would weigh outside −20 % / +10 % of the flock's average by the truck's kilos
+        if (m != null && m.afterHeld) add(PLine("Birds left, weight", v(m.avgAfterKg * 1000, 0, PR), "g", null, refs = emptyList(),
+            sub = "held at the limit: truck kilos and weighing disagree", tag = "tile_after_held"))
         add(PLine("Livability", v(d.e.livability, 2, d.mk), "%", trendOf(d.e.livability, 100 - d.comCumPct, Better.HIGHER, 1.0),
             100 - d.comCumPct, 100 - d.ceilingPct, 2, actual = d.e.livability))
         add(PLine("EPEF", v(d.epef, 1, d.fcrKind), "", trendOf(d.epef, d.epefCom, Better.HIGHER), d.epefCom, d.epefIdeal, 1, actual = d.epef))

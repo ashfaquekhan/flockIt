@@ -433,6 +433,14 @@ fun formatLiftLaps(laps: List<LiftLap>): String = laps.sortedBy { it.hhmm }.join
     it.hhmm + "=" + it.birds + ":" + (if (it.kg % 1.0 == 0.0) it.kg.toLong().toString() else it.kg.toString()) }
 
 /** The day's liftings: its laps, or — a day lifted before laps were kept — the one lifting as entered (at its time, else 20:00). */
+/**
+ * The birds that can be in the house (v62): the day's count, never fewer than none. [DailyDataEntity.liveBirds] is the
+ * count as the entries give it — received − died on the way − dead − culled − lifted — kept WITH its sign (−19: 19 more
+ * lifted than the count held), the same on the phone, on the sheet and on the page. Sums that need real birds (feed,
+ * floor, air, water) take this instead; nothing else limits the count.
+ */
+val DailyDataEntity.inHouse: Int get() = liveBirds.coerceAtLeast(0)
+
 fun DailyDataEntity.lapsShown(zone: java.time.ZoneId): List<LiftLap> {
     val laps = parseLiftLaps(liftLaps)
     if (laps.isNotEmpty() || birdsLifted <= 0) return laps

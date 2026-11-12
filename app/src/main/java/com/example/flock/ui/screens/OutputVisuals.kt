@@ -347,11 +347,7 @@ private fun chartSpecs(d: OutputData): List<ChartSpec> {
         val live = d.eatersOn(day - 1)
         if (row == null || live == null || day > d.day) null else d.usedKg(row).takeIf { it > 0 }?.let { it * 1000 / live }
     }
-    val cumPerBird = { day: Int ->
-        val live = by[day]?.liveBirds?.takeIf { it > 0 }
-        if (live == null || day > d.day) null
-        else d.rows.filter { it.dayNumber <= day }.sumOf { d.usedKg(it) }.takeIf { it > 0 }?.let { it * 1000 / live }
-    }
+    val cumPerBird = { day: Int -> if (day > d.day) null else d.cumFeedByDay[day]?.takeIf { it > 0 } }
     val cumTop = niceTop(maxOf(CompanyStandard.cumFeed(maxDay) ?: 0.0, PhysiologicalEngine.cumFeedFromDay(maxDay.toDouble(), d.breed)), 1000.0)
     val dayTop = niceTop(maxOf(CompanyStandard.feedPerDay(maxDay) ?: 0.0, PhysiologicalEngine.dailyFeedFromDay(maxDay.toDouble(), d.breed)), 60.0)
     return listOf(

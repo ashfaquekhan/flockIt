@@ -325,7 +325,7 @@ fun EntriesScreen(
         // the reminder's figures, from the house as it stood before this lifting
         val r = entry?.let { e ->
             val before = e.liveBirds.coerceAtLeast(0)
-            val signedLeft = before - n          // v61: below zero when more were lifted than the count held
+            val signedLeft = e.liveBirds - n          // v61: below zero when more were lifted than the count held
             val left = signedLeft.coerceAtLeast(0)
             val perBird = if (e.liveBirds > 0) e.totalFeedKg / e.liveBirds else 0.0
             val bagKg = (farm?.feedBagKg ?: 50.0).takeIf { it > 0 } ?: 50.0

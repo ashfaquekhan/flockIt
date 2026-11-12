@@ -2,6 +2,7 @@ package com.example.flock.ui.screens
 
 import com.example.flock.data.DailyDataEntity
 import com.example.flock.data.lapsShown
+import com.example.flock.data.inHouse
 import com.example.flock.data.savedGroups
 import com.example.flock.data.FarmEntity
 import com.example.flock.data.FeedTypeEntity
@@ -77,17 +78,14 @@ class OutputData(
     val vk = if (e.projected) ValueKind.PREDICTED else ValueKind.PRESENT
     val byDay = rows.associateBy { it.dayNumber }
     val upto = rows.filter { it.dayNumber <= day }
+    private fun bagKgOf(f: FarmEntity) = if (f.feedBagKg > 0) f.feedBagKg else 50.0
     private val farmZone: java.time.ZoneId = try { java.time.ZoneId.of(farm.timeZone) } catch (ex: Exception) { java.time.ZoneId.systemDefault() }
     /**
      * The birds that ate during flock day [d] (v61): those in the house at its end, and the birds lifted that day for the
      * part of the day before their truck left (640 birds loaded at 18:00 ate for three quarters of it). Before v61 a
      * lifting day's feed was divided by the birds left alone, which overstated the feed per bird on those days.
      */
-    fun eatersOn(d: Int): Double? {
-        val r = byDay[d] ?: return null
-        val n = r.liveBirds + r.lapsShown(farmZone).sumOf { it.birds * (it.hour / 24.0).coerceIn(0.0, 1.0) }
-        return n.takeIf { it > 0 }
-    }
+    fun eatersOn(d: Int): Double? = byDay[d]?.let { com.example.flock.data.FlockCalc.eaters(it, farmZone) }?.takeIf { it > 0 }
     private val kgMap = feedTypes.associate { it.code to it.bagKg }
     private val sortedRows = rows.sortedBy { it.dayNumber }
     /** A day after today: nothing in it has happened yet. */
@@ -109,7 +107,8 @@ class OutputData(
     // ------------------------------- birds -------------------------------
     val placed = flock?.birdsPlaced ?: 0
     val reception = flock?.receptionMort ?: 0
-    val live = e.liveBirds
+    /** The birds that can be in the house: the count, never fewer than none (the count itself, signed, is [bookLive]). */
+    val live = e.inHouse
     val liveSafe = live.coerceAtLeast(1)
     /** Birds lost today: the dead and the culls (birds taken out by hand are mortality too, v60). */
     val mortToday = e.mortality + e.lameSeparated
@@ -117,7 +116,7 @@ class OutputData(
     val entryBirds = max(1, placed - reception)
     val mortTD = upto.sumOf { it.mortality + it.lameSeparated }
     /** The birds in the house when this day began: yesterday's count (the day's deaths, culls and liftings come off it). */
-    val startLive: Int = byDay[day - 1]?.liveBirds ?: (live + mortToday + e.birdsLifted)
+    val startLive: Int = byDay[day - 1]?.inHouse ?: (live + mortToday + e.birdsLifted)
     /** Today's deaths as a share of the birds the day began with (v59: not of the birds left after a lifting): unknown (—) until entered. */
     val mortTodayPct: Double? = if ((mortEntered || !open) && startLive > 0) mortToday * 100.0 / startLive else null
     val mortTDPct: Double? = if (placed > 0) mortTD * 100.0 / entryBirds else e.cumMortPct
@@ -339,8 +338,8 @@ class OutputData(
     /** Feed logged today = what the birds ate yesterday. */
     val usedBagsToday = usedByType(e).values.sum()
     val usedKgToday = usedKg(e)
-    private val yLive: Double = eatersOn(day - 1) ?: liveSafe.toDouble()
-    val usedPerBirdY: Double? = if (usedKgToday > 0 && day >= 1) usedKgToday * 1000.0 / yLive else null
+    /** Yesterday's feed per bird: over the birds that ate it; unknown (—) when no bird is on the count for that day (v62: no stand-in bird). */
+    val usedPerBirdY: Double? = if (usedKgToday > 0 && day >= 1) eatersOn(day - 1)?.let { usedKgToday * 1000.0 / it } else null
     /** Yesterday's feed (flock day − 1) is the chart's row for today's number. */
     val comPerBirdY: Double? = CompanyStandard.feedPerDay(day)
     val idealPerBirdY = PhysiologicalEngine.dailyFeedFromDay(max(1, day).toDouble(), breed)
@@ -350,7 +349,9 @@ class OutputData(
     /** Commercial / ideal feed the flock should have eaten up to yesterday, for the birds actually alive each day. */
     val comKgTD = rows.filter { it.dayNumber in 0 until day }.sumOf { (CompanyStandard.feedPerDay(it.dayNumber + 1) ?: 0.0) * (eatersOn(it.dayNumber) ?: 0.0) / 1000.0 }
     val idealKgTD = rows.filter { it.dayNumber in 0 until day }.sumOf { PhysiologicalEngine.dailyFeedFromDay((it.dayNumber + 1).toDouble(), breed) * (eatersOn(it.dayNumber) ?: 0.0) / 1000.0 }
-    val cumPerBird: Double? = if (usedKgTD > 0) usedKgTD * 1000.0 / liveSafe else null
+    /** Feed per bird till date by day (v62): each day's feed over the birds that ate it, added up — see [com.example.flock.data.FlockCalc.cumFeedPerBirdG]. */
+    val cumFeedByDay: Map<Int, Double> = com.example.flock.data.FlockCalc.cumFeedPerBirdG(rows, kgMap, bagKgOf(farm), farmZone)
+    val cumPerBird: Double? = cumFeedByDay[day]?.takeIf { it > 0 }
     val cumPerBirdCom: Double? = CompanyStandard.cumFeed(day)
     val cumPerBirdIdeal: Double? = if (day >= 1) PhysiologicalEngine.cumFeedFromDay(day.toDouble(), breed) else null
     val remainPlanKg = rows.filter { it.dayNumber in day..harvestAge }.sumOf { it.totalFeedKg }
@@ -635,8 +636,8 @@ class OutputData(
         else com.example.flock.domain.DaySchedule.seasonTemps(scenarios.first().outC, scenarios.last().outC)
     }
     /** Tank fills the day's water needs (rounded up), and the refills planned with the farm's multiplier. */
-    val waterTanksNeeded: Double get() = max(1.0, ceil(waterL / tankL))
-    val waterRefills: Int get() = (waterTanksNeeded * (if (refillF > 0) refillF else 1.0)).roundToInt().coerceIn(1, 24)
+    val waterTanksNeeded: Double get() = if (waterL <= 0) 0.0 else max(1.0, ceil(waterL / tankL))   // v62: an empty house needs none
+    val waterRefills: Int get() = (waterTanksNeeded * (if (refillF > 0) refillF else 1.0)).roundToInt().coerceIn(if (waterL <= 0) 0 else 1, 24)
     fun daySchedule(feedings: Int) = com.example.flock.domain.DaySchedule.plan(
         com.example.flock.domain.DaySchedule.Inputs(e.lightHours, 5.0, feedings, waterRefills, dayTemps))
     val correction = com.example.flock.domain.FeedCorrection.advise(day, if (e.sampleEntered) bw else null, bwCom, e.fcr, fcrCom)
@@ -807,7 +808,7 @@ class OutputData(
     }
     val kpis: com.example.flock.domain.FlockKpis.Result = com.example.flock.domain.FlockKpis.compute(
         upto.sortedBy { it.dayNumber }.map { r ->
-            com.example.flock.domain.FlockKpis.Day(r.dayNumber, weightOn(r), r.avgWeight != null, eatenOn(r.dayNumber), r.mortality, r.lameSeparated, r.liveBirds)
+            com.example.flock.domain.FlockKpis.Day(r.dayNumber, weightOn(r), r.avgWeight != null, eatenOn(r.dayNumber), r.mortality, r.lameSeparated, r.inHouse)
         }, day, entryBirds, usedKgTD)
     val adgCom: Double? = if (day >= 1) bwCom?.let { it / day } else null
     val adgIdeal: Double? = if (day >= 1) bwIdeal / day else null

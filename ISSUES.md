@@ -68,10 +68,14 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O84 | Present and projected are shown for the Birds numbers only | Feed, water and air numbers are plans or models by nature (no entry to lead with), apart from "Eaten yesterday". Say which others should show both. |
 | O85 | Sheet schema 12 upgrade is tested on data, not yet run on the live sheet | Same path as 11 (O79); both phones should move to v60 together. |
 | O86 | The count that does not add up is shown, not explained | −N: more lifted than the count held (a missed delivery count, deaths entered twice, a truck's count); +N on a closed batch: birds in the count never lifted (deaths not entered). The app cannot tell which; the entries stay as entered. On an open batch a few birds left in the count after the last truck show as birds left (not red) until the batch is closed. |
-| O87 | The stored LiveBirds (phone and sheet column) stays at 0 when the count is below zero | The house's sums (feed, floor, air) cannot work on fewer than no birds. The signed count is worked out from the entries on the page and in the flock book; the sheet's column does not show it. |
+| O87 | A count below zero now reaches the sheet's LiveBirds column | Since v62 the sheet shows the same signed count as the page (it was held at 0). Anything outside the app that reads that column should expect a negative number when the count does not add up. |
 | O88 | The birds that ate on a lifting day are an estimate | Lifted birds count for the share of the day before their truck's time; feed taken away earlier before loading is not known. The projections' own appetite learning (`domain/Projection`) still divides by the birds left. |
 | O89 | The Map and the event list are off the Output page | By request (v61). The code and the event log are kept; say if they should come back elsewhere (the account menu, a page of their own). |
 | O90 | The flock book no longer opens a day | A touch lights the cell (v61). Days are opened from the top bar. |
+| O91 | Feed per bird till date reads about 1–2 % lower than before v62 | It is now each day's feed over the birds that ate it, added up; the company's chart column is per bird alive too. FCR is not affected (feed over kilos produced). |
+| O92 | The weight of the birds left after a lifting is still held within −20 % / +10 % of the flock's average | Now said on the page when it acts. It guards FCR against one wrong truck weight when few birds are left; the right figure needs a weighing of the birds left. |
+| O93 | Still worked out apart from the day rows | The clock's view (`nowView`) and the projections each have their own sums for live birds and FCR through the day; they agree with the day rows at the day's end (tested) but are not yet one function. The move to "rows worked out from events" (O72) is the place to join them. |
+| O94 | Guards for an empty house remain in the air and fan pages | Fans per bird and air per bird divide by at least 1 bird so an empty house draws; they show the house's figures, not a count. |
 | O51 | "Comfortable" density on hot days (30 / 34 kg/m²) is a rule of thumb | From heat-stress guidance; the farm's cap (39 kg/m²) stays the most. Say if the company uses other figures. |
 | O68 | Clashes are found for day entries only | Farm settings, flocks, tasks and feed types still go by the later save, and are not sent in the background (they are sent with the next save). |
 | O69 | The background sender needs Google sign-in to renew by itself | It uses the account signed in on the phone; if Google wants the sign-in confirmed again, it waits until FlockIt is opened. |
@@ -94,6 +98,10 @@ is not made twice. Newest first. Open items at the top. Update together with
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v62 | The sheet's LiveBirds said 0 while the page said −19 | The count was held at 0 before it was kept; v61 worked the signed count out a second time for the page | One count, kept with its sign; sums that need real birds take `inHouse` |
+| v62 | Feed per bird till date jumped after a lifting | All the feed so far over the birds in the house today | Each day's feed over the birds that ate it, added up; one function for page, graph and sheet |
+| v62 | The projected cFCR had its own copy of the formula | Numbers typed in twice | The one formula function |
+| v62 | A limit on the weight of the birds left after a lifting acted unseen | Held within −20 % / +10 % without a word | Still held, and said in Lifting when it acts |
 | v61 | 640 lifted with 621 in the count showed 1 bird left, then 0 | The count was held at 0 (stored) and at 1 (by the clock) | The count by the entries, signed: −19 in red, the entries untouched |
 | v61 | Feed per bird jumped on the day after a lifting | The day's feed was divided by the birds left after the trucks | Divided by the birds that ate: those left and the lifted until their truck's time |
 | v61 | Livability could be moved by a wrong truck count | Worked out from the birds left + lifted | From the losses: received − dead − culled |
