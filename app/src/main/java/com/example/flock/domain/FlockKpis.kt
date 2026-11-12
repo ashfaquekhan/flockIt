@@ -58,10 +58,10 @@ object FlockKpis {
 
         // first week: deaths entered on days 0–6 (the chart's days 1–7)
         val firstWeek = days.filter { it.day in 0..6 }
-        val fw = if (entry > 0 && firstWeek.isNotEmpty()) firstWeek.sumOf { it.deaths } * 100.0 / entry else null
+        val fw = if (entry > 0 && firstWeek.isNotEmpty()) firstWeek.sumOf { it.deaths + it.culls } * 100.0 / entry else null   // culls are mortality too (v60; here since v63)
 
         val base = by[today - 7]?.live ?: entry
-        val m7 = if (base > 0) days.filter { it.day in (today - 6)..today }.sumOf { it.deaths } * 100.0 / base else null
+        val m7 = if (base > 0) days.filter { it.day in (today - 6)..today }.sumOf { it.deaths + it.culls } * 100.0 / base else null
 
         // weight of the birds lost, each at the flock's weight on the day it was lost
         val lostKg = days.filter { it.day <= today }.sumOf { (it.deaths + it.culls) * it.weightG / 1000.0 }

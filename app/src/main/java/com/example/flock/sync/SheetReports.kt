@@ -190,7 +190,7 @@ object SheetReports {
                 val gain = d.avgWeight?.let { now -> prevW?.let { (pd, pw) -> (now - pw) / (d.dayNumber - pd) } }
                 if (d.avgWeight != null) prevW = d.dayNumber to d.avgWeight
                 val fcr = d.fcr; val liv = d.livability
-                val epef = if (d.dayNumber >= 7 && fcr != null && fcr > 0 && liv != null) liv * (w / 1000) * 100 / (d.dayNumber * fcr) else null
+                val epef = com.example.flock.data.FlockCalc.epef(d.dayNumber, liv, mass[d.dayNumber]?.cumBwKg ?: (w / 1000), fcr)
                 out += listOf<Any>(
                     f.flockId, f.name, d.dayNumber, d.date,
                     samples.sumOf { it.second } + singles.size, r(samples.sumOf { it.first } + singles.sum(), 1), d.mortality, d.lameSeparated, d.birdsLifted,

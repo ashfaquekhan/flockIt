@@ -97,7 +97,7 @@ object SpacePlan {
     }
 
     private fun walk(feederGapFt: Double, panGapFt: Double, drinkerGapFt: Double): Double =
-        max(hypot(feederGapFt / 2, panGapFt / 2), drinkerGapFt / 2) / 3.2808
+        max(Travel.furthest(feederGapFt, panGapFt), drinkerGapFt / 2) / 3.2808
 
     private val SERIES = listOf(1 to 0, 4 to 1, 3 to 1, 2 to 1, 3 to 2, 1 to 1, 2 to 3, 1 to 2, 1 to 3)
 

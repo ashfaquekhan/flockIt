@@ -8,6 +8,32 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v63 — 2026-11-13 · Every calculation file read line by line; the projections, KPIs, EPEF, heat and weather brought to one definition each; unused old screens removed · no DB or sheet layout change
+Read in full: `FlockCalc`, `OutputData`, `PhysiologicalEngine`, `CompanyStandard`, `IbController`, `Projection`,
+`IntakeForecast`, `GrowthForecast`, `FlockKpis`, `Suggest`, `FeedCorrection`, `BirdEnvironment`, `SpacePlan`, `Litter`,
+`Travel`, `Radar`, `FlockNeeds`, `DaySchedule`, `HouseMap` (the bird counts and heat in it), `SheetReports`.
+- **Projections** (the amber line on the graphs, the sheet's Projections tab, the model log) now use the same facts as the
+  day rows:
+  - culls count as deaths (they were left out, so projected mortality and live birds disagreed with the page since v60);
+  - projected FCR is feed over the birds in the house AND the kilos already sold (it left the sold kilos out, so it
+    shot up after every lifting);
+  - after a lifting the weight is carried on from the average of the birds left, not from the weighing before it;
+  - feed per bird is over the birds that ate; feed per bird till date is added up day by day (as the page since v62).
+- **The flock's appetite** (the bags advised) is learned against the plan for the birds that ate each day. On a lifting
+  day the plan was for the birds left while the feed entered was eaten by the lifted ones too, which read as a jump in
+  appetite.
+- **First-week and last-7-days mortality** count the culls.
+- **EPEF**: one function for the page and the sheet's Computed tab. The sheet used the day's weight; the page the average
+  of every bird produced (live and lifted). Now both the latter — they differ only after a lifting.
+- **Coolest / middle / hottest hour** (the cooling grid, the fan finder's start, the heat warnings) come from the weather
+  at the farm when the day has it. They were always the season's typical day, even with a forecast on the phone (O16).
+- **The heat a bird gives off** (10.62 × kg^0.75 W and its sensible share): one function; the controller model, the
+  house map and the page each had a copy. The walk distance likewise (`Travel.furthest`).
+- **Bag weight**: the day rows had no fallback when the farm's bag weight was 0 (a division by zero); 50 kg, as elsewhere.
+- **Removed**: six screens and three components no page opened any more (Targets, Feed, Water, Insights, Vent/Climate,
+  Graphs; climate envelope, fan visualizer, house floor plan) and the old targets table in the engine. They held older
+  versions of the formulas above.
+
 ## v62 — 2026-11-13 · One definition for every bird count and feed-per-bird figure; no number bent out of sight · no DB or sheet layout change (existing entries untouched; worked-out columns are recalculated on the next load)
 The rule this version applies: **entries are facts and are never changed; a worked-out number has one definition, used by
 the page, the graphs, the phone and the sheet; a limit is applied only where a sum needs it, and is said when it acts.**

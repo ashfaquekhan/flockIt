@@ -182,8 +182,7 @@ class OutputData(
     val cfcrCom: Double? = CompanyStandard.cfcr(day)
     val cfcrIdeal = PhysiologicalEngine.computeCorrectedFcr(bwIdeal / 1000.0, fcrIdeal)
     /** EPEF on the average of every bird produced (lifted ones too) once birds are lifted, else the flock's weight. */
-    val epef: Double? get() = if (day >= 7 && e.fcr != null && e.fcr > 0 && e.livability != null)
-        e.livability * (mass?.cumBwKg ?: (bw / 1000.0)) * 100.0 / (day * e.fcr) else null
+    val epef: Double? get() = com.example.flock.data.FlockCalc.epef(day, e.livability, mass?.cumBwKg ?: (bw / 1000.0), e.fcr)
     val epefCom: Double? = if (day >= 7 && fcrCom != null && bwCom != null)
         (100 - comCumPct) * (bwCom / 1000.0) * 100.0 / (day * fcrCom) else null
     val epefIdeal: Double? = if (day >= 7) (100 - ceilingPct) * (bwIdeal / 1000.0) * 100.0 / (day * fcrIdeal) else null
@@ -192,8 +191,8 @@ class OutputData(
 
     // --------------------------- environment / heat ---------------------------
     val avgKg = bw / 1000.0
-    val heatPerBirdW = 10.62 * Math.pow(avgKg.coerceAtLeast(0.04), 0.75)
-    val sensibleFrac = (0.61 * (1 + 0.02 * (20 - e.tempIdeal)) - 0.000228 * e.tempIdeal * e.tempIdeal).coerceIn(0.15, 0.75)
+    val heatPerBirdW = PhysiologicalEngine.heatW(avgKg)
+    val sensibleFrac = PhysiologicalEngine.sensibleFrac(e.tempIdeal)
     /** Moisture breathed out, g per bird per hour (latent heat ÷ 2,450 J/g). */
     val moistureGPerBirdHr = heatPerBirdW * (1 - sensibleFrac) * 3600.0 / 2450.0
     val lightIdealLux = if (day <= 7) "30.0–40.0" else "5.0–10.0"
@@ -223,46 +222,12 @@ class OutputData(
         return base + (if (s.padEff > 0) " + cooling pads" else "") + (if (s.heaterKw > 0.05) " + heaters" else "")
     }
 
-    /** Coolest / middle / hottest hour of the selected day: forecast when available, else the season's typical day. */
-    val scenarioSource: String
-    val scenarios: List<VentScenario>
-    init {
-        val dayPts = emptyList<com.example.flock.network.HourPoint>()   // season's typical day, not the forecast
-        val cases: List<Triple<Int, Double, Double>> = if (dayPts.size >= 12) {
-            val lo = dayPts.minBy { it.tempC }
-            val hi = dayPts.maxBy { it.tempC }
-            val midT = (lo.tempC + hi.tempC) / 2
-            val mid = dayPts.minBy { abs(it.tempC - midT) }
-            listOf(Triple(lo.hour, lo.tempC, lo.rhPct), Triple(mid.hour, mid.tempC, mid.rhPct), Triple(hi.hour, hi.tempC, hi.rhPct))
-        } else {
-            when (farm.season.lowercase()) {
-                "summer" -> listOf(Triple(5, 27.0, 60.0), Triple(10, 34.0, 40.0), Triple(15, 41.0, 25.0))
-                "winter" -> listOf(Triple(5, 10.0, 80.0), Triple(10, 18.0, 60.0), Triple(15, 26.0, 45.0))
-                else -> listOf(Triple(5, 24.0, 92.0), Triple(10, 28.0, 80.0), Triple(15, 32.0, 68.0))
-            }
-        }
-        scenarioSource = if (dayPts.size >= 12) "forecast for this day" else "typical ${farm.season.lowercase()} day"
-        val names = listOf("Coolest" to "", "Middle" to "", "Hottest" to "")
-        scenarios = cases.mapIndexed { i, (h, t, rh) ->
-            val s = IbController.simulate(plan, t, rh, h, live, bw, farm)
-            VentScenario(names[i].first, names[i].second, h, t, rh, s, levelOf(s), airFpm(s.fans), modeOf(s))
-        }
+    /** The season's typical day (coolest, middle, hottest hour: hour, °C, % RH) — used only when there is no weather for the day. */
+    private val seasonCases: List<Triple<Int, Double, Double>> = when (farm.season.lowercase()) {
+        "summer" -> listOf(Triple(5, 27.0, 60.0), Triple(10, 34.0, 40.0), Triple(15, 41.0, 25.0))
+        "winter" -> listOf(Triple(5, 10.0, 80.0), Triple(10, 18.0, 60.0), Triple(15, 26.0, 45.0))
+        else -> listOf(Triple(5, 24.0, 92.0), Triple(10, 28.0, 80.0), Triple(15, 32.0, 68.0))
     }
-
-
-    // ------------------------------- cooling grid & fan finder -------------------------------
-    /** Hottest outside temperature of the day (forecast, else the season's typical day). */
-    val hottestC = scenarios.last().outC
-    val hottestHour = scenarios.last().hour
-    /** Cooling grid rows: hottest − 8, − 4 and the hottest itself; columns: dry, medium, humid air. */
-    val gridTemps = listOf(hottestC - 8, hottestC - 4, hottestC).map { (it * 2).roundToInt() / 2.0 }
-    val gridRh = listOf(40.0, 65.0, 90.0)
-    fun sim(outC: Double, outRh: Double, hr: Int = 14): IbController.HouseState = IbController.simulate(plan, outC, outRh, hr, live, bw, farm)
-    /** Where the fan finder dials start: the weather now if we have it, else the hottest hour. */
-    val dialStartC = hottestC
-    val dialStartRh = scenarios.last().outRh
-
-    // ------------------------------- the weather at the farm, the house it makes, and the birds in it -------------------------------
     private val lightProg = LightProgram(e.lightHours)
     /** Outside air for each hour of this day: the weather at the farm's location when it covers the day, else the season's typical day. */
     val outsideSource: com.example.flock.domain.BirdEnvironment.Source
@@ -284,14 +249,46 @@ class OutputData(
             }
         } else {
             outsideSource = com.example.flock.domain.BirdEnvironment.Source.SEASON
-            val lo = scenarios.first(); val hi = scenarios.last()
-            val temps = com.example.flock.domain.DaySchedule.seasonTemps(lo.outC, hi.outC)
+            val lo = seasonCases.first(); val hi = seasonCases.last()
+            val temps = com.example.flock.domain.DaySchedule.seasonTemps(lo.second, hi.second)
             outsideHours = temps.mapIndexed { h, t ->
-                val f = if (hi.outC > lo.outC) ((t - lo.outC) / (hi.outC - lo.outC)).coerceIn(0.0, 1.0) else 0.0
-                Triple(h, t, lo.outRh + (hi.outRh - lo.outRh) * f)
+                val f = if (hi.second > lo.second) ((t - lo.second) / (hi.second - lo.second)).coerceIn(0.0, 1.0) else 0.0
+                Triple(h, t, lo.third + (hi.third - lo.third) * f)
             }
         }
     }
+    /** Coolest / middle / hottest hour of the selected day: forecast when available, else the season's typical day. */
+    val scenarioSource: String
+    val scenarios: List<VentScenario>
+    init {
+        val weather = outsideSource == com.example.flock.domain.BirdEnvironment.Source.WEATHER
+        val cases: List<Triple<Int, Double, Double>> = if (weather) {
+            val lo = outsideHours.minBy { it.second }; val hi = outsideHours.maxBy { it.second }
+            val midT = (lo.second + hi.second) / 2
+            listOf(lo, outsideHours.minBy { abs(it.second - midT) }, hi)
+        } else seasonCases
+        scenarioSource = if (weather) "the weather at the farm" else "typical ${farm.season.lowercase()} day"
+        val names = listOf("Coolest" to "", "Middle" to "", "Hottest" to "")
+        scenarios = cases.mapIndexed { i, (h, t, rh) ->
+            val s = IbController.simulate(plan, t, rh, h, live, bw, farm)
+            VentScenario(names[i].first, names[i].second, h, t, rh, s, levelOf(s), airFpm(s.fans), modeOf(s))
+        }
+    }
+
+
+    // ------------------------------- cooling grid & fan finder -------------------------------
+    /** Hottest outside temperature of the day (forecast, else the season's typical day). */
+    val hottestC = scenarios.last().outC
+    val hottestHour = scenarios.last().hour
+    /** Cooling grid rows: hottest − 8, − 4 and the hottest itself; columns: dry, medium, humid air. */
+    val gridTemps = listOf(hottestC - 8, hottestC - 4, hottestC).map { (it * 2).roundToInt() / 2.0 }
+    val gridRh = listOf(40.0, 65.0, 90.0)
+    fun sim(outC: Double, outRh: Double, hr: Int = 14): IbController.HouseState = IbController.simulate(plan, outC, outRh, hr, live, bw, farm)
+    /** Where the fan finder dials start: the weather now if we have it, else the hottest hour. */
+    val dialStartC = hottestC
+    val dialStartRh = scenarios.last().outRh
+
+    // ------------------------------- the weather at the farm, the house it makes, and the birds in it -------------------------------
     val hotC: Double = outsideHours.maxOf { it.second }
     val coolC: Double = outsideHours.minOf { it.second }
     /** Body temperature of a comfortable bird: 39.4–40.5 °C in the first 2 days; about 41–42 °C once grown. */
@@ -345,7 +342,7 @@ class OutputData(
     val idealPerBirdY = PhysiologicalEngine.dailyFeedFromDay(max(1, day).toDouble(), breed)
     val usedBagsTD = upto.sumOf { usedByType(it).values.sum() }
     val usedKgTD = upto.sumOf { usedKg(it) }
-    val planKgTD = rows.filter { it.dayNumber < day }.sumOf { it.totalFeedKg }
+    val planKgTD = rows.filter { it.dayNumber < day }.sumOf { com.example.flock.data.FlockCalc.planEatenKg(it, farmZone) }   // for the birds that ate it (v63)
     /** Commercial / ideal feed the flock should have eaten up to yesterday, for the birds actually alive each day. */
     val comKgTD = rows.filter { it.dayNumber in 0 until day }.sumOf { (CompanyStandard.feedPerDay(it.dayNumber + 1) ?: 0.0) * (eatersOn(it.dayNumber) ?: 0.0) / 1000.0 }
     val idealKgTD = rows.filter { it.dayNumber in 0 until day }.sumOf { PhysiologicalEngine.dailyFeedFromDay((it.dayNumber + 1).toDouble(), breed) * (eatersOn(it.dayNumber) ?: 0.0) / 1000.0 }
@@ -473,7 +470,7 @@ class OutputData(
     val patterns: List<PanPattern> = listOf(1 to 0, 4 to 1, 3 to 1, 2 to 1, 3 to 2, 1 to 1, 2 to 3, 1 to 2, 1 to 3).map { (on, off) ->
         val open = (0 until pansInArea).filter { (it % (on + off)) < on }
         val gapM = (off + 1) * panSpacingFt * 0.3048
-        val travel = Math.hypot(feederGapFt * 0.3048 / 2, gapM / 2)
+        val travel = com.example.flock.domain.Travel.furthest(feederGapFt * 0.3048, gapM)
         val n = feederLines * open.size
         val cell = feederGapFt * (on + off) * panSpacingFt / on
         PanPattern(on, off, open.size, open.lastOrNull()?.let { it + panFirst } ?: -1, travel,
@@ -487,7 +484,9 @@ class OutputData(
     val intakeHistory: List<com.example.flock.domain.IntakeForecast.Day> = rows.filter { it.dayNumber in 0 until day }.mapNotNull { r ->
         val next = byDay[r.dayNumber + 1] ?: return@mapNotNull null
         val eaten = usedKg(next)
-        if (eaten <= 0 || r.totalFeedKg <= 0) null else com.example.flock.domain.IntakeForecast.Day(r.dayNumber, r.totalFeedKg, eaten)
+        // v63: against the plan for the birds that ate it (on a lifting day the stored plan is for the birds left)
+        val planned = com.example.flock.data.FlockCalc.planEatenKg(r, farmZone)
+        if (eaten <= 0 || planned <= 0) null else com.example.flock.domain.IntakeForecast.Day(r.dayNumber, planned, eaten)
     }
     val carrySdKg = com.example.flock.data.FlockCalc.carrySdKg(farm)
     val intake: com.example.flock.domain.IntakeForecast.Result = com.example.flock.domain.IntakeForecast.forecast(intakeHistory, giveKg, carrySdKg)

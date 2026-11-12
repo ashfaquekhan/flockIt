@@ -161,7 +161,7 @@ object IbController {
         val p = w * 101.325 / (0.622 + w); val ps = 0.61094 * exp(17.625 * t / (t + 243.04))
         return (100 * p / ps).coerceIn(5.0, 100.0)
     }
-    private fun fs(t: Double) = (0.61 * (1 + 0.02 * (20 - t)) - 0.000228 * t * t).coerceIn(0.15, 0.75)
+    private fun fs(t: Double) = PhysiologicalEngine.sensibleFrac(t)
     private const val K = 0.5698 // W per K per cfm of airflow
 
     data class HouseState(
@@ -207,7 +207,7 @@ object IbController {
         val heatSet = plan.heat + off
         val twb = PhysiologicalEngine.wetBulb(outC, outRh)
         val wo = wFromTwb(outC, twb)
-        val q = birds * 10.62 * Math.pow(max(bwG, 30.0) / 1000.0, 0.75)
+        val q = birds * PhysiologicalEngine.heatW(bwG / 1000.0)
         val floorFt2 = max(1.0, farm.lengthFt * farm.widthFt)
         val ua = 0.1758 * floorFt2 * min(1.0, 0.3 + 0.7 * plan.day / 11.0)
         val sol = 2.34 * floorFt2 * max(0.0, sin(PI * (hour - 6.5) / 13))

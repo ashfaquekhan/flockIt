@@ -443,4 +443,40 @@ class LiftingSpaceTest {
         val plain = out(base, 44)
         c.filter { it.dayNumber <= 44 }.forEach { assertEquals("day ${it.dayNumber}", it.liveBirds, plain.bookLiveOn(it.dayNumber)) }
     }
+
+    /**
+     * v63: the projections are worked out from the same facts as the day rows. After a lifting the projected FCR counts
+     * the kilos sold, the projected weight starts from the birds left, feed per bird is over the birds that ate, and
+     * culls count as deaths.
+     */
+    @Test fun theProjectionsHoldAfterALifting() {
+        val c = FlockCalc.compute(KgfFlock.flock, KgfFlock.farm, KgfFlock.config, KgfFlock.rows(lastDay = 46, upTo = 44), KgfFlock.kgOf)
+        val p = FlockCalc.projections(KgfFlock.flock, KgfFlock.farm, c, KgfFlock.kgOf).associateBy { it.day }
+        val firstLift = c.first { it.birdsLifted > 0 }.dayNumber
+        val zone = FlockCalc.zoneOf(KgfFlock.farm)
+        val cum = FlockCalc.cumFeedPerBirdG(c, KgfFlock.kgOf, 60.0, zone)
+        var checked = 0
+        for (d in c.filter { it.dayNumber in (firstLift + 1)..44 }) {
+            val x = p[d.dayNumber] ?: continue
+            val fcr = d.fcr
+            if (x.fcr != null && fcr != null) {
+                assertEquals("FCR projected for day ${d.dayNumber}", fcr, x.fcr!!, fcr * 0.12); checked++
+            }
+            x.cumFeedPerBirdG?.let { assertTrue("day ${d.dayNumber} per bird till date $it", it in 2000.0..8000.0) }
+        }
+        assertTrue("days checked $checked", checked >= 5)
+        // culls are deaths in the projections too
+        val culled = KgfFlock.rows(lastDay = 20, upTo = 19).map { if (it.dayNumber in 10..19) it.copy(lameSeparated = 40) else it }
+        val cc = FlockCalc.compute(KgfFlock.flock, KgfFlock.farm, KgfFlock.config, culled, KgfFlock.kgOf)
+        val plain = FlockCalc.projections(KgfFlock.flock, KgfFlock.farm,
+            FlockCalc.compute(KgfFlock.flock, KgfFlock.farm, KgfFlock.config, KgfFlock.rows(lastDay = 20, upTo = 19), KgfFlock.kgOf), KgfFlock.kgOf).first { it.day == 20 }
+        val withCulls = FlockCalc.projections(KgfFlock.flock, KgfFlock.farm, cc, KgfFlock.kgOf).first { it.day == 20 }
+        assertTrue("culls raise the projected losses: ${plain.deaths} → ${withCulls.deaths}", withCulls.deaths!! > plain.deaths!! + 5)
+        assertTrue(withCulls.cumMortPct!! > plain.cumMortPct!! + 1.0)
+        // EPEF: one definition
+        assertEquals(96.0 * 2.5 * 100 / (40 * 1.6), FlockCalc.epef(40, 96.0, 2.5, 1.6)!!, 1e-9)
+        assertNull(FlockCalc.epef(6, 96.0, 0.2, 0.9))
+        // the heat a bird gives off: one definition
+        assertEquals(10.62 * Math.pow(2.0, 0.75), com.example.flock.engine.PhysiologicalEngine.heatW(2.0), 1e-9)
+    }
 }

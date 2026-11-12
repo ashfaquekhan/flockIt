@@ -71,7 +71,7 @@ object HouseMap {
         val start = i.penStartFt.coerceIn(0.0, i.lengthFt)
         val end = i.penEndFt.coerceIn(start + 1.0, i.lengthFt)
         private val penM2 = (end - start) * i.widthFt * M_PER_FT * M_PER_FT
-        val heatPerBirdW = 10.62 * max(0.04, i.avgKg).pow(0.75)
+        val heatPerBirdW = com.example.flock.engine.PhysiologicalEngine.heatW(i.avgKg)
         private val flowM3s = max(0.5, i.airCfm * CFM_TO_M3S)
         /** how much the air warms (°C) and wets (kg water a kg of air) from one end of the birds' floor to the other */
         val riseC = i.live * heatPerBirdW * sensible / (RHO_CP * flowM3s) * (if (i.tunnel) 1.0 else mix)

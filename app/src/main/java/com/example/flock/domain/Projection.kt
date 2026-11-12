@@ -27,8 +27,14 @@ object Projection {
         val deaths: Int,
         /** feed entered that day, kg — what was eaten the day before (0: nothing entered) */
         val usedKg: Double,
-        /** the plan's feed for this day, kg */
-        val planKg: Double
+        /** the plan's feed for this day, kg (v63: for the birds that ate it) */
+        val planKg: Double,
+        /** the birds that ate during this day: those left, and the lifted until their truck (v63) */
+        val eaters: Double = live.toDouble(),
+        /** kilos lifted till the end of this day (v63: FCR is feed over the birds in the house AND the kilos sold) */
+        val liftedKg: Double = 0.0,
+        /** the average of the birds left after a lifting this day, g (v63: the days after are carried on from it) */
+        val afterLiftG: Double? = null
     )
 
     /** What was projected for a day from the days before it (null: nothing to project from). */
@@ -58,6 +64,10 @@ object Projection {
         var cumKg = 0.0; var cumDeaths = 0
         val cumKgAt = HashMap<Int, Double>(); val cumDeathsAt = HashMap<Int, Int>()
         for (d in days) { cumKg += d.usedKg; cumDeaths += d.deaths; cumKgAt[d.day] = cumKg; cumDeathsAt[d.day] = cumDeaths }
+        // feed per bird till date, as entered: each day's feed over the birds that ate it (the feed entered on day x was eaten on x − 1)
+        var cumPb = 0.0
+        val cumPbAt = HashMap<Int, Double>()
+        for (d in days) { val ate = by[d.day - 1]?.eaters ?: 0.0; if (ate > 0) cumPb += d.usedKg * 1000 / ate; cumPbAt[d.day] = cumPb }
 
         for (d in days) {
             val n = d.day
@@ -68,8 +78,9 @@ object Projection {
             val base = by[k]
 
             // weight: the last weighing carried along the growth curve
-            val w0 = known.lastOrNull { it.weightG != null }
-            val weight = if (w0 != null) grow(w0.weightG!!, (n - w0.day).toDouble()) else grow(startG, n.toDouble())
+            // (v63: after a lifting, from the average of the birds left — the heavier or lighter ones went on the trucks)
+            val w0 = known.lastOrNull { it.afterLiftG != null || it.weightG != null }
+            val weight = if (w0 != null) grow((w0.afterLiftG ?: w0.weightG)!!, (n - w0.day).toDouble()) else grow(startG, n.toDouble())
 
             // deaths: the flock's own recent daily rate (newer days count more), the standard until it has one
             var rate: Double? = null
@@ -96,11 +107,21 @@ object Projection {
             var between = 0.0
             for (m in (k + 1) until n) between += (by[m - 1]?.planKg ?: 0.0) * (if (f.learning) 1.0 else f.ratio)
             val cumFeed = feedKg?.let { (cumKgAt[k] ?: 0.0) + between + it }
-            val liveYesterday = if (ahead == 1) liveBase else liveBefore
+            // the birds that ate the feed entered on day n: yesterday's eaters when yesterday is known, else the projected count
+            val ateYesterday = if (ahead == 1) (by[n - 1]?.eaters ?: liveBase) else liveBefore
+            // per bird till date: what was entered, each day over its own birds, and the days projected in between
+            var betweenPb = 0.0
+            for (m in (k + 1) until n) {
+                val birds = liveBase * (1 - dayRate / 100).pow((m - 1 - k).coerceAtLeast(0))
+                if (birds > 0) betweenPb += (by[m - 1]?.planKg ?: 0.0) * (if (f.learning) 1.0 else f.ratio) * 1000 / birds
+            }
+            val perBird = feedKg?.let { if (ateYesterday > 0) it * 1000 / ateYesterday else null }
+            val soldKg = base?.liftedKg ?: 0.0
+            val madeKg = live * weight / 1000 + soldKg
             out += DayOut(
-                n, weight, feedKg, feedKg?.let { if (liveYesterday > 0) it * 1000 / liveYesterday else null },
-                cumFeed?.let { if (live > 0) it * 1000 / live else null },
-                cumFeed?.let { if (live > 0 && weight > 0) it / (live * weight / 1000) else null },
+                n, weight, feedKg, perBird,
+                perBird?.let { (cumPbAt[k] ?: 0.0) + betweenPb + it },
+                cumFeed?.let { if (madeKg > 0) it / madeKg else null },
                 deaths, cumMort, live
             )
         }

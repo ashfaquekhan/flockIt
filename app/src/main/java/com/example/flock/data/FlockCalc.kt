@@ -49,11 +49,33 @@ object FlockCalc {
     fun projections(flock: FlockEntity, farm: FarmEntity, rows: List<DailyDataEntity>, kgOf: Map<String, Double>): List<com.example.flock.domain.Projection.DayOut> {
         val bag = if (farm.feedBagKg > 0) farm.feedBagKg else 50.0
         val entry = (flock.birdsPlaced - flock.receptionMort).coerceAtLeast(0)
+        val zone = zoneOf(farm)
+        // v63: the same facts the day rows are worked out from — the dead AND the culled, the birds that ate each day,
+        // the kilos sold and the average of the birds left after a lifting
+        val m = mass(flock, farm, ConfigEntity(spreadsheetId = farm.spreadsheetId), rows, kgOf).associateBy { it.day }
         return com.example.flock.domain.Projection.history(
-            rows.map { com.example.flock.domain.Projection.DayIn(it.dayNumber, it.avgWeight, it.inHouse, it.mortality, usedKg(it, kgOf, bag), it.totalFeedKg) },
+            rows.map {
+                com.example.flock.domain.Projection.DayIn(it.dayNumber, it.avgWeight, it.inHouse, it.mortality + it.lameSeparated,
+                    usedKg(it, kgOf, bag), planEatenKg(it, zone), eaters(it, zone), m[it.dayNumber]?.liftedKg ?: 0.0,
+                    m[it.dayNumber]?.takeIf { x -> x.liftedToday > 0 }?.avgAfterKg?.times(1000.0))
+            },
             entry, lastEnteredDay(rows), { w, d -> grow(w, d, flock.breed) }, PhysiologicalEngine.bwFromDay(0.0, flock.breed),
             { d -> CompanyStandard.dailyMortPct(CompanyStandard.duringDay(d)) }, carrySdKg(farm))
     }
+
+    /**
+     * The plan's feed for the birds that ate during a day, kg (v63): the day's ration a bird × [eaters]. On a lifting day
+     * the stored plan ([DailyDataEntity.totalFeedKg]) is for the birds left; the feed then entered was eaten by the lifted
+     * ones too, so learning the flock's appetite from "entered ÷ plan" needs this one.
+     */
+    fun planEatenKg(r: DailyDataEntity, zone: java.time.ZoneId): Double = r.feedPerBird * eaters(r, zone) / 1000.0
+
+    /**
+     * EPEF (v63: the one definition, page and sheet): livability % × body weight kg × 100 ÷ (age in days × FCR), from
+     * day 7. The body weight is the average of every bird produced (live and lifted) once birds are lifted.
+     */
+    fun epef(day: Int, livabilityPct: Double?, bwKg: Double, fcr: Double?): Double? =
+        if (day >= 7 && fcr != null && fcr > 0 && livabilityPct != null) livabilityPct * bwKg * 100.0 / (day * fcr) else null
 
     /** CV % estimated from group weighings, pooled over the last three weighings up to [day] (null: fewer than 3 groups). */
     fun cvEstimate(rows: List<DailyDataEntity>, day: Int): Double? =
@@ -142,7 +164,7 @@ object FlockCalc {
         java.time.Instant.ofEpochMilli(ms).atZone(zone).let { it.hour + it.minute / 60.0 }
 
     private fun computeAll(flock: FlockEntity, farm: FarmEntity, config: ConfigEntity, rows: List<DailyDataEntity>, kgOf: Map<String, Double>): Pair<List<DailyDataEntity>, List<Mass>> {
-        val bagKg = farm.feedBagKg
+        val bagKg = if (farm.feedBagKg > 0) farm.feedBagKg else 50.0     // v63: the same fallback as everywhere else (was none here)
         val zone = try { java.time.ZoneId.of(farm.timeZone) } catch (e: Exception) { java.time.ZoneId.systemDefault() }
 
         var cumMort = 0
