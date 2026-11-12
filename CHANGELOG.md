@@ -8,6 +8,32 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v61 — 2026-11-13 · The bird count shown as it is (signed, red) when it does not add up, lifted and received birds, the flock book lights the cell touched, past days at their last time, the time rail in colours · no DB or sheet change
+- **The count is never bent to fit.** Live birds are received − died on the way − dead − culled − lifted, with the sign.
+  621 birds in the count and 640 lifted shows **−19** in red ("19 more lifted than the count held") on that day and the
+  days after — before, the page showed 1 that evening and 0 the next day. A closed batch with birds in the count that
+  were never lifted shows **+N** in red. Nothing entered is changed. In Birds (Live birds), Lifting (Left by the count),
+  the flock book's Live column and the reminder after a lifting ("Check the count").
+- **Lifting** shows Birds received (with the birds that died on the way), Birds lifted, and Left by the count with the
+  dead and the culled beside it. **Birds** shows Birds lifted (birds and kilos, as far as the time shown) once a lifting
+  is in.
+- **Flock book**: a touch lights the cell, its day and its column; touched again it goes out. The book no longer closes
+  or jumps to another day on a touch (days are opened from the top bar).
+- **Time**: a day gone by opens at its last time (23:55 — everything that happened in it is in) instead of midday; a day
+  to come still opens at midday. The rail is green for the time gone by, amber for the time to come, the white dot is now.
+- **Output ends at the graphs and the flock book**: the Map and the event list are no longer on the page (events are
+  still logged and sent to the sheet).
+- **Checked from first principles, and corrected**:
+  - Feed per bird on a lifting day was the day's feed over the birds LEFT; it is now over the birds that ate it — those
+    left, and the lifted for the part of the day before their truck (`OutputData.eatersOn`). This moves "eaten yesterday",
+    the feed graph, the company/ideal feed to date, the flock book's g/bird and the own curve's feed entries on the day
+    after a lifting.
+  - Livability is what was not lost (received − dead − culled) over the birds received; it was (birds left + lifted),
+    which a count that does not add up could move. Same number when the count adds up.
+  - The stored day alert for high mortality counted the dead only, over the birds left after a lifting; now the dead and
+    the culled over the birds the day began with (as on the page since v59).
+  - FCR by the clock no longer counts a bird that is not there once the house is empty (the count was held at 1).
+
 ## v60 — 2026-11-12 · The flock's own curve, the present first with the projection under it, barricades along the house, culls counted as mortality · **DB 23 → 24 (adds two columns, nothing cleared)** · **sheet schema 12** (DailyData gains PenSideStartFt, PenSideEndFt)
 - **The flock's own curve** (`domain/DynamicCurve`, orange everywhere): the company's curve bent to this flock by every
   value entered so far. It learns the flock's ratio to the standard, so one entry already moves the whole curve and each

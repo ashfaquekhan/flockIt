@@ -226,7 +226,7 @@ object InfoTopics {
             "Each entry.",
             "Eating less but growing to the standard is good conversion — keep the ration. Eating more but growing less points to waste, heat or sickness. A CV climbing by 1.5 points or more in a week means the small birds are losing out at the pans."),
         "book" to InfoTopic("Flock book",
-            "The flock day by day, like a small sheet: live birds, deaths, mortality, lifting, bags used, feed per bird, weight against the company's, CV, FCR, cFCR and density. Entered numbers are green; projected ones (a day without its entry) yellow; the company's violet. Lifting days are marked L.",
+            "The flock day by day, like a small sheet: live birds, deaths, mortality, lifting, bags used, feed per bird, weight against the company's, CV, FCR, cFCR and density. Entered numbers are green; projected ones (a day without its entry) yellow; the company's violet. Lifting days are marked L. Touch a number to light it with its day and column. A live count in red does not add up: more birds lifted than the count held (−), or birds in the count never lifted (+).",
             "As on the rest of the page: the FCR and cFCR count the birds lifted; bags and feed per bird are those used on the day (entered the next morning).",
             "Every entry of the flock.",
             "Each entry.",

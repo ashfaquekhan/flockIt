@@ -9,6 +9,8 @@ import com.example.flock.domain.SpacePlan
 import com.example.flock.domain.Suggest
 import com.example.flock.ui.screens.toCount
 import com.example.flock.ui.screens.toNum
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -374,5 +376,61 @@ class LiftingSpaceTest {
         assertEquals(listOf("08:30" to 13.0, "14:00" to 10.5), l)
         assertEquals("08:30=13;14:00=10.5", formatFeedings(l))
         assertEquals(listOf("06:00" to 4.0, "08:30" to 13.0, "14:00" to 10.5), parseFeedings(formatFeedings(l + ("06:00" to 4.0))))
+    }
+
+    /**
+     * v61: the count is never bent to fit. 19 more birds lifted than the count held shows as −19 on that day and the
+     * days after (not 1, not 0); the entries are left as entered; a closed batch with birds never lifted shows +5.
+     */
+    private fun plainEaters(o: com.example.flock.ui.screens.OutputData): Boolean =
+        o.rows.filter { it.birdsLifted == 0 && it.liveBirds > 0 }.all { o.eatersOn(it.dayNumber) == it.liveBirds.toDouble() }
+    @Test fun theCountIsShownAsItIsWhenItDoesNotAddUp() {
+        val base = KgfFlock.rows(lastDay = 46, upTo = 44)
+        val left = FlockCalc.compute(KgfFlock.flock, KgfFlock.farm, KgfFlock.config, base, KgfFlock.kgOf).first { it.dayNumber == 44 }.liveBirds
+        assertTrue(left > 100)
+        fun flockWith(lifted: Int) = base.map { if (it.dayNumber == 45) it.copy(birdsLifted = lifted, weightLifted = lifted * 2.4, savedFields = "M") else it }
+        fun out(rows: List<com.example.flock.data.DailyDataEntity>, day: Int, f: com.example.flock.data.FlockEntity = KgfFlock.flock): com.example.flock.ui.screens.OutputData {
+            val c = FlockCalc.compute(f, KgfFlock.farm, KgfFlock.config, rows, KgfFlock.kgOf)
+            return com.example.flock.ui.screens.OutputData(f, KgfFlock.farm, c.first { it.dayNumber == day }, c, KgfFlock.feedTypes, null, emptyList(), false, false)
+        }
+        val z = java.time.ZoneId.of(KgfFlock.farm.timeZone)
+        fun at(o: com.example.flock.ui.screens.OutputData, h: Int, m: Int = 0) = o.nowView(java.time.LocalDate.parse(o.e.date).atTime(h, m).atZone(z))
+
+        // 19 more lifted than the count held
+        val over = flockWith(left + 19)
+        val o = out(over, 45)
+        assertEquals(-19, o.bookLive); assertEquals(-19, o.countGap); assertEquals(left, o.startBook)
+        assertEquals("19 more lifted than the count held", o.countNote)
+        assertEquals(left.toDouble(), at(o, 10).live, 1e-9)                 // before the trucks: the birds as counted
+        assertEquals(-19.0, at(o, 23, 55).live, 1e-9)                       // after them: the difference, signed
+        assertEquals(0, o.e.liveBirds)                                      // the house's own sums work on no birds, not on fewer than none
+        assertEquals(left + 19, o.e.birdsLifted)                            // the entry itself is untouched
+        assertTrue(at(o, 23, 55).fcr!!.let { it.isFinite() && it > 1.0 && it < 3.0 })
+        // the next day still shows it
+        val next = out(over, 46)
+        assertEquals(-19, next.bookLive); assertEquals(-19, next.countGap); assertTrue(next.countOff(46)); assertFalse(next.countOff(44))
+        assertEquals(-19.0, at(next, 23, 55).live, 0.5)
+        // livability is what was not lost, whatever the trucks' count says
+        val entry = KgfFlock.flock.birdsPlaced - KgfFlock.flock.receptionMort
+        val lost = over.filter { it.dayNumber <= 45 }.sumOf { it.mortality + it.lameSeparated }
+        assertEquals((entry - lost) * 100.0 / entry, o.e.livability!!, 1e-9)
+
+        // the feed of a lifting day is shared by the birds that ate it: those left, and the lifted until their truck (20:00)
+        val fed = over.map { if (it.dayNumber == 46) it.copy(feedBagsUsed = 10.0, feedUsedType = "B1", feedUsedBreakdown = "B1=10.0") else it }
+        val after = out(fed, 46)
+        assertEquals((left + 19) * 20.0 / 24.0, after.eatersOn(45)!!, 1e-6)
+        assertEquals(after.usedKgToday * 1000.0 / after.eatersOn(45)!!, after.usedPerBirdY!!, 1e-6)
+        assertEquals(plainEaters(out(base, 44)), true)
+
+        // 5 fewer lifted: an open batch simply has 5 birds left; once closed they are birds never lifted
+        val under = flockWith(left - 5)
+        assertEquals(5, out(under, 45).bookLive); assertNull(out(under, 45).countGap)
+        val closed = out(under, 46, KgfFlock.flock.copy(status = "closed"))
+        assertEquals(5, closed.countGap); assertEquals("5 in the count, never lifted", closed.countNote)
+        assertFalse(closed.countOff(44))
+        // the count that adds up: received − died on the way − dead − culled − lifted, every day
+        val c = FlockCalc.compute(KgfFlock.flock, KgfFlock.farm, KgfFlock.config, base, KgfFlock.kgOf)
+        val plain = out(base, 44)
+        c.filter { it.dayNumber <= 44 }.forEach { assertEquals("day ${it.dayNumber}", it.liveBirds, plain.bookLiveOn(it.dayNumber)) }
     }
 }

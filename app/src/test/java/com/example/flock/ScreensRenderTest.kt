@@ -21,6 +21,8 @@ import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
@@ -421,19 +423,49 @@ class ScreensRenderTest {
         rule.onNodeWithTag("chart_zoomed").assertExists()
         com.github.takahirom.roborazzi.captureScreenRoboImage("src/test/screenshots/screen_chart_zoomed.png")
     }
+    /** v61: 19 more birds lifted than the count held — Birds, Lifting and the book show −19 in red, the day after too; the rail in its colours. */
+    @Config(qualifiers = "w360dp-h2600dp-xhdpi") @Test fun theCountThatDoesNotAddUp() {
+        val base = KgfFlock.rows(lastDay = 46, upTo = 44)
+        val left = com.example.flock.data.FlockCalc.compute(KgfFlock.flock, KgfFlock.farm, KgfFlock.config, base, KgfFlock.kgOf).first { it.dayNumber == 44 }.liveBirds
+        val rows = base.map { if (it.dayNumber == 45) it.copy(birdsLifted = left + 19, weightLifted = (left + 19) * 2.4, savedFields = "M") else it }
+        val r = com.example.flock.data.FlockCalc.compute(KgfFlock.flock, KgfFlock.farm, KgfFlock.config, rows, KgfFlock.kgOf)
+        val d = com.example.flock.ui.screens.OutputData(KgfFlock.flock, KgfFlock.farm, r.first { it.dayNumber == 46 }, r, KgfFlock.feedTypes, null, emptyList(), false, false)
+        val view = d.nowView(java.time.LocalDate.parse(d.e.date).atTime(23, 55).atZone(java.time.ZoneId.of(farm.timeZone)))
+        rule.mainClock.autoAdvance = false
+        rule.setContent { MyApplicationTheme { Box(Modifier.fillMaxSize().background(Color.Black)) {
+            androidx.compose.foundation.layout.Column(Modifier.fillMaxSize().padding(start = 14.dp, end = 34.dp, top = 14.dp),
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
+                com.example.flock.ui.screens.BirdsSection(d, view, null, false, {}, 23)
+                com.example.flock.ui.screens.LiftSection(d, view)
+                com.example.flock.ui.screens.FlockBookCard(d)
+            }
+            com.example.flock.ui.screens.TimeRail(1435, null, null, com.example.flock.ui.screens.LightProgram(d.e.lightHours), {}, {},
+                Modifier.align(androidx.compose.ui.Alignment.CenterEnd), side = -1)
+        } } }
+        rule.mainClock.advanceTimeBy(800)
+        assertTrue(rule.onAllNodesWithText("−19").fetchSemanticsNodes().size >= 3)          // Birds, Lifting, the book
+        rule.onAllNodesWithText("19 more lifted than the count held")[0].assertExists()
+        rule.onNodeWithTag("tile_received", useUnmergedTree = true).assertExists()
+        rule.onNodeWithTag("tile_count", useUnmergedTree = true).assertExists()
+        rule.onNodeWithTag("tile_lifted", useUnmergedTree = true).assertExists()
+        rule.onRoot().captureRoboImage("src/test/screenshots/screen_count_off.png")
+    }
     /** The flock book: one line a day, lifting days marked; full screen too. */
     @Config(qualifiers = "w360dp-h900dp-xhdpi") @Test fun flockBook() {
         val r = KgfFlock.computed(44)
         val d = com.example.flock.ui.screens.OutputData(KgfFlock.flock, KgfFlock.farm, r.last(), r, KgfFlock.feedTypes, null, emptyList(), false, false)
-        var picked = -1
         rule.mainClock.autoAdvance = false
-        rule.setContent { MyApplicationTheme { Box(Modifier.fillMaxSize().background(Color.Black).padding(14.dp)) { com.example.flock.ui.screens.FlockBookCard(d) { picked = it } } } }
+        rule.setContent { MyApplicationTheme { Box(Modifier.fillMaxSize().background(Color.Black).padding(14.dp)) { com.example.flock.ui.screens.FlockBookCard(d) } } }
         rule.mainClock.advanceTimeBy(800)
         rule.onNodeWithTag("book_day_43").assertExists()
         rule.onAllNodesWithText("43 L")[0].assertExists()
+        // v61: a touch lights the cell and the book stays; touched again it goes out
+        rule.onNodeWithTag("book_cell_43_1").performClick(); rule.mainClock.advanceTimeBy(300)
+        rule.onNodeWithTag("book_cell_43_1").assertIsSelected()
+        rule.onNodeWithTag("flock_book").assertExists()
         rule.onRoot().captureRoboImage("src/test/screenshots/screen_flock_book.png")
-        rule.onNodeWithTag("book_day_43").performClick()
-        assertEquals(43, picked)
+        rule.onNodeWithTag("book_cell_43_1").performClick(); rule.mainClock.advanceTimeBy(300)
+        rule.onNodeWithTag("book_cell_43_1").assertIsNotSelected()
     }
     /** The day clock is under the tasks now, and no longer on the Output page; the likelihoods card is. */
     @Config(qualifiers = "w360dp-h2400dp-xhdpi") @Test fun clockLivesUnderTheTasks() {

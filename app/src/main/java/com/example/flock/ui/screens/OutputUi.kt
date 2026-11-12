@@ -61,7 +61,14 @@ import kotlin.math.sin
 // =====================================================================================
 
 /** A value and what it is. [tag] overrides the default tag word (e.g. "Ceiling", "Yours"). */
-data class V(val text: String, val kind: ValueKind, val tag: String? = null)
+data class V(val text: String, val kind: ValueKind, val tag: String? = null,
+             /** its own colour, over the kind's (v61: a bird count that does not add up is red) */
+             val color: Color? = null)
+
+/** A count with its sign: −19, and +5 when [plus]. */
+fun signedCount(n: Int, plus: Boolean = false): String = (if (n < 0) "−" else if (plus && n > 0) "+" else "") + Fmt.i(kotlin.math.abs(n))
+/** Birds by the count (v61): as it is; signed and red when it does not add up ([off]). */
+fun vBook(n: Int, kind: ValueKind, off: Boolean): V = if (off) V(signedCount(n, true), kind, color = TrendBad) else vi(n, kind)
 
 fun v(value: Double?, dec: Int, kind: ValueKind, tag: String? = null) = V(Fmt.n(value, dec), if (value == null) ValueKind.NEUTRAL else kind, tag)
 fun vt(text: String, kind: ValueKind, tag: String? = null) = V(text, kind, tag)
@@ -315,13 +322,13 @@ fun CompactLine(label: String, unit: String, sub: String?, value: V, trend: Tren
             Text(label, Modifier.weight(1f).padding(end = 8.dp), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Normal), color = Color.White, maxLines = 2)
             if (trend != null) { TrendIcon(trend); Spacer(Modifier.width(5.dp)) }
             Text(value.text, style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Normal),
-                color = kindColor(if (value.text == "—") ValueKind.NEUTRAL else value.kind), maxLines = 1, softWrap = false)
+                color = value.color ?: kindColor(if (value.text == "—") ValueKind.NEUTRAL else value.kind), maxLines = 1, softWrap = false)
             if (unit.isNotEmpty()) Text(" $unit", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), maxLines = 1, softWrap = false)
         }
         if (sub != null || refs.isNotEmpty() || projected != null) Row(verticalAlignment = Alignment.CenterVertically) {
             if (projected != null) Text("projected " + projected.text, Modifier.padding(end = 8.dp).testTag("line_projected"),
                 style = MaterialTheme.typography.labelMedium.copy(fontFamily = com.example.ui.theme.NumberFont, fontWeight = FontWeight.Normal),
-                color = kindColor(ValueKind.PREDICTED), maxLines = 1, softWrap = false)
+                color = projected.color ?: kindColor(ValueKind.PREDICTED), maxLines = 1, softWrap = false)
             else if (sub != null) Text(sub, Modifier.padding(end = 8.dp), style = MaterialTheme.typography.labelSmall.copy(fontFamily = com.example.ui.theme.NumberFont),
                 color = subColor ?: Color.White.copy(alpha = 0.6f), maxLines = 1, softWrap = false)
             androidx.compose.foundation.layout.FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {

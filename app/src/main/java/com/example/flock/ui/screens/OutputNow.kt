@@ -1,5 +1,7 @@
 package com.example.flock.ui.screens
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import android.graphics.Paint
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -255,7 +257,7 @@ private data class BookCol(val title: String, val width: Int, val cell: (OutputD
 
 private fun bookCols(): List<BookCol> = listOf(
     BookCol("Date", 58) { _, r -> vt(try { java.time.LocalDate.parse(r.date).format(java.time.format.DateTimeFormatter.ofPattern("dd MMM", java.util.Locale.US)) } catch (e: Exception) { r.date }, NE) },
-    BookCol("Live", 66) { d, r -> vi(r.liveBirds, if (r.mortality > 0 || "M" in r.savedFields) P else PR) },
+    BookCol("Live", 66) { d, r -> vBook(d.bookLiveOn(r.dayNumber), if (r.mortality > 0 || "M" in r.savedFields) P else PR, d.countOff(r.dayNumber)) },
     BookCol("Dead", 46) { _, r -> vi(r.mortality, P) },
     BookCol("Mort %", 54) { _, r -> v(r.cumMortPct, 2, P) },
     BookCol("Lifted", 62) { _, r -> if (r.birdsLifted > 0) vi(r.birdsLifted, P) else vt("", NE) },
@@ -272,13 +274,14 @@ private fun bookCols(): List<BookCol> = listOf(
 
 /**
  * The flock book: one line a day, the numbers that matter side by side like a small sheet — entered ones as entered,
- * projected ones marked; lifting days stand out. Tap a day to open it. Day stays put while the rest scrolls sideways.
+ * projected ones marked; lifting days stand out. A tap lights a cell, its day and its column (v61: the book stays open;
+ * days are opened from the top bar). Day stays put while the rest scrolls sideways.
  */
 @Composable
-fun FlockBookCard(d: OutputData, onSelectDay: ((Int) -> Unit)?) {
+fun FlockBookCard(d: OutputData) {
     var full by remember { mutableStateOf(false) }
     OutputCard(title = "Flock book", info = "book") {
-        FlockBookGrid(d, Modifier.fillMaxWidth().heightIn(max = 380.dp), onSelectDay)
+        FlockBookGrid(d, Modifier.fillMaxWidth().heightIn(max = 380.dp))
         OutlinedButton(onClick = { full = true }, border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine), modifier = Modifier.fillMaxWidth().testTag("book_full")) {
             Text("Full screen", color = Color.White)
         }
@@ -299,13 +302,16 @@ fun FlockBookCard(d: OutputData, onSelectDay: ((Int) -> Unit)?) {
                 Text("Close", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Normal), color = Color.White,
                     modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).clickable { full = false }.padding(horizontal = 12.dp, vertical = 6.dp))
             }
-            FlockBookGrid(d, Modifier.fillMaxWidth().weight(1f)) { day -> onSelectDay?.invoke(day); full = false }
+            FlockBookGrid(d, Modifier.fillMaxWidth().weight(1f))
         }
     }
 }
 
 @Composable
-private fun FlockBookGrid(d: OutputData, modifier: Modifier, onSelectDay: ((Int) -> Unit)?) {
+private fun FlockBookGrid(d: OutputData, modifier: Modifier) {
+    // the cell touched: its day and its column (−1: the day itself); touched again, it goes out
+    var pick by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    fun touch(day: Int, col: Int) { pick = if (pick == day to col) null else day to col }
     val cols = remember { bookCols() }
     // columns grow with the phone's text size, and room is kept after the last one and under the last day, so nothing
     // is cut by the frame (v59)
@@ -319,7 +325,8 @@ private fun FlockBookGrid(d: OutputData, modifier: Modifier, onSelectDay: ((Int)
         Row(Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.06f)).padding(vertical = 6.dp)) {
             Text("Day", Modifier.width((44 * fs).dp).padding(start = 6.dp), style = head, color = Color.White.copy(alpha = 0.8f), maxLines = 1, softWrap = false)
             Row(Modifier.weight(1f).horizontalScroll(h)) {
-                cols.forEach { c -> Text(c.title, Modifier.width((c.width * fs).dp), style = head, color = Color.White.copy(alpha = 0.8f), textAlign = TextAlign.End, maxLines = 1, softWrap = false) }
+                cols.forEachIndexed { i, c -> Text(c.title, Modifier.width((c.width * fs).dp).background(if (pick?.second == i) Color.White.copy(alpha = 0.16f) else Color.Transparent),
+                    style = head, color = Color.White.copy(alpha = if (pick?.second == i) 1f else 0.8f), textAlign = TextAlign.End, maxLines = 1, softWrap = false) }
                 Spacer(Modifier.width(14.dp))
             }
         }
@@ -327,17 +334,23 @@ private fun FlockBookGrid(d: OutputData, modifier: Modifier, onSelectDay: ((Int)
             days.forEach { r ->
                 val lifting = r.birdsLifted > 0
                 val sel = r.dayNumber == d.day
+                val rowLit = pick?.first == r.dayNumber
                 Row(Modifier.fillMaxWidth()
-                    .background(if (lifting) kindColor(PR).copy(alpha = 0.10f) else Color.Transparent)
+                    .background(if (rowLit) Color.White.copy(alpha = 0.10f) else if (lifting) kindColor(PR).copy(alpha = 0.10f) else Color.Transparent)
                     .border(if (sel) 1.5.dp else 0.dp, if (sel) Color.White else Color.Transparent)
-                    .clickable(enabled = onSelectDay != null) { onSelectDay?.invoke(r.dayNumber) }
-                    .padding(vertical = 5.dp).testTag("book_day_${r.dayNumber}"), verticalAlignment = Alignment.CenterVertically) {
-                    Text(r.dayNumber.toString() + if (lifting) " L" else "", Modifier.width((44 * fs).dp).padding(start = 6.dp), style = mono,
+                    .testTag("book_day_${r.dayNumber}"), verticalAlignment = Alignment.CenterVertically) {
+                    Text(r.dayNumber.toString() + if (lifting) " L" else "", Modifier.width((44 * fs).dp).clickable { touch(r.dayNumber, -1) }.padding(start = 6.dp, top = 5.dp, bottom = 5.dp), style = mono,
                         color = if (lifting) kindColor(PR) else Color.White, maxLines = 1, softWrap = false)
                     Row(Modifier.weight(1f).horizontalScroll(h)) {
-                        cols.forEach { c ->
+                        cols.forEachIndexed { i, c ->
                             val x = c.cell(d, r)
-                            Text(x.text, Modifier.width((c.width * fs).dp).padding(start = 2.dp), style = mono, color = kindColor(if (x.text == "—" || x.text.isEmpty()) NE else x.kind),
+                            val lit = pick == r.dayNumber to i
+                            Text(x.text, Modifier.width((c.width * fs).dp)
+                                .background(if (lit) Color.White.copy(alpha = 0.22f) else if (pick?.second == i) Color.White.copy(alpha = 0.06f) else Color.Transparent)
+                                .border(if (lit) 1.dp else 0.dp, if (lit) Color.White else Color.Transparent)
+                                .clickable { touch(r.dayNumber, i) }.padding(start = 2.dp, top = 5.dp, bottom = 5.dp)
+                                .testTag("book_cell_${r.dayNumber}_$i").semantics { selected = lit },
+                                style = mono, color = x.color ?: kindColor(if (x.text == "—" || x.text.isEmpty()) NE else x.kind),
                                 textAlign = TextAlign.End, maxLines = 1, softWrap = false)
                         }
                         Spacer(Modifier.width(14.dp))
@@ -346,5 +359,5 @@ private fun FlockBookGrid(d: OutputData, modifier: Modifier, onSelectDay: ((Int)
             }
         }
     }
-    Text("green entered · yellow projected · L lifting", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.55f))
+    Text("green entered · yellow projected · L lifting · red: the count does not add up", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.55f))
 }

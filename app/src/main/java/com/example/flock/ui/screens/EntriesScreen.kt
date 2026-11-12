@@ -325,11 +325,12 @@ fun EntriesScreen(
         // the reminder's figures, from the house as it stood before this lifting
         val r = entry?.let { e ->
             val before = e.liveBirds.coerceAtLeast(0)
-            val left = (before - n).coerceAtLeast(0)
+            val signedLeft = before - n          // v61: below zero when more were lifted than the count held
+            val left = signedLeft.coerceAtLeast(0)
             val perBird = if (e.liveBirds > 0) e.totalFeedKg / e.liveBirds else 0.0
             val bagKg = (farm?.feedBagKg ?: 50.0).takeIf { it > 0 } ?: 50.0
             val area = e.occupiedFt2.takeIf { it > 0 }
-            LiftReminder(n, liftHHmm, left,
+            LiftReminder(n, liftHHmm, signedLeft,
                 kotlin.math.ceil(perBird * before / bagKg).toInt(), kotlin.math.ceil(perBird * left / bagKg).toInt(),
                 area?.let { a -> a / before.coerceAtLeast(1) }, area?.let { a -> a / left.coerceAtLeast(1) })
         }
@@ -810,7 +811,8 @@ private fun LiftReminderDialog(r: LiftReminder, onDone: () -> Unit) {
         text = {
             Column(Modifier.fillMaxWidth().testTag("lift_reminder"), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text("${String.format("%,d", r.lifted)} birds lifted at ${r.hhmm}", style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.7f))
-                ReminderStep(GIcon.BIRDS, "Spread the flock", "${String.format("%,d", r.left)} birds left", com.example.ui.theme.ValuePresent)
+                if (r.left >= 0) ReminderStep(GIcon.BIRDS, "Spread the flock", "${String.format("%,d", r.left)} birds left", com.example.ui.theme.ValuePresent)
+                else ReminderStep(GIcon.BIRDS, "Check the count", "${String.format("%,d", -r.left)} more lifted than the count held", TrendBad)
                 if (r.bagsNow > 0) ReminderStep(GIcon.BAGS, "Lower the feed", "${r.bagsNow} bags a day · was ${r.bagsWas}", com.example.ui.theme.ValuePredicted)
                 ReminderStep(GIcon.BARRICADE, "Move the barricades",
                     r.ft2Now?.let { now -> Fmt.n(now, 2) + " ft² per bird · was " + Fmt.n(r.ft2Was ?: now, 2) } ?: "set them below or in Feed",

@@ -77,6 +77,17 @@ class OutputData(
     val vk = if (e.projected) ValueKind.PREDICTED else ValueKind.PRESENT
     val byDay = rows.associateBy { it.dayNumber }
     val upto = rows.filter { it.dayNumber <= day }
+    private val farmZone: java.time.ZoneId = try { java.time.ZoneId.of(farm.timeZone) } catch (ex: Exception) { java.time.ZoneId.systemDefault() }
+    /**
+     * The birds that ate during flock day [d] (v61): those in the house at its end, and the birds lifted that day for the
+     * part of the day before their truck left (640 birds loaded at 18:00 ate for three quarters of it). Before v61 a
+     * lifting day's feed was divided by the birds left alone, which overstated the feed per bird on those days.
+     */
+    fun eatersOn(d: Int): Double? {
+        val r = byDay[d] ?: return null
+        val n = r.liveBirds + r.lapsShown(farmZone).sumOf { it.birds * (it.hour / 24.0).coerceIn(0.0, 1.0) }
+        return n.takeIf { it > 0 }
+    }
     private val kgMap = feedTypes.associate { it.code to it.bagKg }
     private val sortedRows = rows.sortedBy { it.dayNumber }
     /** A day after today: nothing in it has happened yet. */
@@ -117,6 +128,27 @@ class OutputData(
     val ceilingPct = PhysiologicalEngine.interpolate(PhysiologicalEngine.CURVE_MAXMORT_BY_AGE, day.toDouble())
     val lameTD = upto.sumOf { it.lameSeparated }
     val liftTD = upto.sumOf { it.birdsLifted }
+    /**
+     * The birds by the count (v61): received − died on the way − dead − culled − lifted, with its sign. It is never
+     * bent to fit: when the trucks took more birds than the count held it goes below zero (19 more lifted: −19), and
+     * the entries stay as they were entered. The house's own numbers (feed, floor, air) work on the birds that can be
+     * there (never fewer than none).
+     */
+    fun bookLiveOn(dayN: Int): Int = placed - reception - rows.filter { it.dayNumber <= dayN }.sumOf { it.mortality + it.lameSeparated + it.birdsLifted }
+    val bookLive: Int = placed - reception - mortTD - liftTD
+    /** The birds by the count when this day began. */
+    val startBook: Int = bookLive + mortToday + e.birdsLifted
+    val closed: Boolean = flock?.status == "closed"
+    private val lastLiftDay: Int? = rows.filter { it.birdsLifted > 0 }.maxOfOrNull { it.dayNumber }
+    /** The count does not add up on [dayN]: more lifted than it held, or a closed batch with birds in the count never lifted. */
+    fun countOff(dayN: Int): Boolean {
+        if (flock == null) return false
+        val n = bookLiveOn(dayN)
+        return n < 0 || (closed && n > 0 && lastLiftDay != null && dayN >= lastLiftDay)
+    }
+    /** How far off the count is on this day (−19: 19 more lifted than counted; +5: 5 counted, never lifted); null when it adds up. */
+    val countGap: Int? = bookLive.takeIf { countOff(day) }
+    val countNote: String? = countGap?.let { if (it < 0) "${Fmt.i(-it)} more lifted than the count held" else "${Fmt.i(it)} in the count, never lifted" }
     val liftKgTD = upto.sumOf { it.weightLifted }
 
     val bw: Double = e.avgWeight ?: PhysiologicalEngine.bwFromDay(e.weightAge, breed)
@@ -307,7 +339,7 @@ class OutputData(
     /** Feed logged today = what the birds ate yesterday. */
     val usedBagsToday = usedByType(e).values.sum()
     val usedKgToday = usedKg(e)
-    private val yLive = byDay[day - 1]?.liveBirds?.takeIf { it > 0 } ?: liveSafe
+    private val yLive: Double = eatersOn(day - 1) ?: liveSafe.toDouble()
     val usedPerBirdY: Double? = if (usedKgToday > 0 && day >= 1) usedKgToday * 1000.0 / yLive else null
     /** Yesterday's feed (flock day − 1) is the chart's row for today's number. */
     val comPerBirdY: Double? = CompanyStandard.feedPerDay(day)
@@ -316,8 +348,8 @@ class OutputData(
     val usedKgTD = upto.sumOf { usedKg(it) }
     val planKgTD = rows.filter { it.dayNumber < day }.sumOf { it.totalFeedKg }
     /** Commercial / ideal feed the flock should have eaten up to yesterday, for the birds actually alive each day. */
-    val comKgTD = rows.filter { it.dayNumber in 0 until day }.sumOf { (CompanyStandard.feedPerDay(it.dayNumber + 1) ?: 0.0) * it.liveBirds / 1000.0 }
-    val idealKgTD = rows.filter { it.dayNumber in 0 until day }.sumOf { PhysiologicalEngine.dailyFeedFromDay((it.dayNumber + 1).toDouble(), breed) * it.liveBirds / 1000.0 }
+    val comKgTD = rows.filter { it.dayNumber in 0 until day }.sumOf { (CompanyStandard.feedPerDay(it.dayNumber + 1) ?: 0.0) * (eatersOn(it.dayNumber) ?: 0.0) / 1000.0 }
+    val idealKgTD = rows.filter { it.dayNumber in 0 until day }.sumOf { PhysiologicalEngine.dailyFeedFromDay((it.dayNumber + 1).toDouble(), breed) * (eatersOn(it.dayNumber) ?: 0.0) / 1000.0 }
     val cumPerBird: Double? = if (usedKgTD > 0) usedKgTD * 1000.0 / liveSafe else null
     val cumPerBirdCom: Double? = CompanyStandard.cumFeed(day)
     val cumPerBirdIdeal: Double? = if (day >= 1) PhysiologicalEngine.cumFeedFromDay(day.toDouble(), breed) else null
@@ -763,14 +795,14 @@ class OutputData(
     fun eatenOn(d: Int): Double? {
         val next = byDay[d + 1] ?: return null
         if (next.dayNumber > day) return null
-        val liveThen = byDay[d]?.liveBirds?.takeIf { it > 0 } ?: return null
+        val liveThen = eatersOn(d) ?: return null
         return usedKg(next).takeIf { it > 0 }?.let { it * 1000 / liveThen }
     }
     /** For the flock book (any day, whichever day is open): bags used on day [d] and feed per bird (g) — both entered the next morning. */
     fun bagsUsedOnDay(d: Int): Double? = byDay[d + 1]?.let { usedByType(it).values.sum() }?.takeIf { it > 0 }
     fun eatenGOn(d: Int): Double? {
         val next = byDay[d + 1] ?: return null
-        val liveThen = byDay[d]?.liveBirds?.takeIf { it > 0 } ?: return null
+        val liveThen = eatersOn(d) ?: return null
         return usedKg(next).takeIf { it > 0 }?.let { it * 1000 / liveThen }
     }
     val kpis: com.example.flock.domain.FlockKpis.Result = com.example.flock.domain.FlockKpis.compute(
@@ -842,7 +874,7 @@ class OutputData(
             // a weighing is a measurement: trusted from the first one
             D.fit(obs { it.avgWeight }, { CompanyStandard.bw(it) ?: PhysiologicalEngine.bwFromDay(it.toDouble(), breed) }, prior = 0.3),
             // feed entered on day x is what a bird ate the day before (the chart's row x)
-            D.fit(obs { r -> byDay[r.dayNumber - 1]?.liveBirds?.takeIf { it > 0 }?.let { live -> usedKg(r).takeIf { it > 0 }?.let { it * 1000 / live } } }, { CompanyStandard.feedPerDay(it) }, prior = 0.7),
+            D.fit(obs { r -> eatersOn(r.dayNumber - 1)?.let { live -> usedKg(r).takeIf { it > 0 }?.let { it * 1000 / live } } }, { CompanyStandard.feedPerDay(it) }, prior = 0.7),
             // deaths are few and jumpy: the standard holds longer
             D.fit(obs { r -> r.cumMortPct?.takeIf { r.dayNumber >= 2 && ("M" in r.savedGroups() || r.mortality > 0) } }, { CompanyStandard.cumMortPct(it).takeIf { v -> v > 0 } }, prior = 1.5, halfLife = 6.0),
             D.fit(obs { r -> massByDay[r.dayNumber]?.fcr?.takeIf { r.avgWeight != null && r.dayNumber >= 5 } }, { CompanyStandard.fcr(it) }, prior = 0.5))
@@ -929,13 +961,14 @@ class OutputData(
         // the birds in the house at this time (v59): the day's start less the deaths (entered, else those expected so far),
         // the culls and the birds already on the trucks
         val gone = liftedCountBy(hour)
-        val liveNow = max(1.0, if (mortEntered) (live + (e.birdsLifted - gone)).toDouble() else startLive - deaths - gone)
+        // v61: by the count, with its sign — a count that does not add up is shown, not bent to fit
+        val liveNow = if (mortEntered) (bookLive + (e.birdsLifted - gone)).toDouble() else startBook - max(deaths, mortToday.toDouble()) - gone
         // feed till now: the entries, yesterday's eating when it is not entered yet, and today's so far
         val yesterday = if (feedEntered || day == 0) 0.0 else proj[day]?.feedKg ?: 0.0
         val cum = usedKgTD + yesterday + eaten
         // FCR on everything the feed has made (v59): the birds in the house and the kilos already lifted
         val liftedKg = (liftKgTD - e.weightLifted) + liftedKgBy(hour)
-        val madeKg = liveNow * weight / 1000.0 + liftedKg
+        val madeKg = max(0.0, liveNow) * weight / 1000.0 + liftedKg
         val fcr = if (cum > 0 && madeKg > 0 && day >= 1) cum / madeKg else null
         return NowView(String.format("%02d:%02d", now.hour, now.minute), weight, since?.times(24), eaten, eaten / bagKg, eatShare,
             waterL * (0.9 * eatShare + 0.1 * dayShare), deaths, liveNow, fcr, envAt(now.hour))

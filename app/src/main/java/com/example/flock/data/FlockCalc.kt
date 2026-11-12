@@ -293,7 +293,8 @@ object FlockCalc {
             val entryBirds = (flock.birdsPlaced - flock.receptionMort).coerceAtLeast(0)
             val cumMortPct = if (entryBirds > 0) ((cumMort + cumLame).toDouble() / entryBirds) * 100.0 else null   // culls are mortality too (v60)
             // birds lifted (sold) are not lost: livability is the share still alive in the house or on the trucks
-            val livability = if (entryBirds > 0) ((live + cumLift).toDouble() / entryBirds) * 100.0 else null
+            // (v61: from the losses themselves, so a count that does not add up after the last lifting cannot move it)
+            val livability = if (entryBirds > 0) ((entryBirds - cumMort - cumLame).coerceAtLeast(0).toDouble() / entryBirds) * 100.0 else null
 
             // Area & density: the floor the birds have (the barricade entered, else the brooding plan) and the birds after any lifting
             r.broodingLength?.let { penSet = true; penFt = if (it <= 0 || it >= farm.usableLengthFt) null else it }
@@ -358,9 +359,12 @@ object FlockCalc {
                 sev = max(sev, 1)
             }
 
-            val tmPct = if (live > 0) (r.mortality.toDouble() / live) * 100.0 else 0.0
+            // the day's losses (dead and culled) over the birds the day began with (v61: not over those left after a lifting)
+            val lostToday = r.mortality + r.lameSeparated
+            val dayStart = live + lostToday + r.birdsLifted
+            val tmPct = if (dayStart > 0) (lostToday.toDouble() / dayStart) * 100.0 else 0.0
             if (tmPct > 0.30) {
-                alertMsgs.add(String.format("Today's mortality %d (%.2f%%) high", r.mortality, tmPct))
+                alertMsgs.add(String.format("Today's mortality %d (%.2f%%) high", lostToday, tmPct))
                 sev = max(sev, 2)
             } else if (tmPct > 0.15) {
                 alertMsgs.add("Today's mortality elevated")

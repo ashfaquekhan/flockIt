@@ -279,7 +279,9 @@ fun NowButton(onNow: () -> Unit, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun TimeRail(minutes: Int, nowMinutes: Int?, entryMinutes: Int?, light: LightProgram, onMinutes: (Int) -> Unit, onNow: () -> Unit, modifier: Modifier = Modifier) {
+fun TimeRail(minutes: Int, nowMinutes: Int?, entryMinutes: Int?, light: LightProgram, onMinutes: (Int) -> Unit, onNow: () -> Unit, modifier: Modifier = Modifier,
+             /** a day that is not today: −1 all of it has gone by, 1 all of it is to come */
+             side: Int = 0) {
     var engaged by remember { mutableStateOf(false) }
     var touch by remember { mutableIntStateOf(0) }
     LaunchedEffect(touch, engaged) { if (engaged) { kotlinx.coroutines.delay(1600); engaged = false } }
@@ -331,8 +333,12 @@ fun TimeRail(minutes: Int, nowMinutes: Int?, entryMinutes: Int?, light: LightPro
                 listOf(0, 6, 12, 18, 24).forEach { hh -> drawContext.canvas.nativeCanvas.drawText(String.format("%02d", hh), x - 7f * px, (hh / 24f * h).coerceIn(10f * px, h - 3f * px), p) }
             }
             // the line, the entries' time and now
-            drawLine(Color.White.copy(alpha = if (engaged) 0.6f else 0.35f), Offset(x, 0f), Offset(x, h), (if (engaged) 2f else 1.5f) * px)
-            entryMinutes?.let { drawLine(kindColor(P), Offset(x - 6f * px, y(it)), Offset(x + 6f * px, y(it)), 3f * px) }
+            // (v61) the time gone by in the entered green, the time to come in the projected amber; the white dot is now
+            val split = nowMinutes?.let { y(it) } ?: if (side < 0) h else 0f
+            val lw = (if (engaged) 3f else 2f) * px; val la = if (engaged) 0.95f else 0.7f
+            if (split > 0f) drawLine(kindColor(P).copy(alpha = la), Offset(x, 0f), Offset(x, split), lw)
+            if (split < h) drawLine(kindColor(PR).copy(alpha = la), Offset(x, split), Offset(x, h), lw)
+            entryMinutes?.let { drawLine(Color.White, Offset(x - 6f * px, y(it)), Offset(x + 6f * px, y(it)), 2f * px) }
             nowMinutes?.let { drawCircle(Color.White, (if (engaged) 6f else 3.5f) * px, Offset(x, y(it))); if (engaged) drawCircle(Color.Black, 2.5f * px, Offset(x, y(it))) }
             // the handle: the time shown
             val hy = y(minutes)

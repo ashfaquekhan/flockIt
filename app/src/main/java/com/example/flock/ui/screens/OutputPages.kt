@@ -181,7 +181,7 @@ fun BirdsSection(d: OutputData, view: OutputData.NowView, entryHHmm: String?, li
     val areaM2 = d.areaInUseFt2 * 0.092903
     // birds: today's count once the deaths are in (then each truck comes off at its time), else the last count entered
     val lm = d.lastMortRow
-    val livePresent: Double? = if (d.mortEntered) view.live else lm?.liveBirds?.toDouble()
+    val livePresent: Double? = if (d.mortEntered) view.live else lm?.let { d.bookLiveOn(it.dayNumber).toDouble() }
     val liveProj: Double? = if (d.mortEntered) null else view.live
     // weight: the last weighing; the projection grows it on to the time shown
     val lw = d.lastWeighedRow
@@ -199,15 +199,29 @@ fun BirdsSection(d: OutputData, view: OutputData.NowView, entryHHmm: String?, li
     val mortProj: Double? = if (d.mortEntered) null else (lostBefore + view.deaths) * 100.0 / d.entryBirds
     val deathsNow = if (d.mortEntered) d.mortToday.toDouble() else view.deaths
     // the floor: the birds and weight last entered over the floor in use; the projection for the time shown
-    val kgM2Now = if (areaM2 > 0) view.live * view.weightG / 1000.0 / areaM2 else s.kgM2
-    val kgM2Present: Double? = if (livePresent != null && weightPresent != null && areaM2 > 0) livePresent * weightPresent / 1000.0 / areaM2 else null
+    // v61: a count that does not add up (more lifted than counted; a closed batch with birds never lifted) is shown
+    // as it is, signed and red — never bent to fit
+    fun count(x: Double, kind: ValueKind): V {
+        val n = Math.round(x).toInt()
+        return vBook(n, kind, n < 0 || ((d.countGap ?: 0) > 0 && d.liftedBy(viewH)))
+    }
+    val liveOff = listOfNotNull(livePresent, liveProj).any { count(it, P).color != null }
+    val liftedNow = d.liftTD - d.e.birdsLifted + d.liftedCountBy(viewH)
+    val kgM2Now = if (areaM2 > 0) view.live.coerceAtLeast(0.0) * view.weightG / 1000.0 / areaM2 else s.kgM2
+    val kgM2Present: Double? = if (livePresent != null && weightPresent != null && areaM2 > 0) livePresent.coerceAtLeast(0.0) * weightPresent / 1000.0 / areaM2 else null
     val ft2Present = livePresent?.takeIf { it > 0 }?.let { d.areaInUseFt2 / it }
     val live1 = livePresent ?: liveProj; val weight1 = weightPresent ?: weightProj; val fcr1 = fcrPresent ?: fcrProj
     val cfcr1 = cfcrPresent ?: cfcrProj; val mort1 = mortPresent ?: mortProj; val kg1 = kgM2Present ?: kgM2Now
     val u = remember(d) { uniformityOf(d) }
-    val lines = listOf(
-        PLine("Live birds", vi(livePresent?.let { Math.round(it).toInt() }, P), "", trendOf(live1, d.liveCom, Better.HIGHER, 1.0), d.liveCom, d.liveIdeal, 0, actual = live1, tag = "tile_live",
-            own = d.liveOwn, projected = liveProj?.let { vi(Math.round(it).toInt(), PR) }, sub = asOf(lm?.dayNumber?.takeIf { !d.mortEntered })),
+    val lines = listOfNotNull(
+        PLine("Live birds", livePresent?.let { count(it, P) } ?: vi(null, P), "", if (liveOff) null else trendOf(live1, d.liveCom, Better.HIGHER, 1.0), d.liveCom, d.liveIdeal, 0,
+            actual = live1?.takeIf { !liveOff }, tag = "tile_live", refs = if (liveOff) emptyList() else null,
+            own = d.liveOwn.takeIf { !liveOff }, projected = liveProj?.let { count(it, PR) },
+            sub = (if (liveOff) d.countNote else null) ?: asOf(lm?.dayNumber?.takeIf { !d.mortEntered })),
+        // the birds gone on the trucks so far (v61), as far as the time shown
+        if (d.liftTD > 0) PLine("Birds lifted", vi(liftedNow, P), "", null,
+            refs = listOf(Fmt.n(d.liftKgTD - d.e.weightLifted + d.liftedKgBy(viewH), 1) + " kg" to kindColor(P), "of " + Fmt.i(d.entryBirds) + " received" to kindColor(P)),
+            tag = "tile_lifted") else null,
         PLine("Weight", v(weightPresent, 1, P), "g", trendOf(weight1, d.bwCom, Better.HIGHER), d.bwCom, d.bwIdeal, 1, actual = weight1,
             own = d.bwOwn, projected = weightProj?.let { v(it, 1, PR) },
             sub = asOf(lw?.dayNumber) ?: entryHHmm?.takeIf { lw?.dayNumber == d.day }?.let { "weighed $it" }),
@@ -435,10 +449,17 @@ fun LiftSection(d: OutputData, view: OutputData.NowView? = null) {
                 refs = listOf(Fmt.n(d.liftedKgBy(h), 1) + " kg" to kindColor(P), "of " + Fmt.i(d.e.birdsLifted) to kindColor(P)),
                 sub = d.lapsToday.joinToString("  ") { it.hhmm + " " + Fmt.i(it.birds) }, subKind = P, tag = "tile_lift_laps"))
         }
+        // v61: what came in, what went out, and what the count says is left — with its sign when it does not add up
+        add(PLine("Birds received", vi(d.placed, P), "", null,
+            refs = listOfNotNull(if (d.reception > 0) "started with " + Fmt.i(d.entryBirds) to kindColor(P) else null),
+            sub = if (d.reception > 0) "${Fmt.i(d.reception)} died on the way" else null, subKind = P, tag = "tile_received"))
         val lifted = m?.liftedBirds ?: d.liftTD
         val days = d.rows.filter { it.birdsLifted > 0 && it.dayNumber <= d.day }.map { it.dayNumber }
         add(PLine("Birds lifted", vi(lifted, P), "", null, refs = listOf(Fmt.n(m?.liftedKg ?: d.liftKgTD, 1) + " kg" to kindColor(P)),
             sub = if (days.isEmpty()) "none yet" else "days " + days.joinToString(","), subKind = if (days.isEmpty()) null else P))
+        add(PLine("Left by the count", vBook(d.bookLive, P, d.countGap != null), "", null,
+            refs = listOf(Fmt.i(d.mortTD - d.lameTD) + " dead" to kindColor(P), Fmt.i(d.lameTD) + " culled" to kindColor(P)),
+            sub = d.countNote ?: "received − dead − culled − lifted", subKind = null, tag = "tile_count"))
         if (m != null && m.liftedBirds > 0) add(PLine("Lifted, per bird", v(m.liftedKg / m.liftedBirds, 3, P), "kg", null,
             refs = listOfNotNull(if (m.liftedToday > 0) "left " + Fmt.n(m.avgAfterKg * 1000, 0) + " g" to kindColor(PR) else null),
             sub = if (m.liftedToday > 0) "today ${m.liftedToday} · " + Fmt.n(m.liftAvgKg, 3) + " kg" else null, subKind = P))

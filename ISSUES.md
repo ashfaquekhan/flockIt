@@ -67,6 +67,11 @@ is not made twice. Newest first. Open items at the top. Update together with
 | O83 | Barricades along the house: the pans and lines outside the floor are still counted | The floor's area, density and ft² per bird follow the width; the pan plan, bags per line, walk distances and the house maps still take every feeder and drinker line as in use. No ideal mark for the width yet. |
 | O84 | Present and projected are shown for the Birds numbers only | Feed, water and air numbers are plans or models by nature (no entry to lead with), apart from "Eaten yesterday". Say which others should show both. |
 | O85 | Sheet schema 12 upgrade is tested on data, not yet run on the live sheet | Same path as 11 (O79); both phones should move to v60 together. |
+| O86 | The count that does not add up is shown, not explained | −N: more lifted than the count held (a missed delivery count, deaths entered twice, a truck's count); +N on a closed batch: birds in the count never lifted (deaths not entered). The app cannot tell which; the entries stay as entered. On an open batch a few birds left in the count after the last truck show as birds left (not red) until the batch is closed. |
+| O87 | The stored LiveBirds (phone and sheet column) stays at 0 when the count is below zero | The house's sums (feed, floor, air) cannot work on fewer than no birds. The signed count is worked out from the entries on the page and in the flock book; the sheet's column does not show it. |
+| O88 | The birds that ate on a lifting day are an estimate | Lifted birds count for the share of the day before their truck's time; feed taken away earlier before loading is not known. The projections' own appetite learning (`domain/Projection`) still divides by the birds left. |
+| O89 | The Map and the event list are off the Output page | By request (v61). The code and the event log are kept; say if they should come back elsewhere (the account menu, a page of their own). |
+| O90 | The flock book no longer opens a day | A touch lights the cell (v61). Days are opened from the top bar. |
 | O51 | "Comfortable" density on hot days (30 / 34 kg/m²) is a rule of thumb | From heat-stress guidance; the farm's cap (39 kg/m²) stays the most. Say if the company uses other figures. |
 | O68 | Clashes are found for day entries only | Farm settings, flocks, tasks and feed types still go by the later save, and are not sent in the background (they are sent with the next save). |
 | O69 | The background sender needs Google sign-in to renew by itself | It uses the account signed in on the phone; if Google wants the sign-in confirmed again, it waits until FlockIt is opened. |
@@ -89,6 +94,11 @@ is not made twice. Newest first. Open items at the top. Update together with
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v61 | 640 lifted with 621 in the count showed 1 bird left, then 0 | The count was held at 0 (stored) and at 1 (by the clock) | The count by the entries, signed: −19 in red, the entries untouched |
+| v61 | Feed per bird jumped on the day after a lifting | The day's feed was divided by the birds left after the trucks | Divided by the birds that ate: those left and the lifted until their truck's time |
+| v61 | Livability could be moved by a wrong truck count | Worked out from the birds left + lifted | From the losses: received − dead − culled |
+| v61 | A touch on the flock book closed it and changed the day | The row opened its day | The touch lights the cell, its day and column |
+| v61 | A past day opened at midday: a lifting that evening was not yet in the numbers | Days other than today were shown at 12:00 | A day gone by opens at 23:55 |
 | v60 | A projected number stood where the entered one should be (live birds before today's deaths were in) | The line showed the projection alone until today's entry | The last value entered leads (with its day), the projection under it |
 | v60 | Culls were left out of the mortality % | Counted as birds off the floor only | Counted as mortality (dead + culled) |
 | v60 | The first version of the own curve was no better than the company's on the real flock (feed: worse) | Day-0 chick weighings and tray feeding in days 1–3 gave ratios far off, taken at full weight | Early days count for less; one entry moves the curve by a fifth at most |

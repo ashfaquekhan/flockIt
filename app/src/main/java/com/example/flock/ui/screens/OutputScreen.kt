@@ -182,7 +182,8 @@ fun OutputScreen(
     val nowZ = remember(now, zone) { java.time.Instant.ofEpochMilli(now).atZone(zone) }
     var pinned by remember(d.day) { mutableStateOf<Int?>(null) }
     val live = isToday && pinned == null
-    val minutes = pinned ?: if (isToday) nowZ.hour * 60 + nowZ.minute else 12 * 60
+    // (v61) a day gone by opens at its last time — everything that happened in it is in; a day to come at midday
+    val minutes = pinned ?: if (isToday) nowZ.hour * 60 + nowZ.minute else if (d.isFuture) 12 * 60 else 1435
     val dayDate = remember(entry.date) { try { java.time.LocalDate.parse(entry.date) } catch (e: Exception) { null } }
     val viewZ = if (live || dayDate == null) nowZ else dayDate.atTime(minutes / 60, minutes % 60).atZone(zone)
     val viewMs = viewZ.toInstant().toEpochMilli()
@@ -243,7 +244,7 @@ fun OutputScreen(
 
     // the page's sections in the farm's order (v53): the birds (the window and their numbers), feed and floor, air and
     // ventilation, lifting, water, then the graphs and the records
-    val tabs = listOf("birds" to "Birds", "feed" to "Feed", "lift" to "Lifting", "air" to "Air", "water" to "Water", "graphs" to "Graphs", "map" to "Map")
+    val tabs = listOf("birds" to "Birds", "feed" to "Feed", "lift" to "Lifting", "air" to "Air", "water" to "Water", "graphs" to "Graphs")
     val dens = androidx.compose.ui.platform.LocalDensity.current
     var tabsPx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     val tabsDp = with(dens) { tabsPx.toDp() }
@@ -275,10 +276,8 @@ fun OutputScreen(
         Anchored("graphs") {
             GraphsCard(d)
             TrendsSection(d)
-            FlockBookCard(d, onSelectDay)
+            FlockBookCard(d)
         }
-        // 7. the map: every property, part and event and how they link; the event log under it (v58)
-        Anchored("map") { MindMapSection(d, flockEvents, view = view, hour = hour) }
         if (onCloseBatch != null && flock?.status != "closed") {
             OutlinedButton(onClick = { confirmClose = true }, modifier = Modifier.fillMaxWidth(),
                 border = androidx.compose.foundation.BorderStroke(1.dp, GlassLine)) {
@@ -293,6 +292,7 @@ fun OutputScreen(
     }, modifier = Modifier.align(Alignment.TopStart).onGloballyPositioned { tabsPx = it.size.height })
     // the time of the day: a rail down the right edge, opened by touching it
     TimeRail(minutes, if (isToday) nowZ.hour * 60 + nowZ.minute else null, entryMin, light, { pinned = it }, { pinned = null },
+        side = if (isToday) 0 else if (d.isFuture) 1 else -1, modifier =
         Modifier.align(Alignment.CenterEnd).padding(top = tabsDp, bottom = 64.dp))
     // back to the present in one tap, wherever the page is scrolled to
     if (isToday && pinned != null) NowButton({ pinned = null }, Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 12.dp))

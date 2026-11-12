@@ -344,7 +344,7 @@ private fun chartSpecs(d: OutputData): List<ChartSpec> {
     // feed entered on flock day x is what the birds ate the day before — the standard's day x — so it is plotted at x
     val perBird = { day: Int ->
         val row = by[day]
-        val live = by[day - 1]?.liveBirds?.takeIf { it > 0 }
+        val live = d.eatersOn(day - 1)
         if (row == null || live == null || day > d.day) null else d.usedKg(row).takeIf { it > 0 }?.let { it * 1000 / live }
     }
     val cumPerBird = { day: Int ->
