@@ -106,6 +106,7 @@ is not made twice. Newest first. Open items at the top. Update together with
 ## Fixed
 | Version | Issue | Cause | Fix |
 |---|---|---|---|
+| v65 | Flock book headers and numbers did not line up | Right-aligned with uneven padding | Centred in each column |
 | v64 | The flock book mixed projected and company figures with the entries; lifting days showed weight and FCR as projected | One column served both; a lifting was not taken as a weighing | Entered numbers only; a lifting day's weight is the trucks' average, green |
 | v64 | A save could update a duplicate day row the load does not read | Save took the first matching row, load the last | Both the last |
 | v64 | Lifting laps and side barricades had no column on a sheet not yet upgraded | A hand-kept list of 'newer columns' | Any layout column with a value gets its place |

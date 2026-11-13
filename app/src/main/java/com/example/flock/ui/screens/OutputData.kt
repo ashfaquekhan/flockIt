@@ -801,6 +801,8 @@ class OutputData(
     /** For the flock book (any day, whichever day is open): bags used on day [d] and feed per bird (g) — both entered the next morning. */
     /** Running totals to the end of day [d] for the flock book (v64): the dead and culled; the bags and kilos eaten (each day's feed is entered the next morning). */
     fun mortTDOn(d: Int): Int = rows.filter { it.dayNumber <= d }.sumOf { it.mortality + it.lameSeparated }
+    fun liftedTDOn(d: Int): Int = rows.filter { it.dayNumber <= d }.sumOf { it.birdsLifted }
+    fun liftKgTDOn(d: Int): Double = rows.filter { it.dayNumber <= d }.sumOf { it.weightLifted }
     fun bagsTDOn(d: Int): Double = rows.filter { it.dayNumber <= d + 1 }.sumOf { usedByType(it).values.sum() }
     fun feedKgTDOn(d: Int): Double = rows.filter { it.dayNumber <= d + 1 }.sumOf { usedKg(it) }
     fun bagsUsedOnDay(d: Int): Double? = byDay[d + 1]?.let { usedByType(it).values.sum() }?.takeIf { it > 0 }

@@ -272,18 +272,26 @@ private fun bookCols(): List<BookCol> = listOf(
     BookCol("Mort %", 54) { _, r -> v(r.cumMortPct, 2, P) },
     BookCol("Lifted", 62) { _, r -> if (r.birdsLifted > 0) vi(r.birdsLifted, P) else blank },
     BookCol("Lift kg", 78) { _, r -> if (r.weightLifted > 0) v(r.weightLifted, 1, P) else blank },
+    // v65: the running totals of the liftings, from the first lifting on
+    BookCol("Tot lifted", 70) { d, r -> d.liftedTDOn(r.dayNumber).takeIf { it > 0 }?.let { vi(it, P) } ?: blank },
+    BookCol("Tot lift kg", 84) { d, r -> d.liftKgTDOn(r.dayNumber).takeIf { it > 0 }?.let { v(it, 1, P) } ?: blank },
     BookCol("EoD", 66) { d, r -> vBook(d.bookLiveOn(r.dayNumber), P, d.countOff(r.dayNumber)) },
     BookCol("Bags", 50) { d, r -> d.bagsUsedOnDay(r.dayNumber)?.let { v(it, 2, P) } ?: blank },
     BookCol("Tot bags", 62) { d, r -> if (d.bagsUsedOnDay(r.dayNumber) != null) v(d.bagsTDOn(r.dayNumber), 2, P) else blank },
     BookCol("Tot feed kg", 80) { d, r -> if (d.bagsUsedOnDay(r.dayNumber) != null) v(d.feedKgTDOn(r.dayNumber), 1, P) else blank },
     BookCol("g/bird", 56) { d, r -> d.eatenGOn(r.dayNumber)?.let { v(it, 1, P) } ?: blank },
+    // feed per bird till date: each day's feed over the birds that ate it, added up (the feed of day r is entered on r + 1)
+    BookCol("Tot g/bird", 74) { d, r -> if (d.bagsUsedOnDay(r.dayNumber) != null) d.cumFeedByDay[r.dayNumber + 1]?.takeIf { it > 0 }?.let { v(it, 1, P) } ?: blank else blank },
     // the weighing; on a lifting day without one, the trucks' own average (kilos ÷ birds)
     BookCol("Weight", 70) { _, r -> r.avgWeight?.let { v(it, 1, P) }
         ?: if (r.birdsLifted > 0 && r.weightLifted > 0) v(r.weightLifted * 1000.0 / r.birdsLifted, 1, P) else blank },
     BookCol("CV %", 48) { _, r -> r.cv?.let { v(it, 1, P) } ?: blank },
     BookCol("FCR", 54) { d, r -> if (weightKnown(r)) v(d.massByDay[r.dayNumber]?.fcr, 3, P) else blank },
     BookCol("cFCR", 54) { d, r -> if (weightKnown(r)) v(d.massByDay[r.dayNumber]?.cFcrCompany, 3, P) else blank },
-    BookCol("kg/m²", 56) { _, r -> if (weightKnown(r)) v(r.densityKgM2, 1, P) else blank }
+    BookCol("kg/m²", 56) { _, r -> if (weightKnown(r)) v(r.densityKgM2, 1, P) else blank },
+    // everything the feed has made to that day: the birds in the house and the kilos lifted (a day with a weight)
+    BookCol("Made kg", 78) { d, r -> if (weightKnown(r)) v(d.massByDay[r.dayNumber]?.producedKg, 0, P) else blank },
+    BookCol("Livab %", 60) { _, r -> v(r.livability, 2, P) }
 )
 
 /**
@@ -337,10 +345,10 @@ private fun FlockBookGrid(d: OutputData, modifier: Modifier) {
     Column(modifier.border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(8.dp)).testTag("flock_book")) {
         // the titles
         Row(Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.06f)).padding(vertical = 6.dp)) {
-            Text("Day", Modifier.width((44 * fs).dp).padding(start = 6.dp), style = head, color = Color.White.copy(alpha = 0.8f), maxLines = 1, softWrap = false)
+            Text("Day", Modifier.width((44 * fs).dp), style = head, color = Color.White.copy(alpha = 0.8f), textAlign = TextAlign.Center, maxLines = 1, softWrap = false)
             Row(Modifier.weight(1f).horizontalScroll(h)) {
                 cols.forEachIndexed { i, c -> Text(c.title, Modifier.width((c.width * fs).dp).background(if (pick?.second == i) Color.White.copy(alpha = 0.16f) else Color.Transparent),
-                    style = head, color = Color.White.copy(alpha = if (pick?.second == i) 1f else 0.8f), textAlign = TextAlign.End, maxLines = 1, softWrap = false) }
+                    style = head, color = Color.White.copy(alpha = if (pick?.second == i) 1f else 0.8f), textAlign = TextAlign.Center, maxLines = 1, softWrap = false) }
                 Spacer(Modifier.width(14.dp))
             }
         }
@@ -353,8 +361,8 @@ private fun FlockBookGrid(d: OutputData, modifier: Modifier) {
                     .background(if (rowLit) Color.White.copy(alpha = 0.10f) else if (lifting) kindColor(PR).copy(alpha = 0.10f) else Color.Transparent)
                     .border(if (sel) 1.5.dp else 0.dp, if (sel) Color.White else Color.Transparent)
                     .testTag("book_day_${r.dayNumber}"), verticalAlignment = Alignment.CenterVertically) {
-                    Text(r.dayNumber.toString() + if (lifting) " L" else "", Modifier.width((44 * fs).dp).clickable { touch(r.dayNumber, -1) }.padding(start = 6.dp, top = 5.dp, bottom = 5.dp), style = mono,
-                        color = if (lifting) kindColor(PR) else Color.White, maxLines = 1, softWrap = false)
+                    Text(r.dayNumber.toString() + if (lifting) " L" else "", Modifier.width((44 * fs).dp).clickable { touch(r.dayNumber, -1) }.padding(top = 5.dp, bottom = 5.dp), style = mono,
+                        color = if (lifting) kindColor(PR) else Color.White, textAlign = TextAlign.Center, maxLines = 1, softWrap = false)
                     Row(Modifier.weight(1f).horizontalScroll(h)) {
                         cols.forEachIndexed { i, c ->
                             val x = c.cell(d, r)
@@ -362,10 +370,10 @@ private fun FlockBookGrid(d: OutputData, modifier: Modifier) {
                             Text(x.text, Modifier.width((c.width * fs).dp)
                                 .background(if (lit) Color.White.copy(alpha = 0.22f) else if (pick?.second == i) Color.White.copy(alpha = 0.06f) else Color.Transparent)
                                 .border(if (lit) 1.dp else 0.dp, if (lit) Color.White else Color.Transparent)
-                                .clickable { touch(r.dayNumber, i) }.padding(start = 2.dp, top = 5.dp, bottom = 5.dp)
+                                .clickable { touch(r.dayNumber, i) }.padding(top = 5.dp, bottom = 5.dp)
                                 .testTag("book_cell_${r.dayNumber}_$i").semantics { selected = lit },
                                 style = mono, color = x.color ?: kindColor(if (x.text == "—" || x.text.isEmpty()) NE else x.kind),
-                                textAlign = TextAlign.End, maxLines = 1, softWrap = false)
+                                textAlign = TextAlign.Center, maxLines = 1, softWrap = false)
                         }
                         Spacer(Modifier.width(14.dp))
                     }

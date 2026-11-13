@@ -8,6 +8,11 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v65 — 2026-11-13 · Flock book: more running totals, headers and numbers centred · no DB or sheet change
+- New columns: **Tot lifted** and **Tot lift kg** (the liftings to that row), **Tot g/bird** (feed per bird till date),
+  **Made kg** (the birds in the house and the kilos lifted, on a day with a weight) and **Livab %**.
+- Every header and number is centred in its column, the Day column too.
+
 ## v64 — 2026-11-13 · Flock book: entered numbers only, start and end of day, running totals; sync and sheet code read through with three fixes · no DB or sheet layout change
 - **Flock book**
   - No projected values and no Company column. Weight, FCR, cFCR and kg/m² show only on a day with a weighing or a
