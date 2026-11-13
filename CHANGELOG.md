@@ -8,6 +8,26 @@ anything. A DB bump clears the phone's local cache and re-pulls everything from 
 
 ---
 
+## v64 — 2026-11-13 · Flock book: entered numbers only, start and end of day, running totals; sync and sheet code read through with three fixes · no DB or sheet layout change
+- **Flock book**
+  - No projected values and no Company column. Weight, FCR, cFCR and kg/m² show only on a day with a weighing or a
+    lifting, in green, and are blank otherwise. On a lifting day without a weighing the weight is the trucks' own average
+    (kilos ÷ birds) — the lifted kilos are a weighing too.
+  - **SoD** and **EoD**: the birds at the start of the day and at its end (after the day's deaths, culls and liftings).
+  - **Mort** (the day's dead and culled) and **Tot mort** (the total to that row); **Bags** (eaten that day) with
+    **Tot bags** and **Tot feed kg** (the totals to that row).
+- **Sync and sheet code read through** (`SheetsSyncManager` save / load / upgrade paths, `SheetSchema` parse, merge and
+  clash rules, `FlockRepository` load and resend). Every entry field goes to the sheet and comes back (checked field by
+  field against the day row); a load never lands on a row with an unsent edit; unsent rows are sent before a load.
+  Three faults fixed:
+  - A day row written twice in the sheet: a save updated the FIRST copy while a load reads the LAST, so the save could
+    seem lost. A save now updates the one a load reads.
+  - A value with no column in an older sheet got a column only if it was on a short list written by hand, which left out
+    the lifting laps and the side barricades; on such a sheet they would not be written and the next load would clear
+    them on the phone. Now any column of the layout that has a value gets its place.
+  - Bringing a sheet's layout up to date rewrote it from the copy read at the start of the load; an entry another phone
+    sent in between could be written over. The sheet is read again right before the rewrite.
+
 ## v63 — 2026-11-13 · Every calculation file read line by line; the projections, KPIs, EPEF, heat and weather brought to one definition each; unused old screens removed · no DB or sheet layout change
 Read in full: `FlockCalc`, `OutputData`, `PhysiologicalEngine`, `CompanyStandard`, `IbController`, `Projection`,
 `IntakeForecast`, `GrowthForecast`, `FlockKpis`, `Suggest`, `FeedCorrection`, `BirdEnvironment`, `SpacePlan`, `Litter`,

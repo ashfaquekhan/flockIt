@@ -374,13 +374,15 @@ class SheetsSyncManager(
                     ?: SheetSchema.DAILY_HEADERS
                 val rows = vr.getOrNull(1)?.values ?: emptyList()
                 var rowNum = -1
-                for ((idx, r) in rows.withIndex()) if (r.s(0) == day.flockId && r.i(1) == day.dayNumber) { rowNum = idx + 2; break }
+                // v64: the LAST row with this flock and day — the one a load reads (see SheetSchema.readTable); it was the first
+                for ((idx, r) in rows.withIndex()) if (r.s(0) == day.flockId && r.i(1) == day.dayNumber) rowNum = idx + 2
                 val values = SheetSchema.dayValues(day)
                 val writes = mutableListOf<ValueRange>()
                 // a feed variety, an extra sample location or a newer column with no column yet gets one at the end of
                 // the header (the next layout check moves it beside its neighbours)
                 val missing = (SheetSchema.usedSplit(day).keys.map { SheetSchema.usedHeader(it) } + SheetSchema.sampleColumns(day).keys +
-                        (listOf("LiftedAt", "Feedings", "PenStartFt") + SheetSchema.WEATHER_HEADERS).filter { k -> values[SheetSchema.norm(k)].let { it != null && it.toString().isNotBlank() } })
+                        // v64: every column of the layout that has a value (it was a list by hand, which left out LiftLaps and the side barricades)
+                        SheetSchema.DAILY_HEADERS.filter { k -> values[SheetSchema.norm(k)].let { it != null && it.toString().isNotBlank() } })
                     .filter { name -> header.none { SheetSchema.norm(it) == SheetSchema.norm(name) } }
                 if (missing.isNotEmpty()) {
                     growColumns(authHeader, spreadsheetId, "DailyData", header.size + missing.size)
@@ -726,7 +728,10 @@ class SheetsSyncManager(
         // a current file whose only fault is a column the app itself added at the end is just tidied: no snapshot needed
         val tidyOnly = raw.schema >= SheetSchema.VERSION && reasons.all { it == "DailyData columns differ" }
         if (!tidyOnly) copyAsBackup(authHeader, spreadsheetId, "$SNAPSHOT_PREFIX — ${farm.farmName} — $stamp", "snapshot", raw.schema)
-        val content = SheetSchema.parse(spreadsheetId, raw, farm, config)
+        // v64: the sheet is read again right before it is rewritten — an entry another phone sent since this load began
+        // (the snapshot above takes a while) would otherwise be written over with the older rows
+        val fresh = readRaw(authHeader, spreadsheetId) ?: raw
+        val content = SheetSchema.parse(spreadsheetId, fresh, farm, config)
         val problems = writeAndVerify(authHeader, spreadsheetId, content, SheetSchema.primaryMeta(content.farm.farmId, raw.schema))
         if (problems.isNotEmpty()) {
             Log.w(TAG, "upgrade $spreadsheetId not verified: $problems")

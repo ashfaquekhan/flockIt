@@ -255,21 +255,35 @@ fun NippleLineView(heightIn: Double, pressureIn: Double?) {
 
 private data class BookCol(val title: String, val width: Int, val cell: (OutputData, com.example.flock.data.DailyDataEntity) -> V)
 
+/**
+ * v64: only what was entered or follows from entries alone — no projected values and no company column. The birds are
+ * given at the start of the day (SoD) and at its end (EoD: after the day's deaths, culls and liftings). Weight, FCR,
+ * cFCR and density show on a day with a weighing or a lifting (the trucks' kilos are a weighing too), in green; blank
+ * otherwise. Mortality and feed each have the day's figure and the running total to that row.
+ */
+private fun weightKnown(r: com.example.flock.data.DailyDataEntity) = r.avgWeight != null || (r.birdsLifted > 0 && r.weightLifted > 0)
+private val blank = V("", NE)
+
 private fun bookCols(): List<BookCol> = listOf(
     BookCol("Date", 58) { _, r -> vt(try { java.time.LocalDate.parse(r.date).format(java.time.format.DateTimeFormatter.ofPattern("dd MMM", java.util.Locale.US)) } catch (e: Exception) { r.date }, NE) },
-    BookCol("Live", 66) { d, r -> vBook(d.bookLiveOn(r.dayNumber), if (r.mortality > 0 || "M" in r.savedFields) P else PR, d.countOff(r.dayNumber)) },
-    BookCol("Dead", 46) { _, r -> vi(r.mortality, P) },
+    BookCol("SoD", 66) { d, r -> vBook(d.bookLiveOn(r.dayNumber - 1), P, d.countOff(r.dayNumber - 1)) },
+    BookCol("Mort", 46) { _, r -> vi(r.mortality + r.lameSeparated, P) },
+    BookCol("Tot mort", 62) { d, r -> vi(d.mortTDOn(r.dayNumber), P) },
     BookCol("Mort %", 54) { _, r -> v(r.cumMortPct, 2, P) },
-    BookCol("Lifted", 62) { _, r -> if (r.birdsLifted > 0) vi(r.birdsLifted, P) else vt("", NE) },
-    BookCol("Lift kg", 78) { _, r -> if (r.weightLifted > 0) v(r.weightLifted, 1, P) else vt("", NE) },
-    BookCol("Bags", 50) { d, r -> v(d.bagsUsedOnDay(r.dayNumber), 2, P) },
-    BookCol("g/bird", 56) { d, r -> v(d.eatenGOn(r.dayNumber), 1, P) },
-    BookCol("Weight", 70) { d, r -> if (r.avgWeight != null) v(r.avgWeight, 1, P) else v(d.massByDay[r.dayNumber]?.avgAfterKg?.times(1000), 1, PR) },
-    BookCol("Company", 70) { _, r -> v(CompanyStandard.bw(r.dayNumber), 1, C) },
-    BookCol("CV %", 48) { _, r -> v(r.cv, 1, P) },
-    BookCol("FCR", 54) { d, r -> v(d.massByDay[r.dayNumber]?.fcr, 3, if (r.avgWeight != null) P else PR) },
-    BookCol("cFCR", 54) { d, r -> v(d.massByDay[r.dayNumber]?.cFcrCompany, 3, if (r.avgWeight != null) P else PR) },
-    BookCol("kg/m²", 56) { _, r -> v(r.densityKgM2, 1, if (r.avgWeight != null) P else PR) }
+    BookCol("Lifted", 62) { _, r -> if (r.birdsLifted > 0) vi(r.birdsLifted, P) else blank },
+    BookCol("Lift kg", 78) { _, r -> if (r.weightLifted > 0) v(r.weightLifted, 1, P) else blank },
+    BookCol("EoD", 66) { d, r -> vBook(d.bookLiveOn(r.dayNumber), P, d.countOff(r.dayNumber)) },
+    BookCol("Bags", 50) { d, r -> d.bagsUsedOnDay(r.dayNumber)?.let { v(it, 2, P) } ?: blank },
+    BookCol("Tot bags", 62) { d, r -> if (d.bagsUsedOnDay(r.dayNumber) != null) v(d.bagsTDOn(r.dayNumber), 2, P) else blank },
+    BookCol("Tot feed kg", 80) { d, r -> if (d.bagsUsedOnDay(r.dayNumber) != null) v(d.feedKgTDOn(r.dayNumber), 1, P) else blank },
+    BookCol("g/bird", 56) { d, r -> d.eatenGOn(r.dayNumber)?.let { v(it, 1, P) } ?: blank },
+    // the weighing; on a lifting day without one, the trucks' own average (kilos ÷ birds)
+    BookCol("Weight", 70) { _, r -> r.avgWeight?.let { v(it, 1, P) }
+        ?: if (r.birdsLifted > 0 && r.weightLifted > 0) v(r.weightLifted * 1000.0 / r.birdsLifted, 1, P) else blank },
+    BookCol("CV %", 48) { _, r -> r.cv?.let { v(it, 1, P) } ?: blank },
+    BookCol("FCR", 54) { d, r -> if (weightKnown(r)) v(d.massByDay[r.dayNumber]?.fcr, 3, P) else blank },
+    BookCol("cFCR", 54) { d, r -> if (weightKnown(r)) v(d.massByDay[r.dayNumber]?.cFcrCompany, 3, P) else blank },
+    BookCol("kg/m²", 56) { _, r -> if (weightKnown(r)) v(r.densityKgM2, 1, P) else blank }
 )
 
 /**
@@ -359,5 +373,5 @@ private fun FlockBookGrid(d: OutputData, modifier: Modifier) {
             }
         }
     }
-    Text("green entered · yellow projected · L lifting · red: the count does not add up", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.55f))
+    Text("SoD start of day · EoD end of day · Tot: running total · L lifting · red: the count does not add up", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.55f))
 }
